@@ -1,0 +1,28 @@
+local SoundLibrary = {
+    UserInterface = {
+        Notifications = {
+            Amphibia = "https://files.catbox.moe/vmtzyw.mp3",
+            Cool = "https://files.catbox.moe/r8e6lv.mp3",
+            CsgoNotification1 = "https://files.catbox.moe/frbygb.wav",
+            CsgoNotification2 = "https://files.catbox.moe/te9bks.wav",
+            Ding = "https://files.catbox.moe/3ji38c.mp3",
+            Discord = "https://files.catbox.moe/9yrocb.mp3",
+            Faaah = "https://files.catbox.moe/74jy0s.mp3",
+            Fart = "https://files.catbox.moe/vjt542.mp3",
+            FearsToFathom = "https://files.catbox.moe/l8p2mt.mp3",
+            Formula1Radio = "https://files.catbox.moe/3lbcs2.mp3",
+            Modern = "https://files.catbox.moe/o9nxq1.mp3",
+            MSTeams = "https://files.catbox.moe/lc15uv.mp3",
+            Resonant = "https://files.catbox.moe/7fzub7.mp3",
+            Samsung = "https://files.catbox.moe/rgpk1h.mp3",
+            Steam = "https://files.catbox.moe/95gr3u.mp3",
+            Telegram = "https://files.catbox.moe/ubtqib.mp3",
+            Tethys = "https://files.catbox.moe/ah7x6l.mp3",
+            Whatsapp = "https://files.catbox.moe/gkv6me.mp3",
+            Whip = "https://files.catbox.moe/7bnbfz.mp3",
+            Xbox = "https://files.catbox.moe/anbn9r.mp3",
+        },
+    },
+}
+
+return SoundLibrary
