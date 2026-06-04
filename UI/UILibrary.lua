@@ -23,8 +23,8 @@ local _config = {
 -- ! Theme
 local Theme = {
 	Font = {
-		Inter = Font.fromName("Inter", Enum.FontWeight.Regular, Enum.FontStyle.Normal);
-		RobotoMono = Font.fromEnum(Enum.Font.RobotoMono)
+		Inter = Font.fromId(12187365364, Enum.FontWeight.Regular, Enum.FontStyle.Normal);
+		RobotoMono = Font.fromEnum(Enum.Font.RobotoMono);
 	},
 
 	Image = {
