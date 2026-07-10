@@ -1,450 +1,8007 @@
 --[[
-    amphibia — ui library for roblox (executor)
+    amphibia — ui library for roblox (executor)   v2 — 1:1 with the design
     -------------------------------------------------
-    Single-file library. Load with:
-        local Amphibia = loadstring(game:HttpGet("<raw url>/Amphibia.lua"))()
+    The entire visual tree is your exact .rbxmx, rebuilt from data (see the
+    generated builder below). The library clones YOUR elements as templates and
+    wires behaviour onto them, so it is pixel-for-pixel your design.
 
-    Everything (key screen, loading screen, window, every component, the color
-    picker window, search and config saving) is built purely from code in the
-    exact "amphibia" visual style. See Loader.lua for a full showcase.
-
-    Public API (Rayfield-like, but nicer):
-
+        local Amphibia = loadstring(game:HttpGet("<raw>/Amphibia.lua"))()
         local Window = Amphibia:CreateWindow({...})
-        local Tab    = Window:CreateTab({ Name = "Player", Group = "Main" })
-        local Sec    = Tab:CreateSection({ Name = "Sliders", Side = "Left" })
-        Sec:CreateSlider{...}  Sec:CreateToggle{...}  Sec:CreateButton{...}
-        Sec:CreateColorPicker{...}  Sec:CreateSelector{...}
-        Sec:CreateNumberPicker{...} Sec:CreateDropdown{...}  Sec:CreateLabel{...}
+        local Tab    = Window:CreateTab({ Name="Player", Group="Main" })
+        local Sec    = Tab:CreateSection({ Name="Sliders", Side="Right" })
+        Sec:CreateSlider{...} Sec:CreateToggle{...} ... (see README)
 --]]
 
 local Amphibia = {}
 Amphibia.__index = Amphibia
-Amphibia.Version = "0.1"
+Amphibia.Version = "0.2"
 
---============================================================================--
---  SERVICES
---============================================================================--
+--============================ SERVICES ============================--
 local TweenService     = game:GetService("TweenService")
-local UserInputService  = game:GetService("UserInputService")
-local RunService        = game:GetService("RunService")
-local Players           = game:GetService("Players")
-local CoreGui           = game:GetService("CoreGui")
-local TextService       = game:GetService("TextService")
-local HttpService       = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local Players          = game:GetService("Players")
+local CoreGui          = game:GetService("CoreGui")
+local HttpService      = game:GetService("HttpService")
+local LocalPlayer      = Players.LocalPlayer
 
-local LocalPlayer = Players.LocalPlayer
-local Mouse       = LocalPlayer and LocalPlayer:GetMouse()
-
---============================================================================--
---  THEME  (extracted 1:1 from the amphibia design file)
---============================================================================--
-local Theme = {
-    -- backgrounds
-    Window        = Color3.fromRGB(13, 13, 14),
-    Section       = Color3.fromRGB(27, 27, 27),
-    Search        = Color3.fromRGB(30, 30, 30),
-    Inset         = Color3.fromRGB(13, 13, 14),   -- number picker / buttons inner
-    InsetDark     = Color3.fromRGB(16, 16, 16),   -- selector holder
-    Popup         = Color3.fromRGB(18, 18, 18),   -- colorpicker / dropdown window
-
-    -- strokes
-    WindowStroke  = Color3.fromRGB(34, 34, 34),
-    SectionStroke = Color3.fromRGB(60, 60, 60),
-    PopupStroke   = Color3.fromRGB(40, 40, 40),
-    Splitter      = Color3.fromRGB(34, 34, 34),
-
-    -- text
-    Logo          = Color3.fromRGB(255, 255, 255),
-    Version       = Color3.fromRGB(111, 111, 111),
-    SectionName   = Color3.fromRGB(216, 216, 216),
-    ElementName   = Color3.fromRGB(200, 200, 200),
-    Value         = Color3.fromRGB(226, 226, 226),
-    TabIdle       = Color3.fromRGB(188, 188, 188),
-    TabActive     = Color3.fromRGB(255, 255, 255),
-    Muted         = Color3.fromRGB(120, 120, 120),
-    Placeholder   = Color3.fromRGB(65, 65, 65),
-    Status        = Color3.fromRGB(189, 189, 189),
-
-    -- accents
-    Accent        = Color3.fromRGB(255, 255, 255),
-    SliderTrack   = Color3.fromRGB(94, 94, 94),
-    ToggleOn      = Color3.fromRGB(48, 48, 47),
-    ToggleOff     = Color3.fromRGB(33, 33, 33),
+--============================ THEME (for animations) ============================--
+local C = {
+    ToggleOn        = Color3.fromRGB(48, 48, 47),
+    ToggleOff       = Color3.fromRGB(33, 33, 33),
     ToggleOnStroke  = Color3.fromRGB(175, 175, 175),
     ToggleOffStroke = Color3.fromRGB(75, 75, 75),
-    ToggleOffDot  = Color3.fromRGB(105, 105, 105),
-    SelActive     = Color3.fromRGB(30, 30, 30),
-    SelActiveStroke = Color3.fromRGB(70, 70, 70),
-    SelTextIdle   = Color3.fromRGB(106, 106, 106),
-    SelTextActive = Color3.fromRGB(184, 184, 184),
-    Error         = Color3.fromRGB(220, 70, 70),
+    ToggleOffDot    = Color3.fromRGB(105, 105, 105),
+    White           = Color3.fromRGB(255, 255, 255),
+    SelActive       = Color3.fromRGB(30, 30, 30),
+    SelInactive     = Color3.fromRGB(16, 16, 16),
+    SelStroke       = Color3.fromRGB(70, 70, 70),
+    SelTextIdle     = Color3.fromRGB(106, 106, 106),
+    SelTextActive   = Color3.fromRGB(184, 184, 184),
+    Popup           = Color3.fromRGB(18, 18, 18),
+    PopupStroke     = Color3.fromRGB(40, 40, 40),
+    Section         = Color3.fromRGB(27, 27, 27),
+    Error           = Color3.fromRGB(220, 70, 70),
+    TabIdle         = Color3.fromRGB(188, 188, 188),
+    Muted           = Color3.fromRGB(120, 120, 120),
 }
-
---============================================================================--
---  FONTS  (two families from the design: serif display + sans body)
---============================================================================--
-local function mkfont(id, weight, style)
-    return Font.new(id, weight or Enum.FontWeight.Regular, style or Enum.FontStyle.Normal)
-end
 local Fonts = {
-    -- serif / display  (logo, section titles, values, screen titles)
-    Serif        = mkfont("rbxassetid://12187368093", Enum.FontWeight.Regular),
-    SerifBold    = mkfont("rbxassetid://12187368093", Enum.FontWeight.Bold),
-    SerifItalic  = mkfont("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Italic),
-    -- sans / body
-    Sans         = mkfont("rbxassetid://12187365364", Enum.FontWeight.Regular),
-    Mono         = Font.fromEnum(Enum.Font.RobotoMono),
+    Serif       = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular),
+    SerifBold   = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold),
+    SerifItalic = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Italic),
+    Sans        = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular),
+    Mono        = Font.fromEnum(Enum.Font.RobotoMono),
 }
 
---============================================================================--
---  ASSETS  (exact image ids from the design)
---============================================================================--
-local Icons = {
-    Search    = "rbxassetid://112312028684423",
-    Close     = "rbxassetid://90666376026129",
-    WhiteGlow = "rbxassetid://130321961257203",
-    Chevron   = "rbxassetid://82022839420755",   -- section arrow (90 closed / 180 open)
-    DropArrow = "rbxassetid://71447831631799",
-    ToggleGlow= "rbxassetid://104778959707215",
-    Minus     = "rbxassetid://128229913388215",
-    Plus      = "rbxassetid://96950735183906",
-    Divider   = "rbxassetid://124160192323665",
-    Shadow    = "rbxassetid://76575266047430",
-    KeyArrow  = "rbxassetid://94816744026537",
-    Discord   = "rbxassetid://122829741481584",
-    Site      = "rbxassetid://109323416778766",
-    Youtube   = "rbxassetid://80810391923936",
-    KeyGlow   = "rbxassetid://70620626215499",
-    KeyIcon   = "rbxassetid://134303082879830",
-    Chess     = "rbxassetid://107060544057249",
-    PopupClose= "rbxassetid://79136524656561",
-}
-
---============================================================================--
---  ANIMATION  helpers + shared easing presets
---============================================================================--
+--============================ ANIMATION ============================--
 local Anim = {}
-Anim.Spring  = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-Anim.Fast    = TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-Anim.Snappy  = TweenInfo.new(0.22, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
-Anim.Slow    = TweenInfo.new(0.5,  Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-Anim.Linear  = TweenInfo.new(0.12, Enum.EasingStyle.Linear)
-
-function Anim.tween(obj, info, props)
-    local t = TweenService:Create(obj, info, props)
-    t:Play()
-    return t
-end
--- shorthand: Anim.to(obj, props [, info])
+Anim.Spring = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+Anim.Fast   = TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+Anim.Snappy = TweenInfo.new(0.22, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
+Anim.Slow   = TweenInfo.new(0.5,  Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+Anim.Linear = TweenInfo.new(0.1,  Enum.EasingStyle.Linear)
 function Anim.to(obj, props, info)
-    return Anim.tween(obj, info or Anim.Spring, props)
+    local t = TweenService:Create(obj, info or Anim.Spring, props); t:Play(); return t
 end
 
---============================================================================--
---  UTIL  — declarative instance builder
---============================================================================--
-local function Create(class, props, children)
-    local inst = Instance.new(class)
-    if props then
-        for k, v in pairs(props) do
-            if k ~= "Parent" then
-                inst[k] = v
-            end
+--============================ SMALL HELPERS ============================--
+local function get(parent, name) return parent and parent:FindFirstChild(name) end
+local function getD(parent, name) return parent and parent:FindFirstChild(name, true) end
+
+-- destroy element children of a holder, keep layout/padding/etc
+local function clearElements(holder)
+    for _, c in ipairs(holder:GetChildren()) do
+        if not (c:IsA("UIListLayout") or c:IsA("UIPadding") or c:IsA("UIGradient")
+             or c:IsA("UICorner") or c:IsA("UIStroke")) then
+            c:Destroy()
         end
-        if props.Parent then inst.Parent = props.Parent end
     end
-    if children then
-        for _, c in ipairs(children) do c.Parent = inst end
-    end
-    return inst
 end
 
-local function corner(radius, parent)
-    return Create("UICorner", { CornerRadius = UDim.new(0, radius or 6), Parent = parent })
-end
-local function stroke(color, thickness, parent, transparency)
-    return Create("UIStroke", {
-        Color = color, Thickness = thickness or 1,
-        Transparency = transparency or 0,
-        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-        Parent = parent,
-    })
-end
-local function pad(parent, l, r, t, b)
-    return Create("UIPadding", {
-        PaddingLeft   = UDim.new(0, l or 0),
-        PaddingRight  = UDim.new(0, r or 0),
-        PaddingTop    = UDim.new(0, t or 0),
-        PaddingBottom = UDim.new(0, b or 0),
-        Parent = parent,
-    })
-end
-local function listLayout(parent, dir, gap, halign, valign)
-    return Create("UIListLayout", {
-        FillDirection = dir or Enum.FillDirection.Vertical,
-        Padding = UDim.new(0, gap or 0),
-        HorizontalAlignment = halign or Enum.HorizontalAlignment.Left,
-        VerticalAlignment   = valign or Enum.VerticalAlignment.Top,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Parent = parent,
-    })
-end
-
--- soft radial shadow behind an element
-local function addShadow(parent, color, transparency, sizeScale)
-    return Create("ImageLabel", {
-        Name = "Shadow", BackgroundTransparency = 1,
-        Image = "rbxassetid://76575266047430",
-        ImageColor3 = color or Color3.new(0,0,0),
-        ImageTransparency = transparency or 0.4,
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.fromScale(sizeScale or 1.6, sizeScale or 1.9),
-        ZIndex = (parent.ZIndex or 1) - 1,
-        Parent = parent,
-    })
-end
-
---============================================================================--
---  DRAGGING  — smooth, works from a handle, moves a target
---============================================================================--
+--============================ DRAGGING ============================--
 local function makeDraggable(handle, target)
     target = target or handle
-    local dragging, startPos, startInput
-    local goal
-    local conn
-
+    local dragging, startInput, startPos, goal, conn
     handle.Active = true
     handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
-            dragging   = true
-            startInput = input.Position
-            startPos   = target.Position
-            goal       = target.Position
+            dragging = true; startInput = input.Position; startPos = target.Position; goal = target.Position
             input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
             end)
         end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - startInput
-            goal = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
-            )
+            local d = input.Position - startInput
+            goal = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
         end
     end)
-
-    -- smooth follow so dragging feels weighty & fluid
-    if not conn then
-        conn = RunService.RenderStepped:Connect(function()
-            if goal and target.Parent then
-                target.Position = target.Position:Lerp(goal, 0.28)
-            end
-        end)
-    end
+    conn = RunService.RenderStepped:Connect(function()
+        if goal and target.Parent then target.Position = target.Position:Lerp(goal, 0.3) end
+    end)
     return function() if conn then conn:Disconnect() end end
 end
 
---============================================================================--
---  CUSTOM TEXTBOX  — animated input (letters fade in, caret glides, smooth
---  deletion). Built on a hidden real TextBox for reliable keyboard/clipboard
---  capture, but rendered fully custom for the "premium menu" feel.
---
---    local input = CustomInput.new(holderFrame, {
---        Placeholder = "Enter key here",
---        Font = Fonts.Mono, TextSize = 14,
---        OnChanged = function(text) end,
---        OnEnter   = function(text) end,
---    })
---============================================================================--
+--============================ CUSTOM TEXTBOX ============================--
+-- (same robust module shipped as CustomTextBox.lua: real TextBox on top, fully
+--  transparent so the native caret is hidden; a mirror label fades letters in
+--  and a caret frame glides at the end of a horizontal layout.)
 local CustomInput = {}
 CustomInput.__index = CustomInput
-
+local function tw(o, p) TweenService:Create(o, Anim.Fast, p):Play() end
 function CustomInput.new(parent, o)
     o = o or {}
     local self = setmetatable({}, CustomInput)
-    self.value       = o.Default or ""
-    self.placeholder = o.Placeholder or ""
-    self.onChanged   = o.OnChanged
-    self.onEnter     = o.OnEnter
-    self.numeric     = o.Numeric == true
-    self.maxLen      = o.MaxLen
-    self.focused     = falsed
-
-    local font   = o.Font or Fonts.Sans
-    local size   = o.TextSize or 14
-    local tcol   = o.TextColor or Theme.ElementName
-    local pcol   = o.PlaceholderColor or Theme.Placeholder
-    local align  = o.Align or Enum.HorizontalAlignment.Left
-
-    -- container ------------------------------------------------------------
-    local root = Create("Frame", {
-        Name = "CustomInput", BackgroundTransparency = 1,
-        Size = o.Size or UDim2.fromScale(1, 1),
-        Position = o.Position or UDim2.fromScale(0, 0),
-        ClipsDescendants = true,
-        Parent = parent,
-    })
-    self.Frame = root
-
-    -- row that holds text + caret, aligned so caret sits right after text
-    local row = Create("Frame", {
-        Name = "Row", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0), Position = UDim2.fromScale(0, 0),
-        Parent = root,
-    })
-    local rowLayout = listLayout(row, Enum.FillDirection.Horizontal, 2,
-        (align == Enum.HorizontalAlignment.Center and Enum.HorizontalAlignment.Center)
-        or (align == Enum.HorizontalAlignment.Right and Enum.HorizontalAlignment.Right)
-        or Enum.HorizontalAlignment.Left,
-        Enum.VerticalAlignment.Center)
-
-    local textLbl = Create("TextLabel", {
-        Name = "Text", BackgroundTransparency = 1,
-        AutomaticSize = Enum.AutomaticSize.X,
-        Size = UDim2.new(0, 0, 1, 0),
-        FontFace = font, TextSize = size, TextColor3 = tcol,
-        Text = self.value, TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Center,
-        LayoutOrder = 1, TextTransparency = (self.value == "" and 1 or 0),
-        Parent = row,
-    })
-    self.Label = textLbl
-
-    local caret = Create("Frame", {
-        Name = "Caret", BackgroundColor3 = tcol,
-        Size = UDim2.new(0, 1, 0, math.floor(size * 1.15)),
-        BackgroundTransparency = 1, LayoutOrder = 2,
-        Parent = row,
-    })
-    self.Caret = caret
-
-    -- placeholder overlay (independent so it can align on its own)
-    local ph = Create("TextLabel", {
-        Name = "Placeholder", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        FontFace = font, TextSize = size, TextColor3 = pcol,
-        Text = self.placeholder,
-        TextXAlignment = align == Enum.HorizontalAlignment.Center and Enum.TextXAlignment.Center
-            or align == Enum.HorizontalAlignment.Right and Enum.TextXAlignment.Right
-            or Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Center,
-        Visible = (self.value == ""),
-        Parent = root,
-    })
-    self.PH = ph
-
-    -- hidden real textbox to capture keyboard / paste --------------------
-    local capture = Create("TextBox", {
-        Name = "Capture", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        Text = self.value, TextTransparency = 1, TextColor3 = tcol,
-        ClearTextOnFocus = false, MultiLine = false,
-        FontFace = font, TextSize = size,
-        TextEditable = true, ZIndex = 5,
-        Parent = root,
-    })
-    self.Capture = capture
-
-    -- caret blink --------------------------------------------------------
+    self.value = tostring(o.Default or ""); self.onChanged = o.OnChanged; self.onEnter = o.OnEnter
+    self.numeric = o.Numeric == true; self.maxLen = o.MaxLen; self.focused = false
+    local font = o.Font or Fonts.Sans; local size = o.TextSize or 14
+    local tcol = o.TextColor or Color3.fromRGB(200,200,200); local pcol = o.PlaceholderColor or Color3.fromRGB(90,90,90)
+    local align = o.Align or Enum.HorizontalAlignment.Left; local zbase = o.ZIndex or 1
+    local function ha() if align==Enum.HorizontalAlignment.Center then return Enum.HorizontalAlignment.Center elseif align==Enum.HorizontalAlignment.Right then return Enum.HorizontalAlignment.Right end return Enum.HorizontalAlignment.Left end
+    local function ta() if align==Enum.HorizontalAlignment.Center then return Enum.TextXAlignment.Center elseif align==Enum.HorizontalAlignment.Right then return Enum.TextXAlignment.Right end return Enum.TextXAlignment.Left end
+    local root = Instance.new("Frame")
+    root.Name="CustomInput"; root.BackgroundTransparency=1; root.Size=o.Size or UDim2.fromScale(1,1)
+    root.Position=o.Position or UDim2.fromScale(0,0); root.ClipsDescendants=true; root.ZIndex=zbase; root.Parent=parent
+    self.Frame=root
+    local ph=Instance.new("TextLabel")
+    ph.Name="Placeholder"; ph.BackgroundTransparency=1; ph.Size=UDim2.fromScale(1,1); ph.FontFace=font
+    ph.TextSize=size; ph.TextColor3=pcol; ph.Text=o.Placeholder or ""; ph.TextXAlignment=ta()
+    ph.TextYAlignment=Enum.TextYAlignment.Center; ph.Visible=(self.value==""); ph.ZIndex=zbase; ph.Parent=root
+    self.PH=ph
+    local row=Instance.new("Frame")
+    row.Name="Row"; row.BackgroundTransparency=1; row.Size=UDim2.fromScale(1,1); row.ZIndex=zbase+1; row.Parent=root
+    local layout=Instance.new("UIListLayout")
+    layout.FillDirection=Enum.FillDirection.Horizontal; layout.Padding=UDim.new(0,1)
+    layout.VerticalAlignment=Enum.VerticalAlignment.Center; layout.HorizontalAlignment=ha()
+    layout.SortOrder=Enum.SortOrder.LayoutOrder; layout.Parent=row
+    local textLbl=Instance.new("TextLabel")
+    textLbl.Name="Text"; textLbl.BackgroundTransparency=1; textLbl.AutomaticSize=Enum.AutomaticSize.X
+    textLbl.Size=UDim2.new(0,0,1,0); textLbl.FontFace=font; textLbl.TextSize=size; textLbl.TextColor3=tcol
+    textLbl.Text=self.value; textLbl.TextXAlignment=Enum.TextXAlignment.Left; textLbl.TextYAlignment=Enum.TextYAlignment.Center
+    textLbl.LayoutOrder=1; textLbl.TextTransparency=(self.value==""and 1 or 0); textLbl.ZIndex=zbase+1; textLbl.Parent=row
+    self.Label=textLbl
+    local caret=Instance.new("Frame")
+    caret.Name="Caret"; caret.BackgroundColor3=tcol; caret.Size=UDim2.new(0,1,0,math.floor(size*1.15))
+    caret.BackgroundTransparency=1; caret.LayoutOrder=2; caret.BorderSizePixel=0; caret.ZIndex=zbase+1; caret.Parent=row
+    self.Caret=caret
+    local capture=Instance.new("TextBox")
+    capture.Name="Capture"; capture.BackgroundTransparency=1; capture.Size=UDim2.fromScale(1,1)
+    capture.Text=self.value; capture.PlaceholderText=""; capture.TextTransparency=1; capture.TextColor3=tcol
+    capture.ClearTextOnFocus=false; capture.MultiLine=false; capture.TextEditable=true; capture.FontFace=font
+    capture.TextSize=size; capture.TextXAlignment=ta(); capture.ZIndex=zbase+5; capture.Parent=root
+    self.Capture=capture
     task.spawn(function()
         while root.Parent do
-            if self.focused then
-                Anim.to(caret, { BackgroundTransparency = 1 }, Anim.Fast)
-                task.wait(0.5)
-                if not root.Parent then break end
-                Anim.to(caret, { BackgroundTransparency = 0 }, Anim.Fast)
-                task.wait(0.5)
-            else
-                caret.BackgroundTransparency = 1
-                task.wait(0.1)
-            end
+            if self.focused then tw(caret,{BackgroundTransparency=1}); task.wait(0.5); if not root.Parent then break end
+                tw(caret,{BackgroundTransparency=0}); task.wait(0.5)
+            else caret.BackgroundTransparency=1; task.wait(0.12) end
         end
     end)
-
-    -- render sync with animated appearance -------------------------------
     local function render(animate)
-        local txt = self.value
-        ph.Visible = (txt == "" and not self.focused)
-        if txt == "" then
-            textLbl.Text = ""
-            textLbl.TextTransparency = 1
-        else
-            textLbl.Text = txt
-            if animate then
-                textLbl.TextTransparency = 0.55
-                Anim.to(textLbl, { TextTransparency = 0 }, Anim.Fast)
-            else
-                textLbl.TextTransparency = 0
-            end
+        local txt=self.value; ph.Visible=(txt==""and not self.focused)
+        if txt=="" then textLbl.Text=""; textLbl.TextTransparency=1
+        else textLbl.Text=txt
+            if animate then textLbl.TextTransparency=0.6; tw(textLbl,{TextTransparency=0}) else textLbl.TextTransparency=0 end
         end
     end
     render(false)
-
-    -- keep value synced to the real textbox; sanitise numeric
     capture:GetPropertyChangedSignal("Text"):Connect(function()
-        local new = capture.Text
-        if self.numeric then
-            new = new:gsub("[^%d%.%-]", "")
-        end
-        if self.maxLen and #new > self.maxLen then
-            new = new:sub(1, self.maxLen)
-        end
-        if new ~= capture.Text then
-            capture.Text = new
-            return
-        end
-        local grew = #new > #self.value
-        self.value = new
-        render(grew)
-        if self.onChanged then task.spawn(self.onChanged, new) end
+        local new=capture.Text
+        if self.numeric then new=new:gsub("[^%d%.%-]","") end
+        if self.maxLen and #new>self.maxLen then new=new:sub(1,self.maxLen) end
+        if new~=capture.Text then capture.Text=new; return end
+        local grew=#new>#self.value; self.value=new; render(grew)
+        if self.onChanged then task.spawn(self.onChanged,new) end
     end)
-
-    capture.Focused:Connect(function()
-        self.focused = true
-        render(false)
-        ph.Visible = false
-    end)
-    capture.FocusLost:Connect(function(enter)
-        self.focused = false
-        caret.BackgroundTransparency = 1
-        render(false)
-        if enter and self.onEnter then task.spawn(self.onEnter, self.value) end
-    end)
-
-    -- clicking anywhere on the field focuses it
-    local hit = Create("TextButton", {
-        Name = "Hit", BackgroundTransparency = 1, Text = "",
-        Size = UDim2.new(1, 0, 1, 0), ZIndex = 6, Parent = root,
-    })
-    hit.MouseButton1Click:Connect(function() capture:CaptureFocus() end)
-
+    capture.Focused:Connect(function() self.focused=true; ph.Visible=false; render(false); if o.OnFocus then task.spawn(o.OnFocus) end end)
+    capture.FocusLost:Connect(function(enter) self.focused=false; caret.BackgroundTransparency=1; render(false)
+        if o.OnFocusLost then task.spawn(o.OnFocusLost) end
+        if enter and self.onEnter then task.spawn(self.onEnter,self.value) end end)
     return self
 end
-
 function CustomInput:GetText() return self.value end
-function CustomInput:SetText(t, silent)
-    t = tostring(t or "")
-    self.Capture.Text = t   -- triggers change handler
-    if silent then self.value = t end
+function CustomInput:SetText(t,silent)
+    t=tostring(t or "")
+    if silent then self.value=t; self.Capture.Text=t; self.Label.Text=(t==""and""or t)
+        self.Label.TextTransparency=(t==""and 1 or 0); self.PH.Visible=(t==""and not self.focused)
+    else self.Capture.Text=t end
 end
 function CustomInput:Focus() self.Capture:CaptureFocus() end
 function CustomInput:Clear() self:SetText("") end
-
 Amphibia.CustomInput = CustomInput
 
+--============================ CONFIG (executor FS) ============================--
+local function hasFS() return (writefile and readfile and isfolder and makefolder) and true or false end
+local Config = {} Config.__index = Config
+function Config.new(folder, file)
+    local self=setmetatable({},Config)
+    self.enabled=hasFS(); self.folder=folder or "Amphibia"; self.file=(file or "config")..".json"; self.data={}
+    if self.enabled then pcall(function() if not isfolder(self.folder) then makefolder(self.folder) end end); self:Load() end
+    return self
+end
+function Config:path() return self.folder.."/"..self.file end
+function Config:Load() if not self.enabled then return end pcall(function()
+    if isfile and isfile(self:path()) then self.data=HttpService:JSONDecode(readfile(self:path())) or {} end end) end
+function Config:Save() if not self.enabled then return end pcall(function() writefile(self:path(),HttpService:JSONEncode(self.data)) end) end
+function Config:Set(f,v) if f==nil then return end self.data[f]=v; self:Save() end
+function Config:Get(f,d) if f~=nil and self.data[f]~=nil then return self.data[f] end return d end
+
+--============================ SKIN BUILDER (generated 1:1) ============================--
+-- AUTO-GENERATED from amphibia.rbxmx — recreates the design 1:1.
+-- Returns function(parent) -> builds the tree under parent, returns the root Frame table.
+local function ev(enumType, n)
+  for _, e in ipairs(enumType:GetEnumItems()) do if e.Value == n then return e end end
+  return nil
+end
+local function buildTree(parentGui)
+  local o = {}
+  o[1] = Instance.new("Frame")
+  o[1].Name = "MainBackground"
+  o[1].Active = false
+  o[1].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[1].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[1].BackgroundColor3 = Color3.new(0.0509803928, 0.0509803928, 0.0549019612)
+  o[1].BackgroundTransparency = 0
+  o[1].BorderColor3 = Color3.new(0, 0, 0)
+  o[1].BorderSizePixel = 0
+  o[1].ClipsDescendants = true
+  o[1].Draggable = false
+  o[1].Interactable = true
+  o[1].LayoutOrder = 0
+  o[1].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[1].Rotation = 0
+  o[1].Selectable = false
+  o[1].SelectionOrder = 0
+  o[1].Size = UDim2.new(0, 987, 0, 608)
+  o[1].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[1].Visible = true
+  o[1].ZIndex = 1
+  o[1].Parent = parentGui
+  o[2] = Instance.new("UICorner")
+  o[2].Name = "UICorner"
+  o[2].BottomLeftRadius = UDim.new(0, 20)
+  o[2].BottomRightRadius = UDim.new(0, 20)
+  o[2].TopLeftRadius = UDim.new(0, 20)
+  o[2].TopRightRadius = UDim.new(0, 20)
+  o[2].Parent = o[1]
+  o[3] = Instance.new("UIStroke")
+  o[3].Name = "UIStroke"
+  o[3].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[3].BorderOffset = UDim.new(0, 0)
+  o[3].Color = Color3.new(0.13333334, 0.13333334, 0.13333334)
+  o[3].Enabled = true
+  o[3].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[3].Thickness = 1
+  o[3].Transparency = 0
+  o[3].ZIndex = 1
+  o[3].Parent = o[1]
+  o[4] = Instance.new("Frame")
+  o[4].Name = "InfoFrame"
+  o[4].Active = false
+  o[4].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[4].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[4].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[4].BackgroundTransparency = 1
+  o[4].BorderColor3 = Color3.new(0, 0, 0)
+  o[4].BorderSizePixel = 0
+  o[4].ClipsDescendants = false
+  o[4].Draggable = false
+  o[4].Interactable = true
+  o[4].LayoutOrder = 0
+  o[4].Position = UDim2.new(0.499746531, 0, 0.965460539, 0)
+  o[4].Rotation = 0
+  o[4].Selectable = false
+  o[4].SelectionOrder = 0
+  o[4].Size = UDim2.new(1, 0, 0.00493421685, 39)
+  o[4].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[4].Visible = true
+  o[4].ZIndex = 10
+  o[4].Parent = o[1]
+  o[5] = Instance.new("UICorner")
+  o[5].Name = "UICorner"
+  o[5].BottomLeftRadius = UDim.new(0, 20)
+  o[5].BottomRightRadius = UDim.new(0, 20)
+  o[5].TopLeftRadius = UDim.new(0, 20)
+  o[5].TopRightRadius = UDim.new(0, 20)
+  o[5].Parent = o[4]
+  o[6] = Instance.new("Frame")
+  o[6].Name = "Splitter"
+  o[6].Active = false
+  o[6].AnchorPoint = Vector2.new(0, 0)
+  o[6].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[6].BackgroundColor3 = Color3.new(0.13333334, 0.13333334, 0.13333334)
+  o[6].BackgroundTransparency = 0
+  o[6].BorderColor3 = Color3.new(0, 0, 0)
+  o[6].BorderSizePixel = 0
+  o[6].ClipsDescendants = false
+  o[6].Draggable = false
+  o[6].Interactable = true
+  o[6].LayoutOrder = 0
+  o[6].Position = UDim2.new(0, 0, 0, 0)
+  o[6].Rotation = 0
+  o[6].Selectable = false
+  o[6].SelectionOrder = 0
+  o[6].Size = UDim2.new(0, 987, 0, 1)
+  o[6].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[6].Visible = true
+  o[6].ZIndex = 1
+  o[6].Parent = o[4]
+  o[7] = Instance.new("TextLabel")
+  o[7].Name = "ConnectStatusText"
+  o[7].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[7].LineHeight = 1
+  o[7].LocalizationMatchedSourceText = ""
+  o[7].MaxVisibleGraphemes = -1
+  o[7].OpenTypeFeatures = ""
+  o[7].RichText = false
+  o[7].Text = "Connected"
+  o[7].TextColor3 = Color3.new(0.741176486, 0.741176486, 0.741176486)
+  o[7].TextScaled = false
+  o[7].TextSize = 16
+  o[7].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[7].TextStrokeTransparency = 1
+  o[7].TextTransparency = 0
+  o[7].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[7].TextWrapped = false
+  o[7].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[7].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[7].Active = false
+  o[7].AnchorPoint = Vector2.new(0, 0)
+  o[7].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[7].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[7].BackgroundTransparency = 1
+  o[7].BorderColor3 = Color3.new(0, 0, 0)
+  o[7].BorderSizePixel = 0
+  o[7].ClipsDescendants = false
+  o[7].Draggable = false
+  o[7].Interactable = true
+  o[7].LayoutOrder = 0
+  o[7].Position = UDim2.new(0.0435663611, 0, 0.0238095224, 0)
+  o[7].Rotation = 0
+  o[7].Selectable = false
+  o[7].SelectionOrder = 0
+  o[7].Size = UDim2.new(0, 100, 0.949999988, 0)
+  o[7].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[7].Visible = true
+  o[7].ZIndex = 1
+  o[7].Parent = o[4]
+  o[8] = Instance.new("Frame")
+  o[8].Name = "DotConnected"
+  o[8].Active = false
+  o[8].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[8].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[8].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[8].BackgroundTransparency = 0.300000012
+  o[8].BorderColor3 = Color3.new(0, 0, 0)
+  o[8].BorderSizePixel = 0
+  o[8].ClipsDescendants = false
+  o[8].Draggable = false
+  o[8].Interactable = true
+  o[8].LayoutOrder = 0
+  o[8].Position = UDim2.new(0.0250000004, 0, 0.5, 0)
+  o[8].Rotation = 0
+  o[8].Selectable = false
+  o[8].SelectionOrder = 0
+  o[8].Size = UDim2.new(0, 7, 0, 7)
+  o[8].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[8].Visible = true
+  o[8].ZIndex = 2
+  o[8].Parent = o[4]
+  o[9] = Instance.new("UICorner")
+  o[9].Name = "UICorner"
+  o[9].BottomLeftRadius = UDim.new(1, 0)
+  o[9].BottomRightRadius = UDim.new(1, 0)
+  o[9].TopLeftRadius = UDim.new(1, 0)
+  o[9].TopRightRadius = UDim.new(1, 0)
+  o[9].Parent = o[8]
+  o[10] = Instance.new("ImageLabel")
+  o[10].Name = "UIShadow"
+  o[10].BackgroundTransparency = 1
+  o[10].Image = "rbxassetid://130321961257203"
+  o[10].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[10].Position = UDim2.fromScale(0.5, 0.5)
+  o[10].Size = UDim2.fromScale(2, 2)
+  o[10].ImageColor3 = Color3.new(1, 1, 1)
+  o[10].ImageTransparency = 0.600000024
+  o[10].ZIndex = -1
+  o[10].Parent = o[8]
+  o[11] = Instance.new("Frame")
+  o[11].Name = "HeaderFrame"
+  o[11].Active = false
+  o[11].AnchorPoint = Vector2.new(0, 0)
+  o[11].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[11].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[11].BackgroundTransparency = 1
+  o[11].BorderColor3 = Color3.new(0, 0, 0)
+  o[11].BorderSizePixel = 0
+  o[11].ClipsDescendants = false
+  o[11].Draggable = false
+  o[11].Interactable = true
+  o[11].LayoutOrder = 0
+  o[11].Position = UDim2.new(0, 0, 0, 0)
+  o[11].Rotation = 0
+  o[11].Selectable = false
+  o[11].SelectionOrder = 0
+  o[11].Size = UDim2.new(1, 0, -0.0148026319, 58)
+  o[11].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[11].Visible = true
+  o[11].ZIndex = 10
+  o[11].Parent = o[1]
+  o[12] = Instance.new("Frame")
+  o[12].Name = "Splitter"
+  o[12].Active = false
+  o[12].AnchorPoint = Vector2.new(0, 0)
+  o[12].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[12].BackgroundColor3 = Color3.new(0.13333334, 0.13333334, 0.13333334)
+  o[12].BackgroundTransparency = 0
+  o[12].BorderColor3 = Color3.new(0, 0, 0)
+  o[12].BorderSizePixel = 0
+  o[12].ClipsDescendants = false
+  o[12].Draggable = false
+  o[12].Interactable = true
+  o[12].LayoutOrder = 0
+  o[12].Position = UDim2.new(0, 0, 1.00999999, 0)
+  o[12].Rotation = 0
+  o[12].Selectable = false
+  o[12].SelectionOrder = 0
+  o[12].Size = UDim2.new(0, 987, 0, 1)
+  o[12].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[12].Visible = true
+  o[12].ZIndex = 1
+  o[12].Parent = o[11]
+  o[13] = Instance.new("TextLabel")
+  o[13].Name = "Logo"
+  o[13].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[13].LineHeight = 1
+  o[13].LocalizationMatchedSourceText = ""
+  o[13].MaxVisibleGraphemes = -1
+  o[13].OpenTypeFeatures = ""
+  o[13].RichText = false
+  o[13].Text = "amphibia"
+  o[13].TextColor3 = Color3.new(1, 1, 1)
+  o[13].TextScaled = false
+  o[13].TextSize = 23
+  o[13].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[13].TextStrokeTransparency = 1
+  o[13].TextTransparency = 0
+  o[13].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[13].TextWrapped = false
+  o[13].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[13].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[13].Active = false
+  o[13].AnchorPoint = Vector2.new(0, 0)
+  o[13].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[13].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[13].BackgroundTransparency = 1
+  o[13].BorderColor3 = Color3.new(0, 0, 0)
+  o[13].BorderSizePixel = 0
+  o[13].ClipsDescendants = false
+  o[13].Draggable = false
+  o[13].Interactable = true
+  o[13].LayoutOrder = 0
+  o[13].Position = UDim2.new(0.0202634241, 0, 0, 0)
+  o[13].Rotation = 0
+  o[13].Selectable = false
+  o[13].SelectionOrder = 0
+  o[13].Size = UDim2.new(0, 100, 1, 0)
+  o[13].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[13].Visible = true
+  o[13].ZIndex = 1
+  o[13].Parent = o[11]
+  o[14] = Instance.new("TextLabel")
+  o[14].Name = "Version"
+  o[14].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[14].LineHeight = 1
+  o[14].LocalizationMatchedSourceText = ""
+  o[14].MaxVisibleGraphemes = -1
+  o[14].OpenTypeFeatures = ""
+  o[14].RichText = false
+  o[14].Text = "v0.1"
+  o[14].TextColor3 = Color3.new(0.435294151, 0.435294151, 0.435294151)
+  o[14].TextScaled = false
+  o[14].TextSize = 13
+  o[14].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[14].TextStrokeTransparency = 1
+  o[14].TextTransparency = 0
+  o[14].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[14].TextWrapped = false
+  o[14].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[14].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[14].Active = false
+  o[14].AnchorPoint = Vector2.new(0, 0)
+  o[14].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[14].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[14].BackgroundTransparency = 1
+  o[14].BorderColor3 = Color3.new(0, 0, 0)
+  o[14].BorderSizePixel = 0
+  o[14].ClipsDescendants = false
+  o[14].Draggable = false
+  o[14].Interactable = true
+  o[14].LayoutOrder = 0
+  o[14].Position = UDim2.new(0.106382981, 0, 0.107142858, 0)
+  o[14].Rotation = 0
+  o[14].Selectable = false
+  o[14].SelectionOrder = 0
+  o[14].Size = UDim2.new(0, 100, 0.892857134, 0)
+  o[14].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[14].Visible = true
+  o[14].ZIndex = 1
+  o[14].Parent = o[11]
+  o[15] = Instance.new("Frame")
+  o[15].Name = "SearchBg"
+  o[15].Active = false
+  o[15].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[15].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[15].BackgroundColor3 = Color3.new(0.117647059, 0.117647059, 0.117647059)
+  o[15].BackgroundTransparency = 0
+  o[15].BorderColor3 = Color3.new(0, 0, 0)
+  o[15].BorderSizePixel = 0
+  o[15].ClipsDescendants = false
+  o[15].Draggable = false
+  o[15].Interactable = true
+  o[15].LayoutOrder = 0
+  o[15].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[15].Rotation = 0
+  o[15].Selectable = false
+  o[15].SelectionOrder = 0
+  o[15].Size = UDim2.new(0, 300, 0.649999976, 0)
+  o[15].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[15].Visible = true
+  o[15].ZIndex = 1
+  o[15].Parent = o[11]
+  o[16] = Instance.new("UICorner")
+  o[16].Name = "UICorner"
+  o[16].BottomLeftRadius = UDim.new(0, 8)
+  o[16].BottomRightRadius = UDim.new(0, 8)
+  o[16].TopLeftRadius = UDim.new(0, 8)
+  o[16].TopRightRadius = UDim.new(0, 8)
+  o[16].Parent = o[15]
+  o[17] = Instance.new("UIStroke")
+  o[17].Name = "UIStroke"
+  o[17].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[17].BorderOffset = UDim.new(0, 0)
+  o[17].Color = Color3.new(0.235294119, 0.235294119, 0.235294119)
+  o[17].Enabled = true
+  o[17].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[17].Thickness = 0.5
+  o[17].Transparency = 0
+  o[17].ZIndex = 1
+  o[17].Parent = o[15]
+  o[18] = Instance.new("ImageLabel")
+  o[18].Name = "SearchIcon"
+  o[18].Image = "rbxassetid://112312028684423"
+  o[18].ImageColor3 = Color3.new(1, 1, 1)
+  o[18].ImageRectOffset = Vector2.new(0, 0)
+  o[18].ImageRectSize = Vector2.new(0, 0)
+  o[18].ImageTransparency = 0.649999976
+  o[18].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[18].ScaleType = ev(Enum.ScaleType, 0)
+  o[18].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[18].SliceScale = 1
+  o[18].TileSize = UDim2.new(1, 0, 1, 0)
+  o[18].Active = false
+  o[18].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[18].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[18].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[18].BackgroundTransparency = 1
+  o[18].BorderColor3 = Color3.new(0, 0, 0)
+  o[18].BorderSizePixel = 0
+  o[18].ClipsDescendants = false
+  o[18].Draggable = false
+  o[18].Interactable = true
+  o[18].LayoutOrder = 0
+  o[18].Position = UDim2.new(0.0599999987, 0, 0.5, 0)
+  o[18].Rotation = 0
+  o[18].Selectable = false
+  o[18].SelectionOrder = 0
+  o[18].Size = UDim2.new(0, 15, 0, 15)
+  o[18].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[18].Visible = true
+  o[18].ZIndex = 1
+  o[18].Parent = o[15]
+  o[19] = Instance.new("TextBox")
+  o[19].Name = "SearchTextbox"
+  o[19].ClearTextOnFocus = true
+  o[19].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[19].LineHeight = 1
+  o[19].LocalizationMatchedSourceText = ""
+  o[19].MaxVisibleGraphemes = -1
+  o[19].MultiLine = false
+  o[19].OpenTypeFeatures = ""
+  o[19].PlaceholderColor3 = Color3.new(0.254901975, 0.254901975, 0.254901975)
+  o[19].PlaceholderText = "search"
+  o[19].RichText = false
+  o[19].ShowNativeInput = true
+  o[19].Text = ""
+  o[19].TextColor3 = Color3.new(0.254901975, 0.254901975, 0.254901975)
+  o[19].TextEditable = true
+  o[19].TextScaled = false
+  o[19].TextSize = 14
+  o[19].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[19].TextStrokeTransparency = 1
+  o[19].TextTransparency = 0
+  o[19].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[19].TextWrapped = false
+  o[19].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[19].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[19].Active = true
+  o[19].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[19].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[19].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[19].BackgroundTransparency = 1
+  o[19].BorderColor3 = Color3.new(0, 0, 0)
+  o[19].BorderSizePixel = 0
+  o[19].ClipsDescendants = false
+  o[19].Draggable = false
+  o[19].Interactable = true
+  o[19].LayoutOrder = 0
+  o[19].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[19].Rotation = 0
+  o[19].Selectable = true
+  o[19].SelectionOrder = 0
+  o[19].Size = UDim2.new(1, 0, 1, 0)
+  o[19].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[19].Visible = true
+  o[19].ZIndex = 3
+  o[19].Parent = o[15]
+  o[20] = Instance.new("UICorner")
+  o[20].Name = "UICorner"
+  o[20].BottomLeftRadius = UDim.new(0, 8)
+  o[20].BottomRightRadius = UDim.new(0, 8)
+  o[20].TopLeftRadius = UDim.new(0, 8)
+  o[20].TopRightRadius = UDim.new(0, 8)
+  o[20].Parent = o[19]
+  o[21] = Instance.new("ImageButton")
+  o[21].Name = "CloseMenuButton"
+  o[21].HoverImage = ""
+  o[21].Image = "rbxassetid://90666376026129"
+  o[21].ImageColor3 = Color3.new(1, 1, 1)
+  o[21].ImageRectOffset = Vector2.new(0, 0)
+  o[21].ImageRectSize = Vector2.new(0, 0)
+  o[21].ImageTransparency = 0.850000024
+  o[21].PressedImage = ""
+  o[21].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[21].ScaleType = ev(Enum.ScaleType, 0)
+  o[21].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[21].SliceScale = 1
+  o[21].TileSize = UDim2.new(1, 0, 1, 0)
+  o[21].AutoButtonColor = true
+  o[21].Modal = false
+  o[21].Selected = false
+  o[21].Active = true
+  o[21].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[21].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[21].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[21].BackgroundTransparency = 1
+  o[21].BorderColor3 = Color3.new(0, 0, 0)
+  o[21].BorderSizePixel = 0
+  o[21].ClipsDescendants = false
+  o[21].Draggable = false
+  o[21].Interactable = true
+  o[21].LayoutOrder = 0
+  o[21].Position = UDim2.new(0.968999982, 0, 0.5, 0)
+  o[21].Rotation = 0
+  o[21].Selectable = true
+  o[21].SelectionOrder = 0
+  o[21].Size = UDim2.new(0, 35, 0, 35)
+  o[21].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[21].Visible = true
+  o[21].ZIndex = 999
+  o[21].Parent = o[11]
+  o[22] = Instance.new("ImageLabel")
+  o[22].Name = "WhiteGlow"
+  o[22].Image = "rbxassetid://130321961257203"
+  o[22].ImageColor3 = Color3.new(1, 1, 1)
+  o[22].ImageRectOffset = Vector2.new(0, 0)
+  o[22].ImageRectSize = Vector2.new(0, 0)
+  o[22].ImageTransparency = 0.930000007
+  o[22].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[22].ScaleType = ev(Enum.ScaleType, 0)
+  o[22].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[22].SliceScale = 1
+  o[22].TileSize = UDim2.new(1, 0, 1, 0)
+  o[22].Active = false
+  o[22].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[22].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[22].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[22].BackgroundTransparency = 1
+  o[22].BorderColor3 = Color3.new(0, 0, 0)
+  o[22].BorderSizePixel = 0
+  o[22].ClipsDescendants = false
+  o[22].Draggable = false
+  o[22].Interactable = true
+  o[22].LayoutOrder = 0
+  o[22].Position = UDim2.new(0.50999999, 0, -0.757000029, 0)
+  o[22].Rotation = 0
+  o[22].Selectable = false
+  o[22].SelectionOrder = 0
+  o[22].Size = UDim2.new(0, 1068, 0, 1068)
+  o[22].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[22].Visible = true
+  o[22].ZIndex = -1
+  o[22].Parent = o[11]
+  o[23] = Instance.new("Frame")
+  o[23].Name = "TabsFrame"
+  o[23].Active = false
+  o[23].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[23].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[23].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[23].BackgroundTransparency = 1
+  o[23].BorderColor3 = Color3.new(0, 0, 0)
+  o[23].BorderSizePixel = 0
+  o[23].ClipsDescendants = false
+  o[23].Draggable = false
+  o[23].Interactable = true
+  o[23].LayoutOrder = 0
+  o[23].Position = UDim2.new(0.109422497, 0, 0.506981969, 0)
+  o[23].Rotation = 0
+  o[23].Selectable = false
+  o[23].SelectionOrder = 0
+  o[23].Size = UDim2.new(0, 218, 0, 515)
+  o[23].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[23].Visible = true
+  o[23].ZIndex = 10
+  o[23].Parent = o[1]
+  o[24] = Instance.new("Frame")
+  o[24].Name = "Splitter"
+  o[24].Active = false
+  o[24].AnchorPoint = Vector2.new(0, 0)
+  o[24].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[24].BackgroundColor3 = Color3.new(0.13333334, 0.13333334, 0.13333334)
+  o[24].BackgroundTransparency = 0
+  o[24].BorderColor3 = Color3.new(0, 0, 0)
+  o[24].BorderSizePixel = 0
+  o[24].ClipsDescendants = false
+  o[24].Draggable = false
+  o[24].Interactable = true
+  o[24].LayoutOrder = 0
+  o[24].Position = UDim2.new(1, 0, 0, 0)
+  o[24].Rotation = 0
+  o[24].Selectable = false
+  o[24].SelectionOrder = 0
+  o[24].Size = UDim2.new(0, 1, 1, 0)
+  o[24].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[24].Visible = true
+  o[24].ZIndex = 1
+  o[24].Parent = o[23]
+  o[25] = Instance.new("Frame")
+  o[25].Name = "Holder"
+  o[25].Active = false
+  o[25].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[25].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[25].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[25].BackgroundTransparency = 1
+  o[25].BorderColor3 = Color3.new(0, 0, 0)
+  o[25].BorderSizePixel = 0
+  o[25].ClipsDescendants = false
+  o[25].Draggable = false
+  o[25].Interactable = true
+  o[25].LayoutOrder = 0
+  o[25].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[25].Rotation = 0
+  o[25].Selectable = false
+  o[25].SelectionOrder = 0
+  o[25].Size = UDim2.new(1, 0, 1, 0)
+  o[25].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[25].Visible = true
+  o[25].ZIndex = 1
+  o[25].Parent = o[23]
+  o[26] = Instance.new("UIGradient")
+  o[26].Name = "UIGradient"
+  o[26].Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)), ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))})
+  o[26].Enabled = true
+  o[26].Offset = Vector2.new(0, 0)
+  o[26].Rotation = 90
+  o[26].Scale = 1
+  o[26].Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)})
+  o[26].Parent = o[25]
+  o[27] = Instance.new("UIListLayout")
+  o[27].Name = "UIListLayout"
+  o[27].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[27].Padding = UDim.new(0, 15)
+  o[27].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[27].Wraps = false
+  o[27].FillDirection = ev(Enum.FillDirection, 1)
+  o[27].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[27].SortOrder = ev(Enum.SortOrder, 2)
+  o[27].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[27].Parent = o[25]
+  o[28] = Instance.new("UIPadding")
+  o[28].Name = "UIPadding"
+  o[28].PaddingBottom = UDim.new(0, 0)
+  o[28].PaddingLeft = UDim.new(0, 25)
+  o[28].PaddingRight = UDim.new(0, 0)
+  o[28].PaddingTop = UDim.new(0, 25)
+  o[28].Parent = o[25]
+  o[29] = Instance.new("Frame")
+  o[29].Name = "CombatCategory"
+  o[29].Active = false
+  o[29].AnchorPoint = Vector2.new(0, 0)
+  o[29].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[29].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[29].BackgroundTransparency = 1
+  o[29].BorderColor3 = Color3.new(0, 0, 0)
+  o[29].BorderSizePixel = 0
+  o[29].ClipsDescendants = false
+  o[29].Draggable = false
+  o[29].Interactable = true
+  o[29].LayoutOrder = 0
+  o[29].Position = UDim2.new(0, 0, 0.0573394485, 0)
+  o[29].Rotation = 0
+  o[29].Selectable = false
+  o[29].SelectionOrder = 0
+  o[29].Size = UDim2.new(0, 100, 0, 0)
+  o[29].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[29].Visible = true
+  o[29].ZIndex = 1
+  o[29].Parent = o[25]
+  o[30] = Instance.new("TextLabel")
+  o[30].Name = "CategoryText"
+  o[30].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Italic)
+  o[30].LineHeight = 1
+  o[30].LocalizationMatchedSourceText = ""
+  o[30].MaxVisibleGraphemes = -1
+  o[30].OpenTypeFeatures = ""
+  o[30].RichText = false
+  o[30].Text = "Combat"
+  o[30].TextColor3 = Color3.new(1, 1, 1)
+  o[30].TextScaled = false
+  o[30].TextSize = 17
+  o[30].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[30].TextStrokeTransparency = 1
+  o[30].TextTransparency = 0.699999988
+  o[30].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[30].TextWrapped = false
+  o[30].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[30].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[30].Active = false
+  o[30].AnchorPoint = Vector2.new(0, 0)
+  o[30].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[30].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[30].BackgroundTransparency = 1
+  o[30].BorderColor3 = Color3.new(0, 0, 0)
+  o[30].BorderSizePixel = 0
+  o[30].ClipsDescendants = false
+  o[30].Draggable = false
+  o[30].Interactable = true
+  o[30].LayoutOrder = 1
+  o[30].Position = UDim2.new(0, 0, 0, 0)
+  o[30].Rotation = 0
+  o[30].Selectable = false
+  o[30].SelectionOrder = 0
+  o[30].Size = UDim2.new(0, 84, 0, 10)
+  o[30].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[30].Visible = true
+  o[30].ZIndex = 1
+  o[30].Parent = o[29]
+  o[31] = Instance.new("UIListLayout")
+  o[31].Name = "UIListLayout"
+  o[31].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[31].Padding = UDim.new(0, 0)
+  o[31].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[31].Wraps = false
+  o[31].FillDirection = ev(Enum.FillDirection, 1)
+  o[31].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[31].SortOrder = ev(Enum.SortOrder, 2)
+  o[31].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[31].Parent = o[29]
+  o[32] = Instance.new("Frame")
+  o[32].Name = "TabsHolder"
+  o[32].Active = false
+  o[32].AnchorPoint = Vector2.new(0, 0)
+  o[32].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[32].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[32].BackgroundTransparency = 1
+  o[32].BorderColor3 = Color3.new(0, 0, 0)
+  o[32].BorderSizePixel = 0
+  o[32].ClipsDescendants = false
+  o[32].Draggable = false
+  o[32].Interactable = true
+  o[32].LayoutOrder = 2
+  o[32].Position = UDim2.new(0, 0, 0, 0)
+  o[32].Rotation = 0
+  o[32].Selectable = false
+  o[32].SelectionOrder = 0
+  o[32].Size = UDim2.new(1, 0, 0, 0)
+  o[32].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[32].Visible = true
+  o[32].ZIndex = 1
+  o[32].Parent = o[29]
+  o[33] = Instance.new("UIPadding")
+  o[33].Name = "UIPadding"
+  o[33].PaddingBottom = UDim.new(0, 0)
+  o[33].PaddingLeft = UDim.new(0, 30)
+  o[33].PaddingRight = UDim.new(0, 0)
+  o[33].PaddingTop = UDim.new(0, 10)
+  o[33].Parent = o[32]
+  o[34] = Instance.new("UIListLayout")
+  o[34].Name = "UIListLayout"
+  o[34].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[34].Padding = UDim.new(0, 0)
+  o[34].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[34].Wraps = false
+  o[34].FillDirection = ev(Enum.FillDirection, 1)
+  o[34].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[34].SortOrder = ev(Enum.SortOrder, 2)
+  o[34].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[34].Parent = o[32]
+  o[35] = Instance.new("TextButton")
+  o[35].Name = "MainTabButton"
+  o[35].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[35].LineHeight = 1
+  o[35].LocalizationMatchedSourceText = ""
+  o[35].MaxVisibleGraphemes = -1
+  o[35].OpenTypeFeatures = ""
+  o[35].RichText = false
+  o[35].Text = "Main"
+  o[35].TextColor3 = Color3.new(0.737254918, 0.737254918, 0.737254918)
+  o[35].TextScaled = false
+  o[35].TextSize = 15
+  o[35].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[35].TextStrokeTransparency = 1
+  o[35].TextTransparency = 0
+  o[35].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[35].TextWrapped = false
+  o[35].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[35].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[35].AutoButtonColor = true
+  o[35].Modal = false
+  o[35].Selected = false
+  o[35].Active = true
+  o[35].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[35].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[35].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[35].BackgroundTransparency = 1
+  o[35].BorderColor3 = Color3.new(0, 0, 0)
+  o[35].BorderSizePixel = 0
+  o[35].ClipsDescendants = false
+  o[35].Draggable = false
+  o[35].Interactable = true
+  o[35].LayoutOrder = 0
+  o[35].Position = UDim2.new(0.0467776768, 0, 0.219008267, 0)
+  o[35].Rotation = 0
+  o[35].Selectable = true
+  o[35].SelectionOrder = 0
+  o[35].Size = UDim2.new(0, 111, 0, 22)
+  o[35].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[35].Visible = true
+  o[35].ZIndex = 2
+  o[35].Parent = o[32]
+  o[36] = Instance.new("TextButton")
+  o[36].Name = "AutoTabButton"
+  o[36].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[36].LineHeight = 1
+  o[36].LocalizationMatchedSourceText = ""
+  o[36].MaxVisibleGraphemes = -1
+  o[36].OpenTypeFeatures = ""
+  o[36].RichText = false
+  o[36].Text = "Auto"
+  o[36].TextColor3 = Color3.new(0.737254918, 0.737254918, 0.737254918)
+  o[36].TextScaled = false
+  o[36].TextSize = 15
+  o[36].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[36].TextStrokeTransparency = 1
+  o[36].TextTransparency = 0
+  o[36].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[36].TextWrapped = false
+  o[36].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[36].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[36].AutoButtonColor = true
+  o[36].Modal = false
+  o[36].Selected = false
+  o[36].Active = true
+  o[36].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[36].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[36].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[36].BackgroundTransparency = 1
+  o[36].BorderColor3 = Color3.new(0, 0, 0)
+  o[36].BorderSizePixel = 0
+  o[36].ClipsDescendants = false
+  o[36].Draggable = false
+  o[36].Interactable = true
+  o[36].LayoutOrder = 0
+  o[36].Position = UDim2.new(0.0467776768, 0, 0.219008267, 0)
+  o[36].Rotation = 0
+  o[36].Selectable = true
+  o[36].SelectionOrder = 0
+  o[36].Size = UDim2.new(0, 111, 0, 22)
+  o[36].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[36].Visible = true
+  o[36].ZIndex = 2
+  o[36].Parent = o[32]
+  o[37] = Instance.new("TextButton")
+  o[37].Name = "VisualsTabButton"
+  o[37].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[37].LineHeight = 1
+  o[37].LocalizationMatchedSourceText = ""
+  o[37].MaxVisibleGraphemes = -1
+  o[37].OpenTypeFeatures = ""
+  o[37].RichText = false
+  o[37].Text = "Visuals"
+  o[37].TextColor3 = Color3.new(0.737254918, 0.737254918, 0.737254918)
+  o[37].TextScaled = false
+  o[37].TextSize = 15
+  o[37].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[37].TextStrokeTransparency = 1
+  o[37].TextTransparency = 0
+  o[37].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[37].TextWrapped = false
+  o[37].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[37].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[37].AutoButtonColor = true
+  o[37].Modal = false
+  o[37].Selected = false
+  o[37].Active = true
+  o[37].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[37].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[37].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[37].BackgroundTransparency = 1
+  o[37].BorderColor3 = Color3.new(0, 0, 0)
+  o[37].BorderSizePixel = 0
+  o[37].ClipsDescendants = false
+  o[37].Draggable = false
+  o[37].Interactable = true
+  o[37].LayoutOrder = 0
+  o[37].Position = UDim2.new(0.0467776768, 0, 0.219008267, 0)
+  o[37].Rotation = 0
+  o[37].Selectable = true
+  o[37].SelectionOrder = 0
+  o[37].Size = UDim2.new(0, 111, 0, 22)
+  o[37].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[37].Visible = true
+  o[37].ZIndex = 2
+  o[37].Parent = o[32]
+  o[38] = Instance.new("Frame")
+  o[38].Name = "MainCategory"
+  o[38].Active = false
+  o[38].AnchorPoint = Vector2.new(0, 0)
+  o[38].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[38].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[38].BackgroundTransparency = 1
+  o[38].BorderColor3 = Color3.new(0, 0, 0)
+  o[38].BorderSizePixel = 0
+  o[38].ClipsDescendants = false
+  o[38].Draggable = false
+  o[38].Interactable = true
+  o[38].LayoutOrder = -1
+  o[38].Position = UDim2.new(0, 0, 0.0573394485, 0)
+  o[38].Rotation = 0
+  o[38].Selectable = false
+  o[38].SelectionOrder = 0
+  o[38].Size = UDim2.new(0, 100, 0, 0)
+  o[38].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[38].Visible = true
+  o[38].ZIndex = 1
+  o[38].Parent = o[25]
+  o[39] = Instance.new("TextLabel")
+  o[39].Name = "CategoryText"
+  o[39].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Italic)
+  o[39].LineHeight = 1
+  o[39].LocalizationMatchedSourceText = ""
+  o[39].MaxVisibleGraphemes = -1
+  o[39].OpenTypeFeatures = ""
+  o[39].RichText = false
+  o[39].Text = "Main"
+  o[39].TextColor3 = Color3.new(1, 1, 1)
+  o[39].TextScaled = false
+  o[39].TextSize = 17
+  o[39].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[39].TextStrokeTransparency = 1
+  o[39].TextTransparency = 0.699999988
+  o[39].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[39].TextWrapped = false
+  o[39].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[39].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[39].Active = false
+  o[39].AnchorPoint = Vector2.new(0, 0)
+  o[39].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[39].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[39].BackgroundTransparency = 1
+  o[39].BorderColor3 = Color3.new(0, 0, 0)
+  o[39].BorderSizePixel = 0
+  o[39].ClipsDescendants = false
+  o[39].Draggable = false
+  o[39].Interactable = true
+  o[39].LayoutOrder = 1
+  o[39].Position = UDim2.new(0, 0, 0, 0)
+  o[39].Rotation = 0
+  o[39].Selectable = false
+  o[39].SelectionOrder = 0
+  o[39].Size = UDim2.new(0, 84, 0, 10)
+  o[39].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[39].Visible = true
+  o[39].ZIndex = 1
+  o[39].Parent = o[38]
+  o[40] = Instance.new("UIListLayout")
+  o[40].Name = "UIListLayout"
+  o[40].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[40].Padding = UDim.new(0, 0)
+  o[40].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[40].Wraps = false
+  o[40].FillDirection = ev(Enum.FillDirection, 1)
+  o[40].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[40].SortOrder = ev(Enum.SortOrder, 2)
+  o[40].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[40].Parent = o[38]
+  o[41] = Instance.new("Frame")
+  o[41].Name = "TabsHolder"
+  o[41].Active = false
+  o[41].AnchorPoint = Vector2.new(0, 0)
+  o[41].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[41].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[41].BackgroundTransparency = 1
+  o[41].BorderColor3 = Color3.new(0, 0, 0)
+  o[41].BorderSizePixel = 0
+  o[41].ClipsDescendants = false
+  o[41].Draggable = false
+  o[41].Interactable = true
+  o[41].LayoutOrder = 2
+  o[41].Position = UDim2.new(0, 0, 0, 0)
+  o[41].Rotation = 0
+  o[41].Selectable = false
+  o[41].SelectionOrder = 0
+  o[41].Size = UDim2.new(1, 0, 0, 0)
+  o[41].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[41].Visible = true
+  o[41].ZIndex = 1
+  o[41].Parent = o[38]
+  o[42] = Instance.new("UIPadding")
+  o[42].Name = "UIPadding"
+  o[42].PaddingBottom = UDim.new(0, 0)
+  o[42].PaddingLeft = UDim.new(0, 30)
+  o[42].PaddingRight = UDim.new(0, 0)
+  o[42].PaddingTop = UDim.new(0, 10)
+  o[42].Parent = o[41]
+  o[43] = Instance.new("UIListLayout")
+  o[43].Name = "UIListLayout"
+  o[43].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[43].Padding = UDim.new(0, 0)
+  o[43].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[43].Wraps = false
+  o[43].FillDirection = ev(Enum.FillDirection, 1)
+  o[43].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[43].SortOrder = ev(Enum.SortOrder, 2)
+  o[43].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[43].Parent = o[41]
+  o[44] = Instance.new("TextButton")
+  o[44].Name = "PlayerTabButton"
+  o[44].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[44].LineHeight = 1
+  o[44].LocalizationMatchedSourceText = ""
+  o[44].MaxVisibleGraphemes = -1
+  o[44].OpenTypeFeatures = ""
+  o[44].RichText = false
+  o[44].Text = "Player"
+  o[44].TextColor3 = Color3.new(0.737254918, 0.737254918, 0.737254918)
+  o[44].TextScaled = false
+  o[44].TextSize = 15
+  o[44].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[44].TextStrokeTransparency = 1
+  o[44].TextTransparency = 0
+  o[44].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[44].TextWrapped = false
+  o[44].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[44].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[44].AutoButtonColor = true
+  o[44].Modal = false
+  o[44].Selected = false
+  o[44].Active = true
+  o[44].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[44].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[44].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[44].BackgroundTransparency = 1
+  o[44].BorderColor3 = Color3.new(0, 0, 0)
+  o[44].BorderSizePixel = 0
+  o[44].ClipsDescendants = false
+  o[44].Draggable = false
+  o[44].Interactable = true
+  o[44].LayoutOrder = 0
+  o[44].Position = UDim2.new(0.0467776768, 0, 0.219008267, 0)
+  o[44].Rotation = 0
+  o[44].Selectable = true
+  o[44].SelectionOrder = 0
+  o[44].Size = UDim2.new(0, 10, 0, 22)
+  o[44].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[44].Visible = true
+  o[44].ZIndex = 2
+  o[44].Parent = o[41]
+  o[45] = Instance.new("ImageLabel")
+  o[45].Name = "UIShadow"
+  o[45].BackgroundTransparency = 1
+  o[45].Image = "rbxassetid://130321961257203"
+  o[45].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[45].Position = UDim2.fromScale(0.5, 0.5)
+  o[45].Size = UDim2.fromScale(2, 2)
+  o[45].ImageColor3 = Color3.new(1, 1, 1)
+  o[45].ImageTransparency = 0.649999976
+  o[45].ZIndex = -1
+  o[45].Parent = o[44]
+  o[46] = Instance.new("TextButton")
+  o[46].Name = "WorldTabButton"
+  o[46].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[46].LineHeight = 1
+  o[46].LocalizationMatchedSourceText = ""
+  o[46].MaxVisibleGraphemes = -1
+  o[46].OpenTypeFeatures = ""
+  o[46].RichText = false
+  o[46].Text = "World"
+  o[46].TextColor3 = Color3.new(0.737254918, 0.737254918, 0.737254918)
+  o[46].TextScaled = false
+  o[46].TextSize = 15
+  o[46].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[46].TextStrokeTransparency = 1
+  o[46].TextTransparency = 0
+  o[46].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[46].TextWrapped = false
+  o[46].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[46].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[46].AutoButtonColor = true
+  o[46].Modal = false
+  o[46].Selected = false
+  o[46].Active = true
+  o[46].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[46].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[46].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[46].BackgroundTransparency = 1
+  o[46].BorderColor3 = Color3.new(0, 0, 0)
+  o[46].BorderSizePixel = 0
+  o[46].ClipsDescendants = false
+  o[46].Draggable = false
+  o[46].Interactable = true
+  o[46].LayoutOrder = 0
+  o[46].Position = UDim2.new(0.287499994, 0, 0.636363626, 0)
+  o[46].Rotation = 0
+  o[46].Selectable = true
+  o[46].SelectionOrder = 0
+  o[46].Size = UDim2.new(0, 111, 0, 22)
+  o[46].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[46].Visible = true
+  o[46].ZIndex = 2
+  o[46].Parent = o[41]
+  o[47] = Instance.new("TextButton")
+  o[47].Name = "VisualsTabButton"
+  o[47].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[47].LineHeight = 1
+  o[47].LocalizationMatchedSourceText = ""
+  o[47].MaxVisibleGraphemes = -1
+  o[47].OpenTypeFeatures = ""
+  o[47].RichText = false
+  o[47].Text = "Visuals"
+  o[47].TextColor3 = Color3.new(0.737254918, 0.737254918, 0.737254918)
+  o[47].TextScaled = false
+  o[47].TextSize = 15
+  o[47].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[47].TextStrokeTransparency = 1
+  o[47].TextTransparency = 0
+  o[47].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[47].TextWrapped = false
+  o[47].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[47].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[47].AutoButtonColor = true
+  o[47].Modal = false
+  o[47].Selected = false
+  o[47].Active = true
+  o[47].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[47].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[47].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[47].BackgroundTransparency = 1
+  o[47].BorderColor3 = Color3.new(0, 0, 0)
+  o[47].BorderSizePixel = 0
+  o[47].ClipsDescendants = false
+  o[47].Draggable = false
+  o[47].Interactable = true
+  o[47].LayoutOrder = 0
+  o[47].Position = UDim2.new(0.0467776768, 0, 0.219008267, 0)
+  o[47].Rotation = 0
+  o[47].Selectable = true
+  o[47].SelectionOrder = 0
+  o[47].Size = UDim2.new(0, 111, 0, 22)
+  o[47].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[47].Visible = true
+  o[47].ZIndex = 2
+  o[47].Parent = o[41]
+  o[48] = Instance.new("Frame")
+  o[48].Name = "Pages"
+  o[48].Active = false
+  o[48].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[48].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[48].BackgroundColor3 = Color3.new(0, 0, 0)
+  o[48].BackgroundTransparency = 1
+  o[48].BorderColor3 = Color3.new(0, 0, 0)
+  o[48].BorderSizePixel = 0
+  o[48].ClipsDescendants = false
+  o[48].Draggable = false
+  o[48].Interactable = true
+  o[48].LayoutOrder = 0
+  o[48].Position = UDim2.new(0.609928966, 0, 0.507401347, 0)
+  o[48].Rotation = 0
+  o[48].Selectable = false
+  o[48].SelectionOrder = 0
+  o[48].Size = UDim2.new(0.779635012, 0, 0.850328922, 0)
+  o[48].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[48].Visible = true
+  o[48].ZIndex = 10
+  o[48].Parent = o[1]
+  o[49] = Instance.new("Frame")
+  o[49].Name = "TabPlayer"
+  o[49].Active = false
+  o[49].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[49].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[49].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[49].BackgroundTransparency = 1
+  o[49].BorderColor3 = Color3.new(0, 0, 0)
+  o[49].BorderSizePixel = 0
+  o[49].ClipsDescendants = false
+  o[49].Draggable = false
+  o[49].Interactable = true
+  o[49].LayoutOrder = 0
+  o[49].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[49].Rotation = 0
+  o[49].Selectable = false
+  o[49].SelectionOrder = 0
+  o[49].Size = UDim2.new(1, 0, 1, 0)
+  o[49].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[49].Visible = true
+  o[49].ZIndex = 1
+  o[49].Parent = o[48]
+  o[50] = Instance.new("ScrollingFrame")
+  o[50].Name = "ScrollingFrame"
+  o[50].AutomaticCanvasSize = ev(Enum.AutomaticSize, 2)
+  o[50].BottomImage = "rbxasset://textures/ui/Scroll/scroll-bottom.png"
+  o[50].CanvasPosition = Vector2.new(0, 181)
+  o[50].CanvasSize = UDim2.new(0, 0, 0, 0)
+  o[50].MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+  o[50].ScrollBarImageColor3 = Color3.new(0, 0, 0)
+  o[50].ScrollBarImageTransparency = 1
+  o[50].ScrollBarThickness = 0
+  o[50].ScrollingDirection = ev(Enum.ScrollingDirection, 2)
+  o[50].ScrollingEnabled = true
+  o[50].TopImage = "rbxasset://textures/ui/Scroll/scroll-top.png"
+  o[50].Active = true
+  o[50].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[50].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[50].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[50].BackgroundTransparency = 1
+  o[50].BorderColor3 = Color3.new(0, 0, 0)
+  o[50].BorderSizePixel = 0
+  o[50].ClipsDescendants = true
+  o[50].Draggable = false
+  o[50].Interactable = true
+  o[50].LayoutOrder = 0
+  o[50].Position = UDim2.new(0.49610135, 0, 0.499506772, 0)
+  o[50].Rotation = 0
+  o[50].Selectable = true
+  o[50].SelectionOrder = 0
+  o[50].Size = UDim2.new(0.992202699, 0, 0.996131539, 0)
+  o[50].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[50].Visible = true
+  o[50].ZIndex = 1
+  o[50].Parent = o[49]
+  o[51] = Instance.new("Frame")
+  o[51].Name = "RightColumn"
+  o[51].Active = false
+  o[51].AnchorPoint = Vector2.new(0, 0)
+  o[51].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[51].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[51].BackgroundTransparency = 1
+  o[51].BorderColor3 = Color3.new(0, 0, 0)
+  o[51].BorderSizePixel = 0
+  o[51].ClipsDescendants = false
+  o[51].Draggable = false
+  o[51].Interactable = true
+  o[51].LayoutOrder = 0
+  o[51].Position = UDim2.new(0.5, 0, 0.100000001, 0)
+  o[51].Rotation = 0
+  o[51].Selectable = false
+  o[51].SelectionOrder = 0
+  o[51].Size = UDim2.new(0.5, 0, 0, 0)
+  o[51].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[51].Visible = true
+  o[51].ZIndex = 1
+  o[51].Parent = o[50]
+  o[52] = Instance.new("UIListLayout")
+  o[52].Name = "UIListLayout"
+  o[52].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[52].Padding = UDim.new(0, 20)
+  o[52].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[52].Wraps = true
+  o[52].FillDirection = ev(Enum.FillDirection, 0)
+  o[52].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[52].SortOrder = ev(Enum.SortOrder, 2)
+  o[52].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[52].Parent = o[51]
+  o[53] = Instance.new("UIPadding")
+  o[53].Name = "UIPadding"
+  o[53].PaddingBottom = UDim.new(0, 10)
+  o[53].PaddingLeft = UDim.new(0, 12)
+  o[53].PaddingRight = UDim.new(0, 10)
+  o[53].PaddingTop = UDim.new(0, 10)
+  o[53].Parent = o[51]
+  o[54] = Instance.new("Frame")
+  o[54].Name = "SlidersSection"
+  o[54].Active = false
+  o[54].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[54].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[54].BackgroundColor3 = Color3.new(0.105882354, 0.105882354, 0.105882354)
+  o[54].BackgroundTransparency = 0
+  o[54].BorderColor3 = Color3.new(0, 0, 0)
+  o[54].BorderSizePixel = 0
+  o[54].ClipsDescendants = false
+  o[54].Draggable = false
+  o[54].Interactable = true
+  o[54].LayoutOrder = 0
+  o[54].Position = UDim2.new(0.474999994, 0, 0.357442319, 0)
+  o[54].Rotation = 0
+  o[54].Selectable = false
+  o[54].SelectionOrder = 0
+  o[54].Size = UDim2.new(0, 350, 0, 15)
+  o[54].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[54].Visible = true
+  o[54].ZIndex = 1
+  o[54].Parent = o[51]
+  o[55] = Instance.new("UIListLayout")
+  o[55].Name = "UIListLayout"
+  o[55].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[55].Padding = UDim.new(0, 1)
+  o[55].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[55].Wraps = false
+  o[55].FillDirection = ev(Enum.FillDirection, 1)
+  o[55].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[55].SortOrder = ev(Enum.SortOrder, 2)
+  o[55].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[55].Parent = o[54]
+  o[56] = Instance.new("UIPadding")
+  o[56].Name = "UIPadding"
+  o[56].PaddingBottom = UDim.new(0, 0)
+  o[56].PaddingLeft = UDim.new(0, 0)
+  o[56].PaddingRight = UDim.new(0, 0)
+  o[56].PaddingTop = UDim.new(0, 0)
+  o[56].Parent = o[54]
+  o[57] = Instance.new("UICorner")
+  o[57].Name = "UICorner"
+  o[57].BottomLeftRadius = UDim.new(0, 12)
+  o[57].BottomRightRadius = UDim.new(0, 12)
+  o[57].TopLeftRadius = UDim.new(0, 12)
+  o[57].TopRightRadius = UDim.new(0, 12)
+  o[57].Parent = o[54]
+  o[58] = Instance.new("UIStroke")
+  o[58].Name = "UIStroke"
+  o[58].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[58].BorderOffset = UDim.new(0, 0)
+  o[58].Color = Color3.new(0.235294119, 0.235294119, 0.235294119)
+  o[58].Enabled = true
+  o[58].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[58].Thickness = 0.5
+  o[58].Transparency = 0
+  o[58].ZIndex = 1
+  o[58].Parent = o[54]
+  o[59] = Instance.new("Frame")
+  o[59].Name = "SectionNameHolderFrame"
+  o[59].Active = false
+  o[59].AnchorPoint = Vector2.new(0, 0)
+  o[59].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[59].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[59].BackgroundTransparency = 1
+  o[59].BorderColor3 = Color3.new(0, 0, 0)
+  o[59].BorderSizePixel = 0
+  o[59].ClipsDescendants = false
+  o[59].Draggable = false
+  o[59].Interactable = true
+  o[59].LayoutOrder = 0
+  o[59].Position = UDim2.new(0, 0, 0, 0)
+  o[59].Rotation = 0
+  o[59].Selectable = false
+  o[59].SelectionOrder = 0
+  o[59].Size = UDim2.new(1, 0, 0, 50)
+  o[59].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[59].Visible = true
+  o[59].ZIndex = 1
+  o[59].Parent = o[54]
+  o[60] = Instance.new("ImageButton")
+  o[60].Name = "SectionButton"
+  o[60].HoverImage = ""
+  o[60].Image = ""
+  o[60].ImageColor3 = Color3.new(1, 1, 1)
+  o[60].ImageRectOffset = Vector2.new(0, 0)
+  o[60].ImageRectSize = Vector2.new(0, 0)
+  o[60].ImageTransparency = 1
+  o[60].PressedImage = ""
+  o[60].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[60].ScaleType = ev(Enum.ScaleType, 0)
+  o[60].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[60].SliceScale = 1
+  o[60].TileSize = UDim2.new(1, 0, 1, 0)
+  o[60].AutoButtonColor = true
+  o[60].Modal = false
+  o[60].Selected = false
+  o[60].Active = true
+  o[60].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[60].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[60].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[60].BackgroundTransparency = 1
+  o[60].BorderColor3 = Color3.new(0, 0, 0)
+  o[60].BorderSizePixel = 0
+  o[60].ClipsDescendants = false
+  o[60].Draggable = false
+  o[60].Interactable = true
+  o[60].LayoutOrder = 0
+  o[60].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[60].Rotation = 0
+  o[60].Selectable = true
+  o[60].SelectionOrder = 0
+  o[60].Size = UDim2.new(1, 0, 1, 0)
+  o[60].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[60].Visible = true
+  o[60].ZIndex = 5
+  o[60].Parent = o[59]
+  o[61] = Instance.new("ImageLabel")
+  o[61].Name = "Icon"
+  o[61].Image = "rbxassetid://82022839420755"
+  o[61].ImageColor3 = Color3.new(0.470588237, 0.470588237, 0.470588237)
+  o[61].ImageRectOffset = Vector2.new(0, 0)
+  o[61].ImageRectSize = Vector2.new(0, 0)
+  o[61].ImageTransparency = 0
+  o[61].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[61].ScaleType = ev(Enum.ScaleType, 0)
+  o[61].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[61].SliceScale = 1
+  o[61].TileSize = UDim2.new(1, 0, 1, 0)
+  o[61].Active = false
+  o[61].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[61].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[61].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[61].BackgroundTransparency = 1
+  o[61].BorderColor3 = Color3.new(0, 0, 0)
+  o[61].BorderSizePixel = 0
+  o[61].ClipsDescendants = false
+  o[61].Draggable = false
+  o[61].Interactable = true
+  o[61].LayoutOrder = 0
+  o[61].Position = UDim2.new(0.910000026, 0, 0.5, 0)
+  o[61].Rotation = 180
+  o[61].Selectable = false
+  o[61].SelectionOrder = 0
+  o[61].Size = UDim2.new(0, 15, 0, 15)
+  o[61].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[61].Visible = true
+  o[61].ZIndex = 1
+  o[61].Parent = o[59]
+  o[62] = Instance.new("TextLabel")
+  o[62].Name = "SectionName"
+  o[62].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[62].LineHeight = 1
+  o[62].LocalizationMatchedSourceText = ""
+  o[62].MaxVisibleGraphemes = -1
+  o[62].OpenTypeFeatures = ""
+  o[62].RichText = false
+  o[62].Text = "Sliders"
+  o[62].TextColor3 = Color3.new(0.847058892, 0.847058892, 0.847058892)
+  o[62].TextScaled = false
+  o[62].TextSize = 24
+  o[62].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[62].TextStrokeTransparency = 1
+  o[62].TextTransparency = 0
+  o[62].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[62].TextWrapped = false
+  o[62].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[62].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[62].Active = false
+  o[62].AnchorPoint = Vector2.new(0, 0.5)
+  o[62].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[62].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[62].BackgroundTransparency = 1
+  o[62].BorderColor3 = Color3.new(0, 0, 0)
+  o[62].BorderSizePixel = 0
+  o[62].ClipsDescendants = false
+  o[62].Draggable = false
+  o[62].Interactable = true
+  o[62].LayoutOrder = 0
+  o[62].Position = UDim2.new(0.0500000007, 0, 0.449999988, 0)
+  o[62].Rotation = 0
+  o[62].Selectable = false
+  o[62].SelectionOrder = 0
+  o[62].Size = UDim2.new(0, 0, 0.899999976, 0)
+  o[62].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[62].Visible = true
+  o[62].ZIndex = 1
+  o[62].Parent = o[59]
+  o[63] = Instance.new("Frame")
+  o[63].Name = "ButtonsHolderFrame"
+  o[63].Active = false
+  o[63].AnchorPoint = Vector2.new(0, 0)
+  o[63].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[63].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[63].BackgroundTransparency = 1
+  o[63].BorderColor3 = Color3.new(0, 0, 0)
+  o[63].BorderSizePixel = 0
+  o[63].ClipsDescendants = false
+  o[63].Draggable = false
+  o[63].Interactable = true
+  o[63].LayoutOrder = 0
+  o[63].Position = UDim2.new(0, 0, 0, 0)
+  o[63].Rotation = 0
+  o[63].Selectable = false
+  o[63].SelectionOrder = 0
+  o[63].Size = UDim2.new(1, 0, 0, 10)
+  o[63].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[63].Visible = true
+  o[63].ZIndex = 1
+  o[63].Parent = o[54]
+  o[64] = Instance.new("UIListLayout")
+  o[64].Name = "UIListLayout"
+  o[64].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[64].Padding = UDim.new(0, 2)
+  o[64].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[64].Wraps = false
+  o[64].FillDirection = ev(Enum.FillDirection, 1)
+  o[64].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[64].SortOrder = ev(Enum.SortOrder, 2)
+  o[64].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[64].Parent = o[63]
+  o[65] = Instance.new("UIPadding")
+  o[65].Name = "UIPadding"
+  o[65].PaddingBottom = UDim.new(0, 12)
+  o[65].PaddingLeft = UDim.new(0, 0)
+  o[65].PaddingRight = UDim.new(0, 0)
+  o[65].PaddingTop = UDim.new(0, 0)
+  o[65].Parent = o[63]
+  o[66] = Instance.new("Frame")
+  o[66].Name = "SliderPercent"
+  o[66].Active = false
+  o[66].AnchorPoint = Vector2.new(0, 0)
+  o[66].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[66].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[66].BackgroundTransparency = 1
+  o[66].BorderColor3 = Color3.new(0, 0, 0)
+  o[66].BorderSizePixel = 0
+  o[66].ClipsDescendants = false
+  o[66].Draggable = false
+  o[66].Interactable = true
+  o[66].LayoutOrder = 0
+  o[66].Position = UDim2.new(0, 0, 0, 0)
+  o[66].Rotation = 0
+  o[66].Selectable = false
+  o[66].SelectionOrder = 0
+  o[66].Size = UDim2.new(0.920000017, 0, 0, 50)
+  o[66].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[66].Visible = true
+  o[66].ZIndex = 1
+  o[66].Parent = o[63]
+  o[67] = Instance.new("TextLabel")
+  o[67].Name = "Name"
+  o[67].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[67].LineHeight = 1
+  o[67].LocalizationMatchedSourceText = ""
+  o[67].MaxVisibleGraphemes = -1
+  o[67].OpenTypeFeatures = ""
+  o[67].RichText = false
+  o[67].Text = "Slider (percent)"
+  o[67].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[67].TextScaled = false
+  o[67].TextSize = 16
+  o[67].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[67].TextStrokeTransparency = 1
+  o[67].TextTransparency = 0
+  o[67].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[67].TextWrapped = false
+  o[67].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[67].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[67].Active = false
+  o[67].AnchorPoint = Vector2.new(0, 0.5)
+  o[67].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[67].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[67].BackgroundTransparency = 1
+  o[67].BorderColor3 = Color3.new(0, 0, 0)
+  o[67].BorderSizePixel = 0
+  o[67].ClipsDescendants = false
+  o[67].Draggable = false
+  o[67].Interactable = true
+  o[67].LayoutOrder = 0
+  o[67].Position = UDim2.new(0.0100000985, 0, 0.278745115, 0)
+  o[67].Rotation = 0
+  o[67].Selectable = false
+  o[67].SelectionOrder = 0
+  o[67].Size = UDim2.new(0, 104, 0, 27)
+  o[67].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[67].Visible = true
+  o[67].ZIndex = 1
+  o[67].Parent = o[66]
+  o[68] = Instance.new("UIStroke")
+  o[68].Name = "UIStroke"
+  o[68].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[68].BorderOffset = UDim.new(0, 0)
+  o[68].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[68].Enabled = true
+  o[68].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[68].Thickness = 0.200000003
+  o[68].Transparency = 0
+  o[68].ZIndex = 1
+  o[68].Parent = o[67]
+  o[69] = Instance.new("Frame")
+  o[69].Name = "SliderBg"
+  o[69].Active = false
+  o[69].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[69].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[69].BackgroundColor3 = Color3.new(0.368627459, 0.368627459, 0.368627459)
+  o[69].BackgroundTransparency = 0
+  o[69].BorderColor3 = Color3.new(0, 0, 0)
+  o[69].BorderSizePixel = 0
+  o[69].ClipsDescendants = false
+  o[69].Draggable = false
+  o[69].Interactable = true
+  o[69].LayoutOrder = 0
+  o[69].Position = UDim2.new(0.5, 0, 0.67900002, 0)
+  o[69].Rotation = 0
+  o[69].Selectable = false
+  o[69].SelectionOrder = 0
+  o[69].Size = UDim2.new(0.949999988, 0, 0, 2)
+  o[69].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[69].Visible = true
+  o[69].ZIndex = 1
+  o[69].Parent = o[66]
+  o[70] = Instance.new("UICorner")
+  o[70].Name = "UICorner"
+  o[70].BottomLeftRadius = UDim.new(1, 0)
+  o[70].BottomRightRadius = UDim.new(1, 0)
+  o[70].TopLeftRadius = UDim.new(1, 0)
+  o[70].TopRightRadius = UDim.new(1, 0)
+  o[70].Parent = o[69]
+  o[71] = Instance.new("Frame")
+  o[71].Name = "Knob"
+  o[71].Active = false
+  o[71].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[71].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[71].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[71].BackgroundTransparency = 0
+  o[71].BorderColor3 = Color3.new(0, 0, 0)
+  o[71].BorderSizePixel = 0
+  o[71].ClipsDescendants = false
+  o[71].Draggable = false
+  o[71].Interactable = true
+  o[71].LayoutOrder = 0
+  o[71].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[71].Rotation = 0
+  o[71].Selectable = false
+  o[71].SelectionOrder = 0
+  o[71].Size = UDim2.new(0, 15, 0, 15)
+  o[71].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[71].Visible = true
+  o[71].ZIndex = 3
+  o[71].Parent = o[69]
+  o[72] = Instance.new("UICorner")
+  o[72].Name = "UICorner"
+  o[72].BottomLeftRadius = UDim.new(1, 0)
+  o[72].BottomRightRadius = UDim.new(1, 0)
+  o[72].TopLeftRadius = UDim.new(1, 0)
+  o[72].TopRightRadius = UDim.new(1, 0)
+  o[72].Parent = o[71]
+  o[73] = Instance.new("ImageLabel")
+  o[73].Name = "UIShadow"
+  o[73].BackgroundTransparency = 1
+  o[73].Image = "rbxassetid://130321961257203"
+  o[73].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[73].Position = UDim2.fromScale(0.5, 0.5)
+  o[73].Size = UDim2.fromScale(2, 2)
+  o[73].ImageColor3 = Color3.new(1, 1, 1)
+  o[73].ImageTransparency = 0.270000011
+  o[73].ZIndex = -1
+  o[73].Parent = o[71]
+  o[74] = Instance.new("Frame")
+  o[74].Name = "Fill"
+  o[74].Active = false
+  o[74].AnchorPoint = Vector2.new(0, 0.5)
+  o[74].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[74].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[74].BackgroundTransparency = 0
+  o[74].BorderColor3 = Color3.new(0, 0, 0)
+  o[74].BorderSizePixel = 0
+  o[74].ClipsDescendants = false
+  o[74].Draggable = false
+  o[74].Interactable = true
+  o[74].LayoutOrder = 0
+  o[74].Position = UDim2.new(0, 0, 0.5, 0)
+  o[74].Rotation = 0
+  o[74].Selectable = false
+  o[74].SelectionOrder = 0
+  o[74].Size = UDim2.new(0.5, 0, 1, 0)
+  o[74].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[74].Visible = true
+  o[74].ZIndex = 2
+  o[74].Parent = o[69]
+  o[75] = Instance.new("UICorner")
+  o[75].Name = "UICorner"
+  o[75].BottomLeftRadius = UDim.new(0, 7)
+  o[75].BottomRightRadius = UDim.new(0, 7)
+  o[75].TopLeftRadius = UDim.new(0, 7)
+  o[75].TopRightRadius = UDim.new(0, 7)
+  o[75].Parent = o[74]
+  o[76] = Instance.new("ImageLabel")
+  o[76].Name = "UIShadow"
+  o[76].BackgroundTransparency = 1
+  o[76].Image = "rbxassetid://130321961257203"
+  o[76].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[76].Position = UDim2.fromScale(0.5, 0.5)
+  o[76].Size = UDim2.fromScale(2, 2)
+  o[76].ImageColor3 = Color3.new(1, 1, 1)
+  o[76].ImageTransparency = 0.569999993
+  o[76].ZIndex = -1
+  o[76].Parent = o[74]
+  o[77] = Instance.new("TextLabel")
+  o[77].Name = "Value"
+  o[77].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[77].LineHeight = 1
+  o[77].LocalizationMatchedSourceText = ""
+  o[77].MaxVisibleGraphemes = -1
+  o[77].OpenTypeFeatures = ""
+  o[77].RichText = false
+  o[77].Text = "50%"
+  o[77].TextColor3 = Color3.new(0.886274576, 0.886274576, 0.886274576)
+  o[77].TextScaled = false
+  o[77].TextSize = 20
+  o[77].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[77].TextStrokeTransparency = 1
+  o[77].TextTransparency = 0
+  o[77].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[77].TextWrapped = false
+  o[77].TextXAlignment = ev(Enum.TextXAlignment, 1)
+  o[77].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[77].Active = false
+  o[77].AnchorPoint = Vector2.new(1, 0.5)
+  o[77].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[77].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[77].BackgroundTransparency = 1
+  o[77].BorderColor3 = Color3.new(0, 0, 0)
+  o[77].BorderSizePixel = 0
+  o[77].ClipsDescendants = false
+  o[77].Draggable = false
+  o[77].Interactable = true
+  o[77].LayoutOrder = 0
+  o[77].Position = UDim2.new(0.99000001, 0, 0.279000014, 0)
+  o[77].Rotation = 0
+  o[77].Selectable = false
+  o[77].SelectionOrder = 0
+  o[77].Size = UDim2.new(0, 104, 0, 27)
+  o[77].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[77].Visible = true
+  o[77].ZIndex = 1
+  o[77].Parent = o[66]
+  o[78] = Instance.new("UIStroke")
+  o[78].Name = "UIStroke"
+  o[78].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[78].BorderOffset = UDim.new(0, 0)
+  o[78].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[78].Enabled = true
+  o[78].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[78].Thickness = 0.200000003
+  o[78].Transparency = 0
+  o[78].ZIndex = 1
+  o[78].Parent = o[77]
+  o[79] = Instance.new("Frame")
+  o[79].Name = "SliderNumber"
+  o[79].Active = false
+  o[79].AnchorPoint = Vector2.new(0, 0)
+  o[79].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[79].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[79].BackgroundTransparency = 1
+  o[79].BorderColor3 = Color3.new(0, 0, 0)
+  o[79].BorderSizePixel = 0
+  o[79].ClipsDescendants = false
+  o[79].Draggable = false
+  o[79].Interactable = true
+  o[79].LayoutOrder = 2
+  o[79].Position = UDim2.new(0, 0, 0, 0)
+  o[79].Rotation = 0
+  o[79].Selectable = false
+  o[79].SelectionOrder = 0
+  o[79].Size = UDim2.new(0.920000017, 0, 0, 50)
+  o[79].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[79].Visible = true
+  o[79].ZIndex = 1
+  o[79].Parent = o[63]
+  o[80] = Instance.new("TextLabel")
+  o[80].Name = "Name"
+  o[80].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[80].LineHeight = 1
+  o[80].LocalizationMatchedSourceText = ""
+  o[80].MaxVisibleGraphemes = -1
+  o[80].OpenTypeFeatures = ""
+  o[80].RichText = false
+  o[80].Text = "Slider (number)"
+  o[80].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[80].TextScaled = false
+  o[80].TextSize = 16
+  o[80].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[80].TextStrokeTransparency = 1
+  o[80].TextTransparency = 0
+  o[80].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[80].TextWrapped = false
+  o[80].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[80].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[80].Active = false
+  o[80].AnchorPoint = Vector2.new(0, 0.5)
+  o[80].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[80].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[80].BackgroundTransparency = 1
+  o[80].BorderColor3 = Color3.new(0, 0, 0)
+  o[80].BorderSizePixel = 0
+  o[80].ClipsDescendants = false
+  o[80].Draggable = false
+  o[80].Interactable = true
+  o[80].LayoutOrder = 0
+  o[80].Position = UDim2.new(0.0100000985, 0, 0.278745115, 0)
+  o[80].Rotation = 0
+  o[80].Selectable = false
+  o[80].SelectionOrder = 0
+  o[80].Size = UDim2.new(0, 104, 0, 27)
+  o[80].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[80].Visible = true
+  o[80].ZIndex = 1
+  o[80].Parent = o[79]
+  o[81] = Instance.new("UIStroke")
+  o[81].Name = "UIStroke"
+  o[81].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[81].BorderOffset = UDim.new(0, 0)
+  o[81].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[81].Enabled = true
+  o[81].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[81].Thickness = 0.200000003
+  o[81].Transparency = 0
+  o[81].ZIndex = 1
+  o[81].Parent = o[80]
+  o[82] = Instance.new("Frame")
+  o[82].Name = "SliderBg"
+  o[82].Active = false
+  o[82].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[82].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[82].BackgroundColor3 = Color3.new(0.368627459, 0.368627459, 0.368627459)
+  o[82].BackgroundTransparency = 0
+  o[82].BorderColor3 = Color3.new(0, 0, 0)
+  o[82].BorderSizePixel = 0
+  o[82].ClipsDescendants = false
+  o[82].Draggable = false
+  o[82].Interactable = true
+  o[82].LayoutOrder = 0
+  o[82].Position = UDim2.new(0.5, 0, 0.67900002, 0)
+  o[82].Rotation = 0
+  o[82].Selectable = false
+  o[82].SelectionOrder = 0
+  o[82].Size = UDim2.new(0.949999988, 0, 0, 2)
+  o[82].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[82].Visible = true
+  o[82].ZIndex = 1
+  o[82].Parent = o[79]
+  o[83] = Instance.new("UICorner")
+  o[83].Name = "UICorner"
+  o[83].BottomLeftRadius = UDim.new(1, 0)
+  o[83].BottomRightRadius = UDim.new(1, 0)
+  o[83].TopLeftRadius = UDim.new(1, 0)
+  o[83].TopRightRadius = UDim.new(1, 0)
+  o[83].Parent = o[82]
+  o[84] = Instance.new("Frame")
+  o[84].Name = "Knob"
+  o[84].Active = false
+  o[84].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[84].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[84].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[84].BackgroundTransparency = 0
+  o[84].BorderColor3 = Color3.new(0, 0, 0)
+  o[84].BorderSizePixel = 0
+  o[84].ClipsDescendants = false
+  o[84].Draggable = false
+  o[84].Interactable = true
+  o[84].LayoutOrder = 0
+  o[84].Position = UDim2.new(0.230000004, 0, 0.5, 0)
+  o[84].Rotation = 0
+  o[84].Selectable = false
+  o[84].SelectionOrder = 0
+  o[84].Size = UDim2.new(0, 15, 0, 15)
+  o[84].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[84].Visible = true
+  o[84].ZIndex = 3
+  o[84].Parent = o[82]
+  o[85] = Instance.new("UICorner")
+  o[85].Name = "UICorner"
+  o[85].BottomLeftRadius = UDim.new(1, 0)
+  o[85].BottomRightRadius = UDim.new(1, 0)
+  o[85].TopLeftRadius = UDim.new(1, 0)
+  o[85].TopRightRadius = UDim.new(1, 0)
+  o[85].Parent = o[84]
+  o[86] = Instance.new("ImageLabel")
+  o[86].Name = "UIShadow"
+  o[86].BackgroundTransparency = 1
+  o[86].Image = "rbxassetid://130321961257203"
+  o[86].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[86].Position = UDim2.fromScale(0.5, 0.5)
+  o[86].Size = UDim2.fromScale(2, 2)
+  o[86].ImageColor3 = Color3.new(1, 1, 1)
+  o[86].ImageTransparency = 0.270000011
+  o[86].ZIndex = -1
+  o[86].Parent = o[84]
+  o[87] = Instance.new("Frame")
+  o[87].Name = "Fill"
+  o[87].Active = false
+  o[87].AnchorPoint = Vector2.new(0, 0.5)
+  o[87].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[87].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[87].BackgroundTransparency = 0
+  o[87].BorderColor3 = Color3.new(0, 0, 0)
+  o[87].BorderSizePixel = 0
+  o[87].ClipsDescendants = false
+  o[87].Draggable = false
+  o[87].Interactable = true
+  o[87].LayoutOrder = 0
+  o[87].Position = UDim2.new(0, 0, 0.5, 0)
+  o[87].Rotation = 0
+  o[87].Selectable = false
+  o[87].SelectionOrder = 0
+  o[87].Size = UDim2.new(0.230000004, 0, 1, 0)
+  o[87].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[87].Visible = true
+  o[87].ZIndex = 2
+  o[87].Parent = o[82]
+  o[88] = Instance.new("UICorner")
+  o[88].Name = "UICorner"
+  o[88].BottomLeftRadius = UDim.new(0, 7)
+  o[88].BottomRightRadius = UDim.new(0, 7)
+  o[88].TopLeftRadius = UDim.new(0, 7)
+  o[88].TopRightRadius = UDim.new(0, 7)
+  o[88].Parent = o[87]
+  o[89] = Instance.new("ImageLabel")
+  o[89].Name = "UIShadow"
+  o[89].BackgroundTransparency = 1
+  o[89].Image = "rbxassetid://130321961257203"
+  o[89].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[89].Position = UDim2.fromScale(0.5, 0.5)
+  o[89].Size = UDim2.fromScale(2, 2)
+  o[89].ImageColor3 = Color3.new(1, 1, 1)
+  o[89].ImageTransparency = 0.569999993
+  o[89].ZIndex = -1
+  o[89].Parent = o[87]
+  o[90] = Instance.new("TextLabel")
+  o[90].Name = "Value"
+  o[90].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[90].LineHeight = 1
+  o[90].LocalizationMatchedSourceText = ""
+  o[90].MaxVisibleGraphemes = -1
+  o[90].OpenTypeFeatures = ""
+  o[90].RichText = false
+  o[90].Text = "23"
+  o[90].TextColor3 = Color3.new(0.886274576, 0.886274576, 0.886274576)
+  o[90].TextScaled = false
+  o[90].TextSize = 20
+  o[90].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[90].TextStrokeTransparency = 1
+  o[90].TextTransparency = 0
+  o[90].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[90].TextWrapped = false
+  o[90].TextXAlignment = ev(Enum.TextXAlignment, 1)
+  o[90].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[90].Active = false
+  o[90].AnchorPoint = Vector2.new(1, 0.5)
+  o[90].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[90].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[90].BackgroundTransparency = 1
+  o[90].BorderColor3 = Color3.new(0, 0, 0)
+  o[90].BorderSizePixel = 0
+  o[90].ClipsDescendants = false
+  o[90].Draggable = false
+  o[90].Interactable = true
+  o[90].LayoutOrder = 0
+  o[90].Position = UDim2.new(0.99000001, 0, 0.279000014, 0)
+  o[90].Rotation = 0
+  o[90].Selectable = false
+  o[90].SelectionOrder = 0
+  o[90].Size = UDim2.new(0, 104, 0, 27)
+  o[90].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[90].Visible = true
+  o[90].ZIndex = 1
+  o[90].Parent = o[79]
+  o[91] = Instance.new("UIStroke")
+  o[91].Name = "UIStroke"
+  o[91].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[91].BorderOffset = UDim.new(0, 0)
+  o[91].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[91].Enabled = true
+  o[91].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[91].Thickness = 0.200000003
+  o[91].Transparency = 0
+  o[91].ZIndex = 1
+  o[91].Parent = o[90]
+  o[92] = Instance.new("Frame")
+  o[92].Name = "ColorPickersSection"
+  o[92].Active = false
+  o[92].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[92].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[92].BackgroundColor3 = Color3.new(0.105882354, 0.105882354, 0.105882354)
+  o[92].BackgroundTransparency = 0
+  o[92].BorderColor3 = Color3.new(0, 0, 0)
+  o[92].BorderSizePixel = 0
+  o[92].ClipsDescendants = false
+  o[92].Draggable = false
+  o[92].Interactable = true
+  o[92].LayoutOrder = 0
+  o[92].Position = UDim2.new(0.678248823, 0, 0.810402691, 0)
+  o[92].Rotation = 0
+  o[92].Selectable = false
+  o[92].SelectionOrder = 0
+  o[92].Size = UDim2.new(0, 350, 0, 15)
+  o[92].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[92].Visible = true
+  o[92].ZIndex = 1
+  o[92].Parent = o[51]
+  o[93] = Instance.new("UIListLayout")
+  o[93].Name = "UIListLayout"
+  o[93].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[93].Padding = UDim.new(0, 1)
+  o[93].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[93].Wraps = false
+  o[93].FillDirection = ev(Enum.FillDirection, 1)
+  o[93].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[93].SortOrder = ev(Enum.SortOrder, 2)
+  o[93].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[93].Parent = o[92]
+  o[94] = Instance.new("UIPadding")
+  o[94].Name = "UIPadding"
+  o[94].PaddingBottom = UDim.new(0, 0)
+  o[94].PaddingLeft = UDim.new(0, 0)
+  o[94].PaddingRight = UDim.new(0, 0)
+  o[94].PaddingTop = UDim.new(0, 0)
+  o[94].Parent = o[92]
+  o[95] = Instance.new("UICorner")
+  o[95].Name = "UICorner"
+  o[95].BottomLeftRadius = UDim.new(0, 12)
+  o[95].BottomRightRadius = UDim.new(0, 12)
+  o[95].TopLeftRadius = UDim.new(0, 12)
+  o[95].TopRightRadius = UDim.new(0, 12)
+  o[95].Parent = o[92]
+  o[96] = Instance.new("UIStroke")
+  o[96].Name = "UIStroke"
+  o[96].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[96].BorderOffset = UDim.new(0, 0)
+  o[96].Color = Color3.new(0.235294119, 0.235294119, 0.235294119)
+  o[96].Enabled = true
+  o[96].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[96].Thickness = 0.5
+  o[96].Transparency = 0
+  o[96].ZIndex = 1
+  o[96].Parent = o[92]
+  o[97] = Instance.new("Frame")
+  o[97].Name = "SectionNameHolderFrame"
+  o[97].Active = false
+  o[97].AnchorPoint = Vector2.new(0, 0)
+  o[97].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[97].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[97].BackgroundTransparency = 1
+  o[97].BorderColor3 = Color3.new(0, 0, 0)
+  o[97].BorderSizePixel = 0
+  o[97].ClipsDescendants = false
+  o[97].Draggable = false
+  o[97].Interactable = true
+  o[97].LayoutOrder = 0
+  o[97].Position = UDim2.new(0, 0, 0, 0)
+  o[97].Rotation = 0
+  o[97].Selectable = false
+  o[97].SelectionOrder = 0
+  o[97].Size = UDim2.new(1, 0, 0, 50)
+  o[97].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[97].Visible = true
+  o[97].ZIndex = 1
+  o[97].Parent = o[92]
+  o[98] = Instance.new("ImageButton")
+  o[98].Name = "SectionButton"
+  o[98].HoverImage = ""
+  o[98].Image = ""
+  o[98].ImageColor3 = Color3.new(1, 1, 1)
+  o[98].ImageRectOffset = Vector2.new(0, 0)
+  o[98].ImageRectSize = Vector2.new(0, 0)
+  o[98].ImageTransparency = 1
+  o[98].PressedImage = ""
+  o[98].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[98].ScaleType = ev(Enum.ScaleType, 0)
+  o[98].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[98].SliceScale = 1
+  o[98].TileSize = UDim2.new(1, 0, 1, 0)
+  o[98].AutoButtonColor = true
+  o[98].Modal = false
+  o[98].Selected = false
+  o[98].Active = true
+  o[98].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[98].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[98].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[98].BackgroundTransparency = 1
+  o[98].BorderColor3 = Color3.new(0, 0, 0)
+  o[98].BorderSizePixel = 0
+  o[98].ClipsDescendants = false
+  o[98].Draggable = false
+  o[98].Interactable = true
+  o[98].LayoutOrder = 0
+  o[98].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[98].Rotation = 0
+  o[98].Selectable = true
+  o[98].SelectionOrder = 0
+  o[98].Size = UDim2.new(1, 0, 1, 0)
+  o[98].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[98].Visible = true
+  o[98].ZIndex = 5
+  o[98].Parent = o[97]
+  o[99] = Instance.new("ImageLabel")
+  o[99].Name = "Icon"
+  o[99].Image = "rbxassetid://82022839420755"
+  o[99].ImageColor3 = Color3.new(0.470588237, 0.470588237, 0.470588237)
+  o[99].ImageRectOffset = Vector2.new(0, 0)
+  o[99].ImageRectSize = Vector2.new(0, 0)
+  o[99].ImageTransparency = 0
+  o[99].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[99].ScaleType = ev(Enum.ScaleType, 0)
+  o[99].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[99].SliceScale = 1
+  o[99].TileSize = UDim2.new(1, 0, 1, 0)
+  o[99].Active = false
+  o[99].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[99].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[99].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[99].BackgroundTransparency = 1
+  o[99].BorderColor3 = Color3.new(0, 0, 0)
+  o[99].BorderSizePixel = 0
+  o[99].ClipsDescendants = false
+  o[99].Draggable = false
+  o[99].Interactable = true
+  o[99].LayoutOrder = 0
+  o[99].Position = UDim2.new(0.910000026, 0, 0.5, 0)
+  o[99].Rotation = 180
+  o[99].Selectable = false
+  o[99].SelectionOrder = 0
+  o[99].Size = UDim2.new(0, 15, 0, 15)
+  o[99].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[99].Visible = true
+  o[99].ZIndex = 1
+  o[99].Parent = o[97]
+  o[100] = Instance.new("TextLabel")
+  o[100].Name = "SectionName"
+  o[100].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[100].LineHeight = 1
+  o[100].LocalizationMatchedSourceText = ""
+  o[100].MaxVisibleGraphemes = -1
+  o[100].OpenTypeFeatures = ""
+  o[100].RichText = false
+  o[100].Text = "Color Pickers"
+  o[100].TextColor3 = Color3.new(0.847058892, 0.847058892, 0.847058892)
+  o[100].TextScaled = false
+  o[100].TextSize = 24
+  o[100].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[100].TextStrokeTransparency = 1
+  o[100].TextTransparency = 0
+  o[100].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[100].TextWrapped = false
+  o[100].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[100].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[100].Active = false
+  o[100].AnchorPoint = Vector2.new(0, 0.5)
+  o[100].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[100].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[100].BackgroundTransparency = 1
+  o[100].BorderColor3 = Color3.new(0, 0, 0)
+  o[100].BorderSizePixel = 0
+  o[100].ClipsDescendants = false
+  o[100].Draggable = false
+  o[100].Interactable = true
+  o[100].LayoutOrder = 0
+  o[100].Position = UDim2.new(0.0500000007, 0, 0.449999988, 0)
+  o[100].Rotation = 0
+  o[100].Selectable = false
+  o[100].SelectionOrder = 0
+  o[100].Size = UDim2.new(0, 0, 0.899999976, 0)
+  o[100].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[100].Visible = true
+  o[100].ZIndex = 1
+  o[100].Parent = o[97]
+  o[101] = Instance.new("Frame")
+  o[101].Name = "ButtonsHolderFrame"
+  o[101].Active = false
+  o[101].AnchorPoint = Vector2.new(0, 0)
+  o[101].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[101].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[101].BackgroundTransparency = 1
+  o[101].BorderColor3 = Color3.new(0, 0, 0)
+  o[101].BorderSizePixel = 0
+  o[101].ClipsDescendants = false
+  o[101].Draggable = false
+  o[101].Interactable = true
+  o[101].LayoutOrder = 0
+  o[101].Position = UDim2.new(0, 0, 0, 0)
+  o[101].Rotation = 0
+  o[101].Selectable = false
+  o[101].SelectionOrder = 0
+  o[101].Size = UDim2.new(1, 0, 0, 10)
+  o[101].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[101].Visible = true
+  o[101].ZIndex = 1
+  o[101].Parent = o[92]
+  o[102] = Instance.new("UIListLayout")
+  o[102].Name = "UIListLayout"
+  o[102].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[102].Padding = UDim.new(0, 2)
+  o[102].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[102].Wraps = false
+  o[102].FillDirection = ev(Enum.FillDirection, 1)
+  o[102].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[102].SortOrder = ev(Enum.SortOrder, 2)
+  o[102].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[102].Parent = o[101]
+  o[103] = Instance.new("UIPadding")
+  o[103].Name = "UIPadding"
+  o[103].PaddingBottom = UDim.new(0, 12)
+  o[103].PaddingLeft = UDim.new(0, 0)
+  o[103].PaddingRight = UDim.new(0, 0)
+  o[103].PaddingTop = UDim.new(0, 0)
+  o[103].Parent = o[101]
+  o[104] = Instance.new("Frame")
+  o[104].Name = "ColorPicker"
+  o[104].Active = false
+  o[104].AnchorPoint = Vector2.new(0, 0)
+  o[104].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[104].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[104].BackgroundTransparency = 1
+  o[104].BorderColor3 = Color3.new(0, 0, 0)
+  o[104].BorderSizePixel = 0
+  o[104].ClipsDescendants = false
+  o[104].Draggable = false
+  o[104].Interactable = true
+  o[104].LayoutOrder = 2
+  o[104].Position = UDim2.new(0, 0, 0, 0)
+  o[104].Rotation = 0
+  o[104].Selectable = false
+  o[104].SelectionOrder = 0
+  o[104].Size = UDim2.new(0.920000017, 0, 0, 50)
+  o[104].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[104].Visible = true
+  o[104].ZIndex = 1
+  o[104].Parent = o[101]
+  o[105] = Instance.new("TextLabel")
+  o[105].Name = "Name"
+  o[105].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[105].LineHeight = 1
+  o[105].LocalizationMatchedSourceText = ""
+  o[105].MaxVisibleGraphemes = -1
+  o[105].OpenTypeFeatures = ""
+  o[105].RichText = false
+  o[105].Text = "Color Picker"
+  o[105].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[105].TextScaled = false
+  o[105].TextSize = 16
+  o[105].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[105].TextStrokeTransparency = 1
+  o[105].TextTransparency = 0
+  o[105].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[105].TextWrapped = false
+  o[105].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[105].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[105].Active = false
+  o[105].AnchorPoint = Vector2.new(0, 0.5)
+  o[105].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[105].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[105].BackgroundTransparency = 1
+  o[105].BorderColor3 = Color3.new(0, 0, 0)
+  o[105].BorderSizePixel = 0
+  o[105].ClipsDescendants = false
+  o[105].Draggable = false
+  o[105].Interactable = true
+  o[105].LayoutOrder = 0
+  o[105].Position = UDim2.new(0.00999999978, 0, 0.5, 0)
+  o[105].Rotation = 0
+  o[105].Selectable = false
+  o[105].SelectionOrder = 0
+  o[105].Size = UDim2.new(0, 31, 0, 50)
+  o[105].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[105].Visible = true
+  o[105].ZIndex = 1
+  o[105].Parent = o[104]
+  o[106] = Instance.new("UIStroke")
+  o[106].Name = "UIStroke"
+  o[106].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[106].BorderOffset = UDim.new(0, 0)
+  o[106].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[106].Enabled = true
+  o[106].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[106].Thickness = 0.200000003
+  o[106].Transparency = 0
+  o[106].ZIndex = 1
+  o[106].Parent = o[105]
+  o[107] = Instance.new("ImageButton")
+  o[107].Name = "ColorPickerPreview"
+  o[107].HoverImage = ""
+  o[107].Image = ""
+  o[107].ImageColor3 = Color3.new(1, 1, 1)
+  o[107].ImageRectOffset = Vector2.new(0, 0)
+  o[107].ImageRectSize = Vector2.new(0, 0)
+  o[107].ImageTransparency = 1
+  o[107].PressedImage = ""
+  o[107].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[107].ScaleType = ev(Enum.ScaleType, 0)
+  o[107].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[107].SliceScale = 1
+  o[107].TileSize = UDim2.new(1, 0, 1, 0)
+  o[107].AutoButtonColor = false
+  o[107].Modal = false
+  o[107].Selected = false
+  o[107].Active = true
+  o[107].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[107].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[107].BackgroundColor3 = Color3.new(0.56078434, 0.65882355, 0.627451003)
+  o[107].BackgroundTransparency = 0
+  o[107].BorderColor3 = Color3.new(0, 0, 0)
+  o[107].BorderSizePixel = 0
+  o[107].ClipsDescendants = false
+  o[107].Draggable = false
+  o[107].Interactable = true
+  o[107].LayoutOrder = 0
+  o[107].Position = UDim2.new(0.931999981, 0, 0.5, 0)
+  o[107].Rotation = 0
+  o[107].Selectable = true
+  o[107].SelectionOrder = 0
+  o[107].Size = UDim2.new(0, 30, 0, 30)
+  o[107].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[107].Visible = true
+  o[107].ZIndex = 1
+  o[107].Parent = o[104]
+  o[108] = Instance.new("UICorner")
+  o[108].Name = "UICorner"
+  o[108].BottomLeftRadius = UDim.new(0, 8)
+  o[108].BottomRightRadius = UDim.new(0, 8)
+  o[108].TopLeftRadius = UDim.new(0, 8)
+  o[108].TopRightRadius = UDim.new(0, 8)
+  o[108].Parent = o[107]
+  o[109] = Instance.new("TextLabel")
+  o[109].Name = "HexPrefix"
+  o[109].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[109].LineHeight = 1
+  o[109].LocalizationMatchedSourceText = ""
+  o[109].MaxVisibleGraphemes = -1
+  o[109].OpenTypeFeatures = ""
+  o[109].RichText = false
+  o[109].Text = "#"
+  o[109].TextColor3 = Color3.new(0.870588303, 0.870588303, 0.870588303)
+  o[109].TextScaled = false
+  o[109].TextSize = 25
+  o[109].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[109].TextStrokeTransparency = 1
+  o[109].TextTransparency = 0
+  o[109].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[109].TextWrapped = false
+  o[109].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[109].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[109].Active = false
+  o[109].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[109].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[109].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[109].BackgroundTransparency = 1
+  o[109].BorderColor3 = Color3.new(0, 0, 0)
+  o[109].BorderSizePixel = 0
+  o[109].ClipsDescendants = false
+  o[109].Draggable = false
+  o[109].Interactable = true
+  o[109].LayoutOrder = 0
+  o[109].Position = UDim2.new(0.627950132, 0, 0.5, 0)
+  o[109].Rotation = 0
+  o[109].Selectable = false
+  o[109].SelectionOrder = 0
+  o[109].Size = UDim2.new(0, 23, 0, 50)
+  o[109].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[109].Visible = true
+  o[109].ZIndex = 1
+  o[109].Parent = o[104]
+  o[110] = Instance.new("UIPadding")
+  o[110].Name = "UIPadding"
+  o[110].PaddingBottom = UDim.new(0, 2)
+  o[110].PaddingLeft = UDim.new(0, 0)
+  o[110].PaddingRight = UDim.new(0, 0)
+  o[110].PaddingTop = UDim.new(0, 0)
+  o[110].Parent = o[109]
+  o[111] = Instance.new("ImageButton")
+  o[111].Name = "ValueButton"
+  o[111].HoverImage = ""
+  o[111].Image = ""
+  o[111].ImageColor3 = Color3.new(1, 1, 1)
+  o[111].ImageRectOffset = Vector2.new(0, 0)
+  o[111].ImageRectSize = Vector2.new(0, 0)
+  o[111].ImageTransparency = 1
+  o[111].PressedImage = ""
+  o[111].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[111].ScaleType = ev(Enum.ScaleType, 0)
+  o[111].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[111].SliceScale = 1
+  o[111].TileSize = UDim2.new(1, 0, 1, 0)
+  o[111].AutoButtonColor = true
+  o[111].Modal = false
+  o[111].Selected = false
+  o[111].Active = true
+  o[111].AnchorPoint = Vector2.new(0, 0)
+  o[111].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[111].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[111].BackgroundTransparency = 1
+  o[111].BorderColor3 = Color3.new(0, 0, 0)
+  o[111].BorderSizePixel = 0
+  o[111].ClipsDescendants = false
+  o[111].Draggable = false
+  o[111].Interactable = true
+  o[111].LayoutOrder = 0
+  o[111].Position = UDim2.new(0.582235992, 0, 0.319999993, 0)
+  o[111].Rotation = 0
+  o[111].Selectable = true
+  o[111].SelectionOrder = 0
+  o[111].Size = UDim2.new(0, 97, 0, 24)
+  o[111].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[111].Visible = true
+  o[111].ZIndex = 3
+  o[111].Parent = o[104]
+  o[112] = Instance.new("TextLabel")
+  o[112].Name = "HexValue"
+  o[112].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[112].LineHeight = 1
+  o[112].LocalizationMatchedSourceText = ""
+  o[112].MaxVisibleGraphemes = -1
+  o[112].OpenTypeFeatures = ""
+  o[112].RichText = false
+  o[112].Text = "8FA8A0"
+  o[112].TextColor3 = Color3.new(0.870588303, 0.870588303, 0.870588303)
+  o[112].TextScaled = false
+  o[112].TextSize = 20
+  o[112].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[112].TextStrokeTransparency = 1
+  o[112].TextTransparency = 0
+  o[112].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[112].TextWrapped = true
+  o[112].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[112].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[112].Active = false
+  o[112].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[112].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[112].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[112].BackgroundTransparency = 1
+  o[112].BorderColor3 = Color3.new(0, 0, 0)
+  o[112].BorderSizePixel = 0
+  o[112].ClipsDescendants = false
+  o[112].Draggable = false
+  o[112].Interactable = true
+  o[112].LayoutOrder = 0
+  o[112].Position = UDim2.new(0.759254575, 0, 0.5, 0)
+  o[112].Rotation = 0
+  o[112].Selectable = false
+  o[112].SelectionOrder = 0
+  o[112].Size = UDim2.new(0, 68, 0, 50)
+  o[112].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[112].Visible = true
+  o[112].ZIndex = 1
+  o[112].Parent = o[104]
+  o[113] = Instance.new("Frame")
+  o[113].Name = "SelectorSection"
+  o[113].Active = false
+  o[113].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[113].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[113].BackgroundColor3 = Color3.new(0.105882354, 0.105882354, 0.105882354)
+  o[113].BackgroundTransparency = 0
+  o[113].BorderColor3 = Color3.new(0, 0, 0)
+  o[113].BorderSizePixel = 0
+  o[113].ClipsDescendants = false
+  o[113].Draggable = false
+  o[113].Interactable = true
+  o[113].LayoutOrder = 0
+  o[113].Position = UDim2.new(0.678248823, 0, 0.854988396, 0)
+  o[113].Rotation = 0
+  o[113].Selectable = false
+  o[113].SelectionOrder = 0
+  o[113].Size = UDim2.new(0, 350, 0, 15)
+  o[113].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[113].Visible = true
+  o[113].ZIndex = 1
+  o[113].Parent = o[51]
+  o[114] = Instance.new("UIListLayout")
+  o[114].Name = "UIListLayout"
+  o[114].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[114].Padding = UDim.new(0, 1)
+  o[114].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[114].Wraps = false
+  o[114].FillDirection = ev(Enum.FillDirection, 1)
+  o[114].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[114].SortOrder = ev(Enum.SortOrder, 2)
+  o[114].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[114].Parent = o[113]
+  o[115] = Instance.new("UIPadding")
+  o[115].Name = "UIPadding"
+  o[115].PaddingBottom = UDim.new(0, 0)
+  o[115].PaddingLeft = UDim.new(0, 0)
+  o[115].PaddingRight = UDim.new(0, 0)
+  o[115].PaddingTop = UDim.new(0, 0)
+  o[115].Parent = o[113]
+  o[116] = Instance.new("UICorner")
+  o[116].Name = "UICorner"
+  o[116].BottomLeftRadius = UDim.new(0, 12)
+  o[116].BottomRightRadius = UDim.new(0, 12)
+  o[116].TopLeftRadius = UDim.new(0, 12)
+  o[116].TopRightRadius = UDim.new(0, 12)
+  o[116].Parent = o[113]
+  o[117] = Instance.new("UIStroke")
+  o[117].Name = "UIStroke"
+  o[117].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[117].BorderOffset = UDim.new(0, 0)
+  o[117].Color = Color3.new(0.235294119, 0.235294119, 0.235294119)
+  o[117].Enabled = true
+  o[117].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[117].Thickness = 0.5
+  o[117].Transparency = 0
+  o[117].ZIndex = 1
+  o[117].Parent = o[113]
+  o[118] = Instance.new("Frame")
+  o[118].Name = "SectionNameHolderFrame"
+  o[118].Active = false
+  o[118].AnchorPoint = Vector2.new(0, 0)
+  o[118].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[118].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[118].BackgroundTransparency = 1
+  o[118].BorderColor3 = Color3.new(0, 0, 0)
+  o[118].BorderSizePixel = 0
+  o[118].ClipsDescendants = false
+  o[118].Draggable = false
+  o[118].Interactable = true
+  o[118].LayoutOrder = 0
+  o[118].Position = UDim2.new(0, 0, 0, 0)
+  o[118].Rotation = 0
+  o[118].Selectable = false
+  o[118].SelectionOrder = 0
+  o[118].Size = UDim2.new(1, 0, 0, 50)
+  o[118].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[118].Visible = true
+  o[118].ZIndex = 1
+  o[118].Parent = o[113]
+  o[119] = Instance.new("ImageButton")
+  o[119].Name = "SectionButton"
+  o[119].HoverImage = ""
+  o[119].Image = ""
+  o[119].ImageColor3 = Color3.new(1, 1, 1)
+  o[119].ImageRectOffset = Vector2.new(0, 0)
+  o[119].ImageRectSize = Vector2.new(0, 0)
+  o[119].ImageTransparency = 1
+  o[119].PressedImage = ""
+  o[119].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[119].ScaleType = ev(Enum.ScaleType, 0)
+  o[119].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[119].SliceScale = 1
+  o[119].TileSize = UDim2.new(1, 0, 1, 0)
+  o[119].AutoButtonColor = true
+  o[119].Modal = false
+  o[119].Selected = false
+  o[119].Active = true
+  o[119].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[119].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[119].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[119].BackgroundTransparency = 1
+  o[119].BorderColor3 = Color3.new(0, 0, 0)
+  o[119].BorderSizePixel = 0
+  o[119].ClipsDescendants = false
+  o[119].Draggable = false
+  o[119].Interactable = true
+  o[119].LayoutOrder = 0
+  o[119].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[119].Rotation = 0
+  o[119].Selectable = true
+  o[119].SelectionOrder = 0
+  o[119].Size = UDim2.new(1, 0, 1, 0)
+  o[119].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[119].Visible = true
+  o[119].ZIndex = 5
+  o[119].Parent = o[118]
+  o[120] = Instance.new("ImageLabel")
+  o[120].Name = "Icon"
+  o[120].Image = "rbxassetid://82022839420755"
+  o[120].ImageColor3 = Color3.new(0.470588237, 0.470588237, 0.470588237)
+  o[120].ImageRectOffset = Vector2.new(0, 0)
+  o[120].ImageRectSize = Vector2.new(0, 0)
+  o[120].ImageTransparency = 0
+  o[120].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[120].ScaleType = ev(Enum.ScaleType, 0)
+  o[120].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[120].SliceScale = 1
+  o[120].TileSize = UDim2.new(1, 0, 1, 0)
+  o[120].Active = false
+  o[120].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[120].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[120].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[120].BackgroundTransparency = 1
+  o[120].BorderColor3 = Color3.new(0, 0, 0)
+  o[120].BorderSizePixel = 0
+  o[120].ClipsDescendants = false
+  o[120].Draggable = false
+  o[120].Interactable = true
+  o[120].LayoutOrder = 0
+  o[120].Position = UDim2.new(0.910000026, 0, 0.5, 0)
+  o[120].Rotation = 180
+  o[120].Selectable = false
+  o[120].SelectionOrder = 0
+  o[120].Size = UDim2.new(0, 15, 0, 15)
+  o[120].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[120].Visible = true
+  o[120].ZIndex = 1
+  o[120].Parent = o[118]
+  o[121] = Instance.new("TextLabel")
+  o[121].Name = "SectionName"
+  o[121].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[121].LineHeight = 1
+  o[121].LocalizationMatchedSourceText = ""
+  o[121].MaxVisibleGraphemes = -1
+  o[121].OpenTypeFeatures = ""
+  o[121].RichText = false
+  o[121].Text = "Selectors"
+  o[121].TextColor3 = Color3.new(0.847058892, 0.847058892, 0.847058892)
+  o[121].TextScaled = false
+  o[121].TextSize = 24
+  o[121].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[121].TextStrokeTransparency = 1
+  o[121].TextTransparency = 0
+  o[121].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[121].TextWrapped = false
+  o[121].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[121].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[121].Active = false
+  o[121].AnchorPoint = Vector2.new(0, 0.5)
+  o[121].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[121].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[121].BackgroundTransparency = 1
+  o[121].BorderColor3 = Color3.new(0, 0, 0)
+  o[121].BorderSizePixel = 0
+  o[121].ClipsDescendants = false
+  o[121].Draggable = false
+  o[121].Interactable = true
+  o[121].LayoutOrder = 0
+  o[121].Position = UDim2.new(0.0500000007, 0, 0.449999988, 0)
+  o[121].Rotation = 0
+  o[121].Selectable = false
+  o[121].SelectionOrder = 0
+  o[121].Size = UDim2.new(0, 0, 0.899999976, 0)
+  o[121].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[121].Visible = true
+  o[121].ZIndex = 1
+  o[121].Parent = o[118]
+  o[122] = Instance.new("Frame")
+  o[122].Name = "ButtonsHolderFrame"
+  o[122].Active = false
+  o[122].AnchorPoint = Vector2.new(0, 0)
+  o[122].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[122].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[122].BackgroundTransparency = 1
+  o[122].BorderColor3 = Color3.new(0, 0, 0)
+  o[122].BorderSizePixel = 0
+  o[122].ClipsDescendants = false
+  o[122].Draggable = false
+  o[122].Interactable = true
+  o[122].LayoutOrder = 0
+  o[122].Position = UDim2.new(0, 0, 0, 0)
+  o[122].Rotation = 0
+  o[122].Selectable = false
+  o[122].SelectionOrder = 0
+  o[122].Size = UDim2.new(1, 0, 0, 10)
+  o[122].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[122].Visible = true
+  o[122].ZIndex = 1
+  o[122].Parent = o[113]
+  o[123] = Instance.new("UIListLayout")
+  o[123].Name = "UIListLayout"
+  o[123].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[123].Padding = UDim.new(0, 2)
+  o[123].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[123].Wraps = false
+  o[123].FillDirection = ev(Enum.FillDirection, 1)
+  o[123].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[123].SortOrder = ev(Enum.SortOrder, 2)
+  o[123].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[123].Parent = o[122]
+  o[124] = Instance.new("UIPadding")
+  o[124].Name = "UIPadding"
+  o[124].PaddingBottom = UDim.new(0, 12)
+  o[124].PaddingLeft = UDim.new(0, 0)
+  o[124].PaddingRight = UDim.new(0, 0)
+  o[124].PaddingTop = UDim.new(0, 0)
+  o[124].Parent = o[122]
+  o[125] = Instance.new("Frame")
+  o[125].Name = "Selector"
+  o[125].Active = false
+  o[125].AnchorPoint = Vector2.new(0, 0)
+  o[125].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[125].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[125].BackgroundTransparency = 1
+  o[125].BorderColor3 = Color3.new(0, 0, 0)
+  o[125].BorderSizePixel = 0
+  o[125].ClipsDescendants = false
+  o[125].Draggable = false
+  o[125].Interactable = true
+  o[125].LayoutOrder = 2
+  o[125].Position = UDim2.new(0, 0, 0, 0)
+  o[125].Rotation = 0
+  o[125].Selectable = false
+  o[125].SelectionOrder = 0
+  o[125].Size = UDim2.new(0.920000017, 0, 0, 50)
+  o[125].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[125].Visible = true
+  o[125].ZIndex = 1
+  o[125].Parent = o[122]
+  o[126] = Instance.new("TextLabel")
+  o[126].Name = "Name"
+  o[126].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[126].LineHeight = 1
+  o[126].LocalizationMatchedSourceText = ""
+  o[126].MaxVisibleGraphemes = -1
+  o[126].OpenTypeFeatures = ""
+  o[126].RichText = false
+  o[126].Text = "Selector"
+  o[126].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[126].TextScaled = false
+  o[126].TextSize = 16
+  o[126].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[126].TextStrokeTransparency = 1
+  o[126].TextTransparency = 0
+  o[126].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[126].TextWrapped = false
+  o[126].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[126].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[126].Active = false
+  o[126].AnchorPoint = Vector2.new(0, 0.5)
+  o[126].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[126].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[126].BackgroundTransparency = 1
+  o[126].BorderColor3 = Color3.new(0, 0, 0)
+  o[126].BorderSizePixel = 0
+  o[126].ClipsDescendants = false
+  o[126].Draggable = false
+  o[126].Interactable = true
+  o[126].LayoutOrder = 0
+  o[126].Position = UDim2.new(0.00999999978, 0, 0.5, 0)
+  o[126].Rotation = 0
+  o[126].Selectable = false
+  o[126].SelectionOrder = 0
+  o[126].Size = UDim2.new(0, 31, 0, 50)
+  o[126].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[126].Visible = true
+  o[126].ZIndex = 1
+  o[126].Parent = o[125]
+  o[127] = Instance.new("UIStroke")
+  o[127].Name = "UIStroke"
+  o[127].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[127].BorderOffset = UDim.new(0, 0)
+  o[127].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[127].Enabled = true
+  o[127].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[127].Thickness = 0.200000003
+  o[127].Transparency = 0
+  o[127].ZIndex = 1
+  o[127].Parent = o[126]
+  o[128] = Instance.new("Frame")
+  o[128].Name = "SelectionsHolder"
+  o[128].Active = false
+  o[128].AnchorPoint = Vector2.new(1, 0.5)
+  o[128].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[128].BackgroundColor3 = Color3.new(0.0627451017, 0.0627451017, 0.0627451017)
+  o[128].BackgroundTransparency = 0
+  o[128].BorderColor3 = Color3.new(0, 0, 0)
+  o[128].BorderSizePixel = 0
+  o[128].ClipsDescendants = false
+  o[128].Draggable = false
+  o[128].Interactable = true
+  o[128].LayoutOrder = 0
+  o[128].Position = UDim2.new(0.969999909, 0, 0.5, 0)
+  o[128].Rotation = 0
+  o[128].Selectable = false
+  o[128].SelectionOrder = 0
+  o[128].Size = UDim2.new(0, 15, 0, 30)
+  o[128].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[128].Visible = true
+  o[128].ZIndex = 1
+  o[128].Parent = o[125]
+  o[129] = Instance.new("UICorner")
+  o[129].Name = "UICorner"
+  o[129].BottomLeftRadius = UDim.new(0, 8)
+  o[129].BottomRightRadius = UDim.new(0, 8)
+  o[129].TopLeftRadius = UDim.new(0, 8)
+  o[129].TopRightRadius = UDim.new(0, 8)
+  o[129].Parent = o[128]
+  o[130] = Instance.new("ImageButton")
+  o[130].Name = "Selection1"
+  o[130].HoverImage = ""
+  o[130].Image = ""
+  o[130].ImageColor3 = Color3.new(1, 1, 1)
+  o[130].ImageRectOffset = Vector2.new(0, 0)
+  o[130].ImageRectSize = Vector2.new(0, 0)
+  o[130].ImageTransparency = 1
+  o[130].PressedImage = ""
+  o[130].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[130].ScaleType = ev(Enum.ScaleType, 0)
+  o[130].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[130].SliceScale = 1
+  o[130].TileSize = UDim2.new(1, 0, 1, 0)
+  o[130].AutoButtonColor = false
+  o[130].Modal = false
+  o[130].Selected = false
+  o[130].Active = true
+  o[130].AnchorPoint = Vector2.new(0, 0)
+  o[130].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[130].BackgroundColor3 = Color3.new(0.0627451017, 0.0627451017, 0.0627451017)
+  o[130].BackgroundTransparency = 0
+  o[130].BorderColor3 = Color3.new(0, 0, 0)
+  o[130].BorderSizePixel = 0
+  o[130].ClipsDescendants = false
+  o[130].Draggable = false
+  o[130].Interactable = true
+  o[130].LayoutOrder = 0
+  o[130].Position = UDim2.new(0, 0, 0, 0)
+  o[130].Rotation = 0
+  o[130].Selectable = true
+  o[130].SelectionOrder = 0
+  o[130].Size = UDim2.new(0, 13, 0, 28)
+  o[130].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[130].Visible = true
+  o[130].ZIndex = 1
+  o[130].Parent = o[128]
+  o[131] = Instance.new("UICorner")
+  o[131].Name = "UICorner"
+  o[131].BottomLeftRadius = UDim.new(0, 8)
+  o[131].BottomRightRadius = UDim.new(0, 8)
+  o[131].TopLeftRadius = UDim.new(0, 8)
+  o[131].TopRightRadius = UDim.new(0, 8)
+  o[131].Parent = o[130]
+  o[132] = Instance.new("TextLabel")
+  o[132].Name = "Name"
+  o[132].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[132].LineHeight = 1
+  o[132].LocalizationMatchedSourceText = ""
+  o[132].MaxVisibleGraphemes = -1
+  o[132].OpenTypeFeatures = ""
+  o[132].RichText = false
+  o[132].Text = "Selection1"
+  o[132].TextColor3 = Color3.new(0.415686309, 0.415686309, 0.415686309)
+  o[132].TextScaled = false
+  o[132].TextSize = 14
+  o[132].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[132].TextStrokeTransparency = 1
+  o[132].TextTransparency = 0
+  o[132].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[132].TextWrapped = false
+  o[132].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[132].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[132].Active = false
+  o[132].AnchorPoint = Vector2.new(0, 0)
+  o[132].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[132].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[132].BackgroundTransparency = 1
+  o[132].BorderColor3 = Color3.new(0, 0, 0)
+  o[132].BorderSizePixel = 0
+  o[132].ClipsDescendants = false
+  o[132].Draggable = false
+  o[132].Interactable = true
+  o[132].LayoutOrder = 0
+  o[132].Position = UDim2.new(0, 0, 0, 0)
+  o[132].Rotation = 0
+  o[132].Selectable = false
+  o[132].SelectionOrder = 0
+  o[132].Size = UDim2.new(1, 0, 1, 0)
+  o[132].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[132].Visible = true
+  o[132].ZIndex = 1
+  o[132].Parent = o[130]
+  o[133] = Instance.new("UIPadding")
+  o[133].Name = "UIPadding"
+  o[133].PaddingBottom = UDim.new(0, 0)
+  o[133].PaddingLeft = UDim.new(0, 4)
+  o[133].PaddingRight = UDim.new(0, 4)
+  o[133].PaddingTop = UDim.new(0, 0)
+  o[133].Parent = o[130]
+  o[134] = Instance.new("UIListLayout")
+  o[134].Name = "UIListLayout"
+  o[134].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[134].Padding = UDim.new(0, 1)
+  o[134].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[134].Wraps = false
+  o[134].FillDirection = ev(Enum.FillDirection, 0)
+  o[134].HorizontalAlignment = ev(Enum.HorizontalAlignment, 2)
+  o[134].SortOrder = ev(Enum.SortOrder, 2)
+  o[134].VerticalAlignment = ev(Enum.VerticalAlignment, 0)
+  o[134].Parent = o[128]
+  o[135] = Instance.new("UIPadding")
+  o[135].Name = "UIPadding"
+  o[135].PaddingBottom = UDim.new(0, 0)
+  o[135].PaddingLeft = UDim.new(0, 0)
+  o[135].PaddingRight = UDim.new(0, 0)
+  o[135].PaddingTop = UDim.new(0, 0)
+  o[135].Parent = o[128]
+  o[136] = Instance.new("ImageButton")
+  o[136].Name = "Selection2"
+  o[136].HoverImage = ""
+  o[136].Image = ""
+  o[136].ImageColor3 = Color3.new(1, 1, 1)
+  o[136].ImageRectOffset = Vector2.new(0, 0)
+  o[136].ImageRectSize = Vector2.new(0, 0)
+  o[136].ImageTransparency = 1
+  o[136].PressedImage = ""
+  o[136].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[136].ScaleType = ev(Enum.ScaleType, 0)
+  o[136].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[136].SliceScale = 1
+  o[136].TileSize = UDim2.new(1, 0, 1, 0)
+  o[136].AutoButtonColor = false
+  o[136].Modal = false
+  o[136].Selected = false
+  o[136].Active = true
+  o[136].AnchorPoint = Vector2.new(0, 0)
+  o[136].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[136].BackgroundColor3 = Color3.new(0.117647059, 0.117647059, 0.117647059)
+  o[136].BackgroundTransparency = 0
+  o[136].BorderColor3 = Color3.new(0, 0, 0)
+  o[136].BorderSizePixel = 0
+  o[136].ClipsDescendants = false
+  o[136].Draggable = false
+  o[136].Interactable = true
+  o[136].LayoutOrder = 0
+  o[136].Position = UDim2.new(0, 0, 0, 0)
+  o[136].Rotation = 0
+  o[136].Selectable = true
+  o[136].SelectionOrder = 0
+  o[136].Size = UDim2.new(0, 13, 0, 28)
+  o[136].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[136].Visible = true
+  o[136].ZIndex = 1
+  o[136].Parent = o[128]
+  o[137] = Instance.new("UICorner")
+  o[137].Name = "UICorner"
+  o[137].BottomLeftRadius = UDim.new(0, 8)
+  o[137].BottomRightRadius = UDim.new(0, 8)
+  o[137].TopLeftRadius = UDim.new(0, 8)
+  o[137].TopRightRadius = UDim.new(0, 8)
+  o[137].Parent = o[136]
+  o[138] = Instance.new("TextLabel")
+  o[138].Name = "Name"
+  o[138].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[138].LineHeight = 1
+  o[138].LocalizationMatchedSourceText = ""
+  o[138].MaxVisibleGraphemes = -1
+  o[138].OpenTypeFeatures = ""
+  o[138].RichText = false
+  o[138].Text = "Selection2"
+  o[138].TextColor3 = Color3.new(0.721568644, 0.721568644, 0.721568644)
+  o[138].TextScaled = false
+  o[138].TextSize = 14
+  o[138].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[138].TextStrokeTransparency = 1
+  o[138].TextTransparency = 0
+  o[138].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[138].TextWrapped = false
+  o[138].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[138].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[138].Active = false
+  o[138].AnchorPoint = Vector2.new(0, 0)
+  o[138].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[138].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[138].BackgroundTransparency = 1
+  o[138].BorderColor3 = Color3.new(0, 0, 0)
+  o[138].BorderSizePixel = 0
+  o[138].ClipsDescendants = false
+  o[138].Draggable = false
+  o[138].Interactable = true
+  o[138].LayoutOrder = 0
+  o[138].Position = UDim2.new(0, 0, 0, 0)
+  o[138].Rotation = 0
+  o[138].Selectable = false
+  o[138].SelectionOrder = 0
+  o[138].Size = UDim2.new(1, 0, 1, 0)
+  o[138].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[138].Visible = true
+  o[138].ZIndex = 1
+  o[138].Parent = o[136]
+  o[139] = Instance.new("UIPadding")
+  o[139].Name = "UIPadding"
+  o[139].PaddingBottom = UDim.new(0, 0)
+  o[139].PaddingLeft = UDim.new(0, 4)
+  o[139].PaddingRight = UDim.new(0, 4)
+  o[139].PaddingTop = UDim.new(0, 0)
+  o[139].Parent = o[136]
+  o[140] = Instance.new("UIStroke")
+  o[140].Name = "UIStroke"
+  o[140].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[140].BorderOffset = UDim.new(0, 0)
+  o[140].Color = Color3.new(0.274509817, 0.274509817, 0.274509817)
+  o[140].Enabled = true
+  o[140].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[140].Thickness = 1
+  o[140].Transparency = 0
+  o[140].ZIndex = 1
+  o[140].Parent = o[136]
+  o[141] = Instance.new("ImageButton")
+  o[141].Name = "Selection3"
+  o[141].HoverImage = ""
+  o[141].Image = ""
+  o[141].ImageColor3 = Color3.new(1, 1, 1)
+  o[141].ImageRectOffset = Vector2.new(0, 0)
+  o[141].ImageRectSize = Vector2.new(0, 0)
+  o[141].ImageTransparency = 1
+  o[141].PressedImage = ""
+  o[141].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[141].ScaleType = ev(Enum.ScaleType, 0)
+  o[141].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[141].SliceScale = 1
+  o[141].TileSize = UDim2.new(1, 0, 1, 0)
+  o[141].AutoButtonColor = false
+  o[141].Modal = false
+  o[141].Selected = false
+  o[141].Active = true
+  o[141].AnchorPoint = Vector2.new(0, 0)
+  o[141].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[141].BackgroundColor3 = Color3.new(0.0627451017, 0.0627451017, 0.0627451017)
+  o[141].BackgroundTransparency = 0
+  o[141].BorderColor3 = Color3.new(0, 0, 0)
+  o[141].BorderSizePixel = 0
+  o[141].ClipsDescendants = false
+  o[141].Draggable = false
+  o[141].Interactable = true
+  o[141].LayoutOrder = 0
+  o[141].Position = UDim2.new(0, 0, 0, 0)
+  o[141].Rotation = 0
+  o[141].Selectable = true
+  o[141].SelectionOrder = 0
+  o[141].Size = UDim2.new(0, 13, 0, 28)
+  o[141].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[141].Visible = true
+  o[141].ZIndex = 1
+  o[141].Parent = o[128]
+  o[142] = Instance.new("UICorner")
+  o[142].Name = "UICorner"
+  o[142].BottomLeftRadius = UDim.new(0, 8)
+  o[142].BottomRightRadius = UDim.new(0, 8)
+  o[142].TopLeftRadius = UDim.new(0, 8)
+  o[142].TopRightRadius = UDim.new(0, 8)
+  o[142].Parent = o[141]
+  o[143] = Instance.new("TextLabel")
+  o[143].Name = "Name"
+  o[143].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[143].LineHeight = 1
+  o[143].LocalizationMatchedSourceText = ""
+  o[143].MaxVisibleGraphemes = -1
+  o[143].OpenTypeFeatures = ""
+  o[143].RichText = false
+  o[143].Text = "Selection3"
+  o[143].TextColor3 = Color3.new(0.415686309, 0.415686309, 0.415686309)
+  o[143].TextScaled = false
+  o[143].TextSize = 14
+  o[143].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[143].TextStrokeTransparency = 1
+  o[143].TextTransparency = 0
+  o[143].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[143].TextWrapped = false
+  o[143].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[143].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[143].Active = false
+  o[143].AnchorPoint = Vector2.new(0, 0)
+  o[143].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[143].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[143].BackgroundTransparency = 1
+  o[143].BorderColor3 = Color3.new(0, 0, 0)
+  o[143].BorderSizePixel = 0
+  o[143].ClipsDescendants = false
+  o[143].Draggable = false
+  o[143].Interactable = true
+  o[143].LayoutOrder = 0
+  o[143].Position = UDim2.new(0, 0, 0, 0)
+  o[143].Rotation = 0
+  o[143].Selectable = false
+  o[143].SelectionOrder = 0
+  o[143].Size = UDim2.new(1, 0, 1, 0)
+  o[143].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[143].Visible = true
+  o[143].ZIndex = 1
+  o[143].Parent = o[141]
+  o[144] = Instance.new("UIPadding")
+  o[144].Name = "UIPadding"
+  o[144].PaddingBottom = UDim.new(0, 0)
+  o[144].PaddingLeft = UDim.new(0, 4)
+  o[144].PaddingRight = UDim.new(0, 4)
+  o[144].PaddingTop = UDim.new(0, 0)
+  o[144].Parent = o[141]
+  o[145] = Instance.new("Frame")
+  o[145].Name = "Selector2"
+  o[145].Active = false
+  o[145].AnchorPoint = Vector2.new(0, 0)
+  o[145].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[145].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[145].BackgroundTransparency = 1
+  o[145].BorderColor3 = Color3.new(0, 0, 0)
+  o[145].BorderSizePixel = 0
+  o[145].ClipsDescendants = false
+  o[145].Draggable = false
+  o[145].Interactable = true
+  o[145].LayoutOrder = 2
+  o[145].Position = UDim2.new(0, 0, 0, 0)
+  o[145].Rotation = 0
+  o[145].Selectable = false
+  o[145].SelectionOrder = 0
+  o[145].Size = UDim2.new(0.920000017, 0, 0, 50)
+  o[145].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[145].Visible = true
+  o[145].ZIndex = 1
+  o[145].Parent = o[122]
+  o[146] = Instance.new("TextLabel")
+  o[146].Name = "Name"
+  o[146].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[146].LineHeight = 1
+  o[146].LocalizationMatchedSourceText = ""
+  o[146].MaxVisibleGraphemes = -1
+  o[146].OpenTypeFeatures = ""
+  o[146].RichText = false
+  o[146].Text = "Selector 2"
+  o[146].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[146].TextScaled = false
+  o[146].TextSize = 16
+  o[146].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[146].TextStrokeTransparency = 1
+  o[146].TextTransparency = 0
+  o[146].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[146].TextWrapped = false
+  o[146].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[146].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[146].Active = false
+  o[146].AnchorPoint = Vector2.new(0, 0.5)
+  o[146].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[146].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[146].BackgroundTransparency = 1
+  o[146].BorderColor3 = Color3.new(0, 0, 0)
+  o[146].BorderSizePixel = 0
+  o[146].ClipsDescendants = false
+  o[146].Draggable = false
+  o[146].Interactable = true
+  o[146].LayoutOrder = 0
+  o[146].Position = UDim2.new(0.00999999978, 0, 0.5, 0)
+  o[146].Rotation = 0
+  o[146].Selectable = false
+  o[146].SelectionOrder = 0
+  o[146].Size = UDim2.new(0, 31, 0, 50)
+  o[146].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[146].Visible = true
+  o[146].ZIndex = 1
+  o[146].Parent = o[145]
+  o[147] = Instance.new("UIStroke")
+  o[147].Name = "UIStroke"
+  o[147].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[147].BorderOffset = UDim.new(0, 0)
+  o[147].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[147].Enabled = true
+  o[147].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[147].Thickness = 0.200000003
+  o[147].Transparency = 0
+  o[147].ZIndex = 1
+  o[147].Parent = o[146]
+  o[148] = Instance.new("Frame")
+  o[148].Name = "SelectionsHolder"
+  o[148].Active = false
+  o[148].AnchorPoint = Vector2.new(1, 0.5)
+  o[148].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[148].BackgroundColor3 = Color3.new(0.0627451017, 0.0627451017, 0.0627451017)
+  o[148].BackgroundTransparency = 0
+  o[148].BorderColor3 = Color3.new(0, 0, 0)
+  o[148].BorderSizePixel = 0
+  o[148].ClipsDescendants = false
+  o[148].Draggable = false
+  o[148].Interactable = true
+  o[148].LayoutOrder = 0
+  o[148].Position = UDim2.new(0.969999909, 0, 0.5, 0)
+  o[148].Rotation = 0
+  o[148].Selectable = false
+  o[148].SelectionOrder = 0
+  o[148].Size = UDim2.new(0, 15, 0, 30)
+  o[148].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[148].Visible = true
+  o[148].ZIndex = 1
+  o[148].Parent = o[145]
+  o[149] = Instance.new("UICorner")
+  o[149].Name = "UICorner"
+  o[149].BottomLeftRadius = UDim.new(0, 8)
+  o[149].BottomRightRadius = UDim.new(0, 8)
+  o[149].TopLeftRadius = UDim.new(0, 8)
+  o[149].TopRightRadius = UDim.new(0, 8)
+  o[149].Parent = o[148]
+  o[150] = Instance.new("ImageButton")
+  o[150].Name = "Selection1"
+  o[150].HoverImage = ""
+  o[150].Image = ""
+  o[150].ImageColor3 = Color3.new(1, 1, 1)
+  o[150].ImageRectOffset = Vector2.new(0, 0)
+  o[150].ImageRectSize = Vector2.new(0, 0)
+  o[150].ImageTransparency = 1
+  o[150].PressedImage = ""
+  o[150].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[150].ScaleType = ev(Enum.ScaleType, 0)
+  o[150].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[150].SliceScale = 1
+  o[150].TileSize = UDim2.new(1, 0, 1, 0)
+  o[150].AutoButtonColor = false
+  o[150].Modal = false
+  o[150].Selected = false
+  o[150].Active = true
+  o[150].AnchorPoint = Vector2.new(0, 0)
+  o[150].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[150].BackgroundColor3 = Color3.new(0.0627451017, 0.0627451017, 0.0627451017)
+  o[150].BackgroundTransparency = 0
+  o[150].BorderColor3 = Color3.new(0, 0, 0)
+  o[150].BorderSizePixel = 0
+  o[150].ClipsDescendants = false
+  o[150].Draggable = false
+  o[150].Interactable = true
+  o[150].LayoutOrder = 0
+  o[150].Position = UDim2.new(0, 0, 0, 0)
+  o[150].Rotation = 0
+  o[150].Selectable = true
+  o[150].SelectionOrder = 0
+  o[150].Size = UDim2.new(0, 13, 0, 28)
+  o[150].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[150].Visible = true
+  o[150].ZIndex = 1
+  o[150].Parent = o[148]
+  o[151] = Instance.new("UICorner")
+  o[151].Name = "UICorner"
+  o[151].BottomLeftRadius = UDim.new(0, 8)
+  o[151].BottomRightRadius = UDim.new(0, 8)
+  o[151].TopLeftRadius = UDim.new(0, 8)
+  o[151].TopRightRadius = UDim.new(0, 8)
+  o[151].Parent = o[150]
+  o[152] = Instance.new("TextLabel")
+  o[152].Name = "Name"
+  o[152].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[152].LineHeight = 1
+  o[152].LocalizationMatchedSourceText = ""
+  o[152].MaxVisibleGraphemes = -1
+  o[152].OpenTypeFeatures = ""
+  o[152].RichText = false
+  o[152].Text = "Selection1"
+  o[152].TextColor3 = Color3.new(0.415686309, 0.415686309, 0.415686309)
+  o[152].TextScaled = false
+  o[152].TextSize = 14
+  o[152].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[152].TextStrokeTransparency = 1
+  o[152].TextTransparency = 0
+  o[152].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[152].TextWrapped = false
+  o[152].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[152].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[152].Active = false
+  o[152].AnchorPoint = Vector2.new(0, 0)
+  o[152].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[152].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[152].BackgroundTransparency = 1
+  o[152].BorderColor3 = Color3.new(0, 0, 0)
+  o[152].BorderSizePixel = 0
+  o[152].ClipsDescendants = false
+  o[152].Draggable = false
+  o[152].Interactable = true
+  o[152].LayoutOrder = 0
+  o[152].Position = UDim2.new(0, 0, 0, 0)
+  o[152].Rotation = 0
+  o[152].Selectable = false
+  o[152].SelectionOrder = 0
+  o[152].Size = UDim2.new(1, 0, 1, 0)
+  o[152].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[152].Visible = true
+  o[152].ZIndex = 1
+  o[152].Parent = o[150]
+  o[153] = Instance.new("UIPadding")
+  o[153].Name = "UIPadding"
+  o[153].PaddingBottom = UDim.new(0, 0)
+  o[153].PaddingLeft = UDim.new(0, 4)
+  o[153].PaddingRight = UDim.new(0, 4)
+  o[153].PaddingTop = UDim.new(0, 0)
+  o[153].Parent = o[150]
+  o[154] = Instance.new("UIListLayout")
+  o[154].Name = "UIListLayout"
+  o[154].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[154].Padding = UDim.new(0, 1)
+  o[154].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[154].Wraps = false
+  o[154].FillDirection = ev(Enum.FillDirection, 0)
+  o[154].HorizontalAlignment = ev(Enum.HorizontalAlignment, 2)
+  o[154].SortOrder = ev(Enum.SortOrder, 2)
+  o[154].VerticalAlignment = ev(Enum.VerticalAlignment, 0)
+  o[154].Parent = o[148]
+  o[155] = Instance.new("UIPadding")
+  o[155].Name = "UIPadding"
+  o[155].PaddingBottom = UDim.new(0, 0)
+  o[155].PaddingLeft = UDim.new(0, 0)
+  o[155].PaddingRight = UDim.new(0, 0)
+  o[155].PaddingTop = UDim.new(0, 0)
+  o[155].Parent = o[148]
+  o[156] = Instance.new("ImageButton")
+  o[156].Name = "Selection2"
+  o[156].HoverImage = ""
+  o[156].Image = ""
+  o[156].ImageColor3 = Color3.new(1, 1, 1)
+  o[156].ImageRectOffset = Vector2.new(0, 0)
+  o[156].ImageRectSize = Vector2.new(0, 0)
+  o[156].ImageTransparency = 1
+  o[156].PressedImage = ""
+  o[156].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[156].ScaleType = ev(Enum.ScaleType, 0)
+  o[156].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[156].SliceScale = 1
+  o[156].TileSize = UDim2.new(1, 0, 1, 0)
+  o[156].AutoButtonColor = false
+  o[156].Modal = false
+  o[156].Selected = false
+  o[156].Active = true
+  o[156].AnchorPoint = Vector2.new(0, 0)
+  o[156].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[156].BackgroundColor3 = Color3.new(0.0627451017, 0.0627451017, 0.0627451017)
+  o[156].BackgroundTransparency = 0
+  o[156].BorderColor3 = Color3.new(0, 0, 0)
+  o[156].BorderSizePixel = 0
+  o[156].ClipsDescendants = false
+  o[156].Draggable = false
+  o[156].Interactable = true
+  o[156].LayoutOrder = 0
+  o[156].Position = UDim2.new(0, 0, 0, 0)
+  o[156].Rotation = 0
+  o[156].Selectable = true
+  o[156].SelectionOrder = 0
+  o[156].Size = UDim2.new(0, 13, 0, 28)
+  o[156].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[156].Visible = true
+  o[156].ZIndex = 1
+  o[156].Parent = o[148]
+  o[157] = Instance.new("UICorner")
+  o[157].Name = "UICorner"
+  o[157].BottomLeftRadius = UDim.new(0, 8)
+  o[157].BottomRightRadius = UDim.new(0, 8)
+  o[157].TopLeftRadius = UDim.new(0, 8)
+  o[157].TopRightRadius = UDim.new(0, 8)
+  o[157].Parent = o[156]
+  o[158] = Instance.new("TextLabel")
+  o[158].Name = "Name"
+  o[158].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[158].LineHeight = 1
+  o[158].LocalizationMatchedSourceText = ""
+  o[158].MaxVisibleGraphemes = -1
+  o[158].OpenTypeFeatures = ""
+  o[158].RichText = false
+  o[158].Text = "Selection2"
+  o[158].TextColor3 = Color3.new(0.41568628, 0.41568628, 0.41568628)
+  o[158].TextScaled = false
+  o[158].TextSize = 14
+  o[158].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[158].TextStrokeTransparency = 1
+  o[158].TextTransparency = 0
+  o[158].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[158].TextWrapped = false
+  o[158].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[158].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[158].Active = false
+  o[158].AnchorPoint = Vector2.new(0, 0)
+  o[158].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[158].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[158].BackgroundTransparency = 1
+  o[158].BorderColor3 = Color3.new(0, 0, 0)
+  o[158].BorderSizePixel = 0
+  o[158].ClipsDescendants = false
+  o[158].Draggable = false
+  o[158].Interactable = true
+  o[158].LayoutOrder = 0
+  o[158].Position = UDim2.new(0, 0, 0, 0)
+  o[158].Rotation = 0
+  o[158].Selectable = false
+  o[158].SelectionOrder = 0
+  o[158].Size = UDim2.new(1, 0, 1, 0)
+  o[158].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[158].Visible = true
+  o[158].ZIndex = 1
+  o[158].Parent = o[156]
+  o[159] = Instance.new("UIPadding")
+  o[159].Name = "UIPadding"
+  o[159].PaddingBottom = UDim.new(0, 0)
+  o[159].PaddingLeft = UDim.new(0, 4)
+  o[159].PaddingRight = UDim.new(0, 4)
+  o[159].PaddingTop = UDim.new(0, 0)
+  o[159].Parent = o[156]
+  o[160] = Instance.new("ImageButton")
+  o[160].Name = "Selection3"
+  o[160].HoverImage = ""
+  o[160].Image = ""
+  o[160].ImageColor3 = Color3.new(1, 1, 1)
+  o[160].ImageRectOffset = Vector2.new(0, 0)
+  o[160].ImageRectSize = Vector2.new(0, 0)
+  o[160].ImageTransparency = 1
+  o[160].PressedImage = ""
+  o[160].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[160].ScaleType = ev(Enum.ScaleType, 0)
+  o[160].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[160].SliceScale = 1
+  o[160].TileSize = UDim2.new(1, 0, 1, 0)
+  o[160].AutoButtonColor = false
+  o[160].Modal = false
+  o[160].Selected = false
+  o[160].Active = true
+  o[160].AnchorPoint = Vector2.new(0, 0)
+  o[160].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[160].BackgroundColor3 = Color3.new(0.117647059, 0.117647059, 0.117647059)
+  o[160].BackgroundTransparency = 0
+  o[160].BorderColor3 = Color3.new(0, 0, 0)
+  o[160].BorderSizePixel = 0
+  o[160].ClipsDescendants = false
+  o[160].Draggable = false
+  o[160].Interactable = true
+  o[160].LayoutOrder = 0
+  o[160].Position = UDim2.new(0, 0, 0, 0)
+  o[160].Rotation = 0
+  o[160].Selectable = true
+  o[160].SelectionOrder = 0
+  o[160].Size = UDim2.new(0, 13, 0, 28)
+  o[160].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[160].Visible = true
+  o[160].ZIndex = 1
+  o[160].Parent = o[148]
+  o[161] = Instance.new("UICorner")
+  o[161].Name = "UICorner"
+  o[161].BottomLeftRadius = UDim.new(0, 8)
+  o[161].BottomRightRadius = UDim.new(0, 8)
+  o[161].TopLeftRadius = UDim.new(0, 8)
+  o[161].TopRightRadius = UDim.new(0, 8)
+  o[161].Parent = o[160]
+  o[162] = Instance.new("TextLabel")
+  o[162].Name = "Name"
+  o[162].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[162].LineHeight = 1
+  o[162].LocalizationMatchedSourceText = ""
+  o[162].MaxVisibleGraphemes = -1
+  o[162].OpenTypeFeatures = ""
+  o[162].RichText = false
+  o[162].Text = "Selection3"
+  o[162].TextColor3 = Color3.new(0.721568644, 0.721568644, 0.721568644)
+  o[162].TextScaled = false
+  o[162].TextSize = 14
+  o[162].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[162].TextStrokeTransparency = 1
+  o[162].TextTransparency = 0
+  o[162].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[162].TextWrapped = false
+  o[162].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[162].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[162].Active = false
+  o[162].AnchorPoint = Vector2.new(0, 0)
+  o[162].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[162].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[162].BackgroundTransparency = 1
+  o[162].BorderColor3 = Color3.new(0, 0, 0)
+  o[162].BorderSizePixel = 0
+  o[162].ClipsDescendants = false
+  o[162].Draggable = false
+  o[162].Interactable = true
+  o[162].LayoutOrder = 0
+  o[162].Position = UDim2.new(0, 0, 0, 0)
+  o[162].Rotation = 0
+  o[162].Selectable = false
+  o[162].SelectionOrder = 0
+  o[162].Size = UDim2.new(1, 0, 1, 0)
+  o[162].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[162].Visible = true
+  o[162].ZIndex = 1
+  o[162].Parent = o[160]
+  o[163] = Instance.new("UIPadding")
+  o[163].Name = "UIPadding"
+  o[163].PaddingBottom = UDim.new(0, 0)
+  o[163].PaddingLeft = UDim.new(0, 4)
+  o[163].PaddingRight = UDim.new(0, 4)
+  o[163].PaddingTop = UDim.new(0, 0)
+  o[163].Parent = o[160]
+  o[164] = Instance.new("UIStroke")
+  o[164].Name = "UIStroke"
+  o[164].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[164].BorderOffset = UDim.new(0, 0)
+  o[164].Color = Color3.new(0.274509817, 0.274509817, 0.274509817)
+  o[164].Enabled = true
+  o[164].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[164].Thickness = 1
+  o[164].Transparency = 0
+  o[164].ZIndex = 1
+  o[164].Parent = o[160]
+  o[165] = Instance.new("Frame")
+  o[165].Name = "DropdownSection"
+  o[165].Active = false
+  o[165].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[165].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[165].BackgroundColor3 = Color3.new(0.105882354, 0.105882354, 0.105882354)
+  o[165].BackgroundTransparency = 0
+  o[165].BorderColor3 = Color3.new(0, 0, 0)
+  o[165].BorderSizePixel = 0
+  o[165].ClipsDescendants = false
+  o[165].Draggable = false
+  o[165].Interactable = true
+  o[165].LayoutOrder = 0
+  o[165].Position = UDim2.new(-0.439194202, 0, 0.85633117, 0)
+  o[165].Rotation = 0
+  o[165].Selectable = false
+  o[165].SelectionOrder = 0
+  o[165].Size = UDim2.new(0, 350, 0, 15)
+  o[165].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[165].Visible = true
+  o[165].ZIndex = 1
+  o[165].Parent = o[51]
+  o[166] = Instance.new("UIListLayout")
+  o[166].Name = "UIListLayout"
+  o[166].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[166].Padding = UDim.new(0, 1)
+  o[166].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[166].Wraps = false
+  o[166].FillDirection = ev(Enum.FillDirection, 1)
+  o[166].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[166].SortOrder = ev(Enum.SortOrder, 2)
+  o[166].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[166].Parent = o[165]
+  o[167] = Instance.new("UIPadding")
+  o[167].Name = "UIPadding"
+  o[167].PaddingBottom = UDim.new(0, 0)
+  o[167].PaddingLeft = UDim.new(0, 0)
+  o[167].PaddingRight = UDim.new(0, 0)
+  o[167].PaddingTop = UDim.new(0, 0)
+  o[167].Parent = o[165]
+  o[168] = Instance.new("UICorner")
+  o[168].Name = "UICorner"
+  o[168].BottomLeftRadius = UDim.new(0, 12)
+  o[168].BottomRightRadius = UDim.new(0, 12)
+  o[168].TopLeftRadius = UDim.new(0, 12)
+  o[168].TopRightRadius = UDim.new(0, 12)
+  o[168].Parent = o[165]
+  o[169] = Instance.new("UIStroke")
+  o[169].Name = "UIStroke"
+  o[169].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[169].BorderOffset = UDim.new(0, 0)
+  o[169].Color = Color3.new(0.235294119, 0.235294119, 0.235294119)
+  o[169].Enabled = true
+  o[169].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[169].Thickness = 0.5
+  o[169].Transparency = 0
+  o[169].ZIndex = 1
+  o[169].Parent = o[165]
+  o[170] = Instance.new("Frame")
+  o[170].Name = "SectionNameHolderFrame"
+  o[170].Active = false
+  o[170].AnchorPoint = Vector2.new(0, 0)
+  o[170].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[170].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[170].BackgroundTransparency = 1
+  o[170].BorderColor3 = Color3.new(0, 0, 0)
+  o[170].BorderSizePixel = 0
+  o[170].ClipsDescendants = false
+  o[170].Draggable = false
+  o[170].Interactable = true
+  o[170].LayoutOrder = 0
+  o[170].Position = UDim2.new(0, 0, 0, 0)
+  o[170].Rotation = 0
+  o[170].Selectable = false
+  o[170].SelectionOrder = 0
+  o[170].Size = UDim2.new(1, 0, 0, 50)
+  o[170].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[170].Visible = true
+  o[170].ZIndex = 1
+  o[170].Parent = o[165]
+  o[171] = Instance.new("ImageButton")
+  o[171].Name = "SectionButton"
+  o[171].HoverImage = ""
+  o[171].Image = ""
+  o[171].ImageColor3 = Color3.new(1, 1, 1)
+  o[171].ImageRectOffset = Vector2.new(0, 0)
+  o[171].ImageRectSize = Vector2.new(0, 0)
+  o[171].ImageTransparency = 1
+  o[171].PressedImage = ""
+  o[171].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[171].ScaleType = ev(Enum.ScaleType, 0)
+  o[171].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[171].SliceScale = 1
+  o[171].TileSize = UDim2.new(1, 0, 1, 0)
+  o[171].AutoButtonColor = true
+  o[171].Modal = false
+  o[171].Selected = false
+  o[171].Active = true
+  o[171].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[171].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[171].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[171].BackgroundTransparency = 1
+  o[171].BorderColor3 = Color3.new(0, 0, 0)
+  o[171].BorderSizePixel = 0
+  o[171].ClipsDescendants = false
+  o[171].Draggable = false
+  o[171].Interactable = true
+  o[171].LayoutOrder = 0
+  o[171].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[171].Rotation = 0
+  o[171].Selectable = true
+  o[171].SelectionOrder = 0
+  o[171].Size = UDim2.new(1, 0, 1, 0)
+  o[171].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[171].Visible = true
+  o[171].ZIndex = 5
+  o[171].Parent = o[170]
+  o[172] = Instance.new("ImageLabel")
+  o[172].Name = "Icon"
+  o[172].Image = "rbxassetid://82022839420755"
+  o[172].ImageColor3 = Color3.new(0.470588237, 0.470588237, 0.470588237)
+  o[172].ImageRectOffset = Vector2.new(0, 0)
+  o[172].ImageRectSize = Vector2.new(0, 0)
+  o[172].ImageTransparency = 0
+  o[172].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[172].ScaleType = ev(Enum.ScaleType, 0)
+  o[172].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[172].SliceScale = 1
+  o[172].TileSize = UDim2.new(1, 0, 1, 0)
+  o[172].Active = false
+  o[172].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[172].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[172].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[172].BackgroundTransparency = 1
+  o[172].BorderColor3 = Color3.new(0, 0, 0)
+  o[172].BorderSizePixel = 0
+  o[172].ClipsDescendants = false
+  o[172].Draggable = false
+  o[172].Interactable = true
+  o[172].LayoutOrder = 0
+  o[172].Position = UDim2.new(0.910000026, 0, 0.5, 0)
+  o[172].Rotation = 180
+  o[172].Selectable = false
+  o[172].SelectionOrder = 0
+  o[172].Size = UDim2.new(0, 15, 0, 15)
+  o[172].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[172].Visible = true
+  o[172].ZIndex = 1
+  o[172].Parent = o[170]
+  o[173] = Instance.new("TextLabel")
+  o[173].Name = "SectionName"
+  o[173].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[173].LineHeight = 1
+  o[173].LocalizationMatchedSourceText = ""
+  o[173].MaxVisibleGraphemes = -1
+  o[173].OpenTypeFeatures = ""
+  o[173].RichText = false
+  o[173].Text = "Dropdowns"
+  o[173].TextColor3 = Color3.new(0.847058892, 0.847058892, 0.847058892)
+  o[173].TextScaled = false
+  o[173].TextSize = 24
+  o[173].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[173].TextStrokeTransparency = 1
+  o[173].TextTransparency = 0
+  o[173].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[173].TextWrapped = false
+  o[173].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[173].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[173].Active = false
+  o[173].AnchorPoint = Vector2.new(0, 0.5)
+  o[173].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[173].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[173].BackgroundTransparency = 1
+  o[173].BorderColor3 = Color3.new(0, 0, 0)
+  o[173].BorderSizePixel = 0
+  o[173].ClipsDescendants = false
+  o[173].Draggable = false
+  o[173].Interactable = true
+  o[173].LayoutOrder = 0
+  o[173].Position = UDim2.new(0.0500000007, 0, 0.449999988, 0)
+  o[173].Rotation = 0
+  o[173].Selectable = false
+  o[173].SelectionOrder = 0
+  o[173].Size = UDim2.new(0, 0, 0.899999976, 0)
+  o[173].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[173].Visible = true
+  o[173].ZIndex = 1
+  o[173].Parent = o[170]
+  o[174] = Instance.new("Frame")
+  o[174].Name = "ButtonsHolderFrame"
+  o[174].Active = false
+  o[174].AnchorPoint = Vector2.new(0, 0)
+  o[174].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[174].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[174].BackgroundTransparency = 1
+  o[174].BorderColor3 = Color3.new(0, 0, 0)
+  o[174].BorderSizePixel = 0
+  o[174].ClipsDescendants = false
+  o[174].Draggable = false
+  o[174].Interactable = true
+  o[174].LayoutOrder = 0
+  o[174].Position = UDim2.new(0, 0, 0, 0)
+  o[174].Rotation = 0
+  o[174].Selectable = false
+  o[174].SelectionOrder = 0
+  o[174].Size = UDim2.new(1, 0, 0, 10)
+  o[174].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[174].Visible = true
+  o[174].ZIndex = 1
+  o[174].Parent = o[165]
+  o[175] = Instance.new("UIListLayout")
+  o[175].Name = "UIListLayout"
+  o[175].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[175].Padding = UDim.new(0, 2)
+  o[175].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[175].Wraps = false
+  o[175].FillDirection = ev(Enum.FillDirection, 1)
+  o[175].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[175].SortOrder = ev(Enum.SortOrder, 2)
+  o[175].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[175].Parent = o[174]
+  o[176] = Instance.new("UIPadding")
+  o[176].Name = "UIPadding"
+  o[176].PaddingBottom = UDim.new(0, 12)
+  o[176].PaddingLeft = UDim.new(0, 0)
+  o[176].PaddingRight = UDim.new(0, 0)
+  o[176].PaddingTop = UDim.new(0, 0)
+  o[176].Parent = o[174]
+  o[177] = Instance.new("Frame")
+  o[177].Name = "Dropdown"
+  o[177].Active = false
+  o[177].AnchorPoint = Vector2.new(0, 0)
+  o[177].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[177].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[177].BackgroundTransparency = 1
+  o[177].BorderColor3 = Color3.new(0, 0, 0)
+  o[177].BorderSizePixel = 0
+  o[177].ClipsDescendants = false
+  o[177].Draggable = false
+  o[177].Interactable = true
+  o[177].LayoutOrder = 2
+  o[177].Position = UDim2.new(0, 0, 0, 0)
+  o[177].Rotation = 0
+  o[177].Selectable = false
+  o[177].SelectionOrder = 0
+  o[177].Size = UDim2.new(0.920000017, 0, 0, 50)
+  o[177].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[177].Visible = true
+  o[177].ZIndex = 1
+  o[177].Parent = o[174]
+  o[178] = Instance.new("TextLabel")
+  o[178].Name = "Name"
+  o[178].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[178].LineHeight = 1
+  o[178].LocalizationMatchedSourceText = ""
+  o[178].MaxVisibleGraphemes = -1
+  o[178].OpenTypeFeatures = ""
+  o[178].RichText = false
+  o[178].Text = "Dropdown"
+  o[178].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[178].TextScaled = false
+  o[178].TextSize = 16
+  o[178].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[178].TextStrokeTransparency = 1
+  o[178].TextTransparency = 0
+  o[178].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[178].TextWrapped = false
+  o[178].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[178].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[178].Active = false
+  o[178].AnchorPoint = Vector2.new(0, 0.5)
+  o[178].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[178].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[178].BackgroundTransparency = 1
+  o[178].BorderColor3 = Color3.new(0, 0, 0)
+  o[178].BorderSizePixel = 0
+  o[178].ClipsDescendants = false
+  o[178].Draggable = false
+  o[178].Interactable = true
+  o[178].LayoutOrder = 0
+  o[178].Position = UDim2.new(0.00999999978, 0, 0.5, 0)
+  o[178].Rotation = 0
+  o[178].Selectable = false
+  o[178].SelectionOrder = 0
+  o[178].Size = UDim2.new(0, 31, 0, 50)
+  o[178].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[178].Visible = true
+  o[178].ZIndex = 1
+  o[178].Parent = o[177]
+  o[179] = Instance.new("UIStroke")
+  o[179].Name = "UIStroke"
+  o[179].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[179].BorderOffset = UDim.new(0, 0)
+  o[179].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[179].Enabled = true
+  o[179].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[179].Thickness = 0.200000003
+  o[179].Transparency = 0
+  o[179].ZIndex = 1
+  o[179].Parent = o[178]
+  o[180] = Instance.new("Frame")
+  o[180].Name = "DropdownSelectedFrame"
+  o[180].Active = false
+  o[180].AnchorPoint = Vector2.new(1, 0.5)
+  o[180].AutomaticSize = ev(Enum.AutomaticSize, 3)
+  o[180].BackgroundColor3 = Color3.new(0.0509803928, 0.0509803928, 0.0509803928)
+  o[180].BackgroundTransparency = 0
+  o[180].BorderColor3 = Color3.new(0, 0, 0)
+  o[180].BorderSizePixel = 0
+  o[180].ClipsDescendants = false
+  o[180].Draggable = false
+  o[180].Interactable = true
+  o[180].LayoutOrder = 0
+  o[180].Position = UDim2.new(0.975000024, 0, 0.5, 0)
+  o[180].Rotation = 0
+  o[180].Selectable = false
+  o[180].SelectionOrder = 0
+  o[180].Size = UDim2.new(0, 15, 0, 23)
+  o[180].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[180].Visible = true
+  o[180].ZIndex = 1
+  o[180].Parent = o[177]
+  o[181] = Instance.new("UICorner")
+  o[181].Name = "UICorner"
+  o[181].BottomLeftRadius = UDim.new(0, 8)
+  o[181].BottomRightRadius = UDim.new(0, 8)
+  o[181].TopLeftRadius = UDim.new(0, 8)
+  o[181].TopRightRadius = UDim.new(0, 8)
+  o[181].Parent = o[180]
+  o[182] = Instance.new("TextLabel")
+  o[182].Name = "Picked"
+  o[182].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[182].LineHeight = 1
+  o[182].LocalizationMatchedSourceText = ""
+  o[182].MaxVisibleGraphemes = -1
+  o[182].OpenTypeFeatures = ""
+  o[182].RichText = false
+  o[182].Text = "selected1, selected2        m"
+  o[182].TextColor3 = Color3.new(0.843137264, 0.843137264, 0.843137264)
+  o[182].TextScaled = false
+  o[182].TextSize = 15
+  o[182].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[182].TextStrokeTransparency = 1
+  o[182].TextTransparency = 0
+  o[182].TextTruncate = ev(Enum.TextTruncate, 1)
+  o[182].TextWrapped = false
+  o[182].TextXAlignment = ev(Enum.TextXAlignment, 1)
+  o[182].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[182].Active = false
+  o[182].AnchorPoint = Vector2.new(1, 0.5)
+  o[182].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[182].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[182].BackgroundTransparency = 1
+  o[182].BorderColor3 = Color3.new(0, 0, 0)
+  o[182].BorderSizePixel = 0
+  o[182].ClipsDescendants = false
+  o[182].Draggable = false
+  o[182].Interactable = true
+  o[182].LayoutOrder = 0
+  o[182].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[182].Rotation = 0
+  o[182].Selectable = false
+  o[182].SelectionOrder = 0
+  o[182].Size = UDim2.new(0, 5, 1, 0)
+  o[182].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[182].Visible = true
+  o[182].ZIndex = 1
+  o[182].Parent = o[180]
+  o[183] = Instance.new("UIListLayout")
+  o[183].Name = "UIListLayout"
+  o[183].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[183].Padding = UDim.new(0, 5)
+  o[183].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[183].Wraps = false
+  o[183].FillDirection = ev(Enum.FillDirection, 0)
+  o[183].HorizontalAlignment = ev(Enum.HorizontalAlignment, 2)
+  o[183].SortOrder = ev(Enum.SortOrder, 2)
+  o[183].VerticalAlignment = ev(Enum.VerticalAlignment, 0)
+  o[183].Parent = o[180]
+  o[184] = Instance.new("UIPadding")
+  o[184].Name = "UIPadding"
+  o[184].PaddingBottom = UDim.new(0, 6)
+  o[184].PaddingLeft = UDim.new(0, 10)
+  o[184].PaddingRight = UDim.new(0, 5)
+  o[184].PaddingTop = UDim.new(0, 6)
+  o[184].Parent = o[180]
+  o[185] = Instance.new("ImageLabel")
+  o[185].Name = "Icon"
+  o[185].Image = "rbxassetid://71447831631799"
+  o[185].ImageColor3 = Color3.new(1, 1, 1)
+  o[185].ImageRectOffset = Vector2.new(0, 0)
+  o[185].ImageRectSize = Vector2.new(0, 0)
+  o[185].ImageTransparency = 0.600000024
+  o[185].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[185].ScaleType = ev(Enum.ScaleType, 0)
+  o[185].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[185].SliceScale = 1
+  o[185].TileSize = UDim2.new(1, 0, 1, 0)
+  o[185].Active = false
+  o[185].AnchorPoint = Vector2.new(0, 0)
+  o[185].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[185].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[185].BackgroundTransparency = 1
+  o[185].BorderColor3 = Color3.new(0, 0, 0)
+  o[185].BorderSizePixel = 0
+  o[185].ClipsDescendants = false
+  o[185].Draggable = false
+  o[185].Interactable = true
+  o[185].LayoutOrder = 0
+  o[185].Position = UDim2.new(0, 0, 0, 0)
+  o[185].Rotation = 0
+  o[185].Selectable = false
+  o[185].SelectionOrder = 0
+  o[185].Size = UDim2.new(0, 15, 0, 15)
+  o[185].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[185].Visible = true
+  o[185].ZIndex = 1
+  o[185].Parent = o[180]
+  o[186] = Instance.new("Frame")
+  o[186].Name = "LeftColumn"
+  o[186].Active = false
+  o[186].AnchorPoint = Vector2.new(0, 0)
+  o[186].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[186].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[186].BackgroundTransparency = 1
+  o[186].BorderColor3 = Color3.new(0, 0, 0)
+  o[186].BorderSizePixel = 0
+  o[186].ClipsDescendants = false
+  o[186].Draggable = false
+  o[186].Interactable = true
+  o[186].LayoutOrder = 0
+  o[186].Position = UDim2.new(0, 0, 0.100000001, 0)
+  o[186].Rotation = 0
+  o[186].Selectable = false
+  o[186].SelectionOrder = 0
+  o[186].Size = UDim2.new(0.5, 0, 0, 0)
+  o[186].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[186].Visible = true
+  o[186].ZIndex = 1
+  o[186].Parent = o[50]
+  o[187] = Instance.new("UIListLayout")
+  o[187].Name = "UIListLayout"
+  o[187].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[187].Padding = UDim.new(0, 20)
+  o[187].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[187].Wraps = true
+  o[187].FillDirection = ev(Enum.FillDirection, 0)
+  o[187].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[187].SortOrder = ev(Enum.SortOrder, 2)
+  o[187].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[187].Parent = o[186]
+  o[188] = Instance.new("UIPadding")
+  o[188].Name = "UIPadding"
+  o[188].PaddingBottom = UDim.new(0, 10)
+  o[188].PaddingLeft = UDim.new(0, 20)
+  o[188].PaddingRight = UDim.new(0, 10)
+  o[188].PaddingTop = UDim.new(0, 10)
+  o[188].Parent = o[186]
+  o[189] = Instance.new("Frame")
+  o[189].Name = "CollapsedSection"
+  o[189].Active = false
+  o[189].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[189].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[189].BackgroundColor3 = Color3.new(0.105882354, 0.105882354, 0.105882354)
+  o[189].BackgroundTransparency = 0
+  o[189].BorderColor3 = Color3.new(0, 0, 0)
+  o[189].BorderSizePixel = 0
+  o[189].ClipsDescendants = false
+  o[189].Draggable = false
+  o[189].Interactable = true
+  o[189].LayoutOrder = 0
+  o[189].Position = UDim2.new(0.474999994, 0, 0.357442319, 0)
+  o[189].Rotation = 0
+  o[189].Selectable = false
+  o[189].SelectionOrder = 0
+  o[189].Size = UDim2.new(0, 350, 0, 15)
+  o[189].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[189].Visible = true
+  o[189].ZIndex = 1
+  o[189].Parent = o[186]
+  o[190] = Instance.new("UIListLayout")
+  o[190].Name = "UIListLayout"
+  o[190].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[190].Padding = UDim.new(0, 1)
+  o[190].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[190].Wraps = false
+  o[190].FillDirection = ev(Enum.FillDirection, 1)
+  o[190].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[190].SortOrder = ev(Enum.SortOrder, 2)
+  o[190].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[190].Parent = o[189]
+  o[191] = Instance.new("UIPadding")
+  o[191].Name = "UIPadding"
+  o[191].PaddingBottom = UDim.new(0, 0)
+  o[191].PaddingLeft = UDim.new(0, 0)
+  o[191].PaddingRight = UDim.new(0, 0)
+  o[191].PaddingTop = UDim.new(0, 0)
+  o[191].Parent = o[189]
+  o[192] = Instance.new("UICorner")
+  o[192].Name = "UICorner"
+  o[192].BottomLeftRadius = UDim.new(0, 12)
+  o[192].BottomRightRadius = UDim.new(0, 12)
+  o[192].TopLeftRadius = UDim.new(0, 12)
+  o[192].TopRightRadius = UDim.new(0, 12)
+  o[192].Parent = o[189]
+  o[193] = Instance.new("UIStroke")
+  o[193].Name = "UIStroke"
+  o[193].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[193].BorderOffset = UDim.new(0, 0)
+  o[193].Color = Color3.new(0.235294119, 0.235294119, 0.235294119)
+  o[193].Enabled = true
+  o[193].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[193].Thickness = 0.5
+  o[193].Transparency = 0
+  o[193].ZIndex = 1
+  o[193].Parent = o[189]
+  o[194] = Instance.new("Frame")
+  o[194].Name = "SectionNameHolderFrame"
+  o[194].Active = false
+  o[194].AnchorPoint = Vector2.new(0, 0)
+  o[194].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[194].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[194].BackgroundTransparency = 1
+  o[194].BorderColor3 = Color3.new(0, 0, 0)
+  o[194].BorderSizePixel = 0
+  o[194].ClipsDescendants = false
+  o[194].Draggable = false
+  o[194].Interactable = true
+  o[194].LayoutOrder = 0
+  o[194].Position = UDim2.new(0, 0, 0, 0)
+  o[194].Rotation = 0
+  o[194].Selectable = false
+  o[194].SelectionOrder = 0
+  o[194].Size = UDim2.new(1, 0, 0, 50)
+  o[194].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[194].Visible = true
+  o[194].ZIndex = 1
+  o[194].Parent = o[189]
+  o[195] = Instance.new("ImageButton")
+  o[195].Name = "SectionButton"
+  o[195].HoverImage = ""
+  o[195].Image = ""
+  o[195].ImageColor3 = Color3.new(1, 1, 1)
+  o[195].ImageRectOffset = Vector2.new(0, 0)
+  o[195].ImageRectSize = Vector2.new(0, 0)
+  o[195].ImageTransparency = 1
+  o[195].PressedImage = ""
+  o[195].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[195].ScaleType = ev(Enum.ScaleType, 0)
+  o[195].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[195].SliceScale = 1
+  o[195].TileSize = UDim2.new(1, 0, 1, 0)
+  o[195].AutoButtonColor = true
+  o[195].Modal = false
+  o[195].Selected = false
+  o[195].Active = true
+  o[195].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[195].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[195].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[195].BackgroundTransparency = 1
+  o[195].BorderColor3 = Color3.new(0, 0, 0)
+  o[195].BorderSizePixel = 0
+  o[195].ClipsDescendants = false
+  o[195].Draggable = false
+  o[195].Interactable = true
+  o[195].LayoutOrder = 0
+  o[195].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[195].Rotation = 0
+  o[195].Selectable = true
+  o[195].SelectionOrder = 0
+  o[195].Size = UDim2.new(1, 0, 1, 0)
+  o[195].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[195].Visible = true
+  o[195].ZIndex = 5
+  o[195].Parent = o[194]
+  o[196] = Instance.new("TextLabel")
+  o[196].Name = "SectionName"
+  o[196].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[196].LineHeight = 1
+  o[196].LocalizationMatchedSourceText = ""
+  o[196].MaxVisibleGraphemes = -1
+  o[196].OpenTypeFeatures = ""
+  o[196].RichText = false
+  o[196].Text = "Section (collapsed)"
+  o[196].TextColor3 = Color3.new(0.847058892, 0.847058892, 0.847058892)
+  o[196].TextScaled = false
+  o[196].TextSize = 24
+  o[196].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[196].TextStrokeTransparency = 1
+  o[196].TextTransparency = 0
+  o[196].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[196].TextWrapped = false
+  o[196].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[196].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[196].Active = false
+  o[196].AnchorPoint = Vector2.new(0, 0.5)
+  o[196].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[196].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[196].BackgroundTransparency = 1
+  o[196].BorderColor3 = Color3.new(0, 0, 0)
+  o[196].BorderSizePixel = 0
+  o[196].ClipsDescendants = false
+  o[196].Draggable = false
+  o[196].Interactable = true
+  o[196].LayoutOrder = 0
+  o[196].Position = UDim2.new(0.0500000007, 0, 0.449999988, 0)
+  o[196].Rotation = 0
+  o[196].Selectable = false
+  o[196].SelectionOrder = 0
+  o[196].Size = UDim2.new(0, 0, 0.899999976, 0)
+  o[196].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[196].Visible = true
+  o[196].ZIndex = 1
+  o[196].Parent = o[194]
+  o[197] = Instance.new("ImageLabel")
+  o[197].Name = "Icon"
+  o[197].Image = "rbxassetid://82022839420755"
+  o[197].ImageColor3 = Color3.new(0.470588237, 0.470588237, 0.470588237)
+  o[197].ImageRectOffset = Vector2.new(0, 0)
+  o[197].ImageRectSize = Vector2.new(0, 0)
+  o[197].ImageTransparency = 0
+  o[197].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[197].ScaleType = ev(Enum.ScaleType, 0)
+  o[197].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[197].SliceScale = 1
+  o[197].TileSize = UDim2.new(1, 0, 1, 0)
+  o[197].Active = false
+  o[197].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[197].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[197].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[197].BackgroundTransparency = 1
+  o[197].BorderColor3 = Color3.new(0, 0, 0)
+  o[197].BorderSizePixel = 0
+  o[197].ClipsDescendants = false
+  o[197].Draggable = false
+  o[197].Interactable = true
+  o[197].LayoutOrder = 0
+  o[197].Position = UDim2.new(0.910000026, 0, 0.5, 0)
+  o[197].Rotation = 90
+  o[197].Selectable = false
+  o[197].SelectionOrder = 0
+  o[197].Size = UDim2.new(0, 15, 0, 15)
+  o[197].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[197].Visible = true
+  o[197].ZIndex = 1
+  o[197].Parent = o[194]
+  o[198] = Instance.new("Frame")
+  o[198].Name = "TogglesSection"
+  o[198].Active = false
+  o[198].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[198].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[198].BackgroundColor3 = Color3.new(0.105882354, 0.105882354, 0.105882354)
+  o[198].BackgroundTransparency = 0
+  o[198].BorderColor3 = Color3.new(0, 0, 0)
+  o[198].BorderSizePixel = 0
+  o[198].ClipsDescendants = false
+  o[198].Draggable = false
+  o[198].Interactable = true
+  o[198].LayoutOrder = 0
+  o[198].Position = UDim2.new(0.474999994, 0, 0.357442319, 0)
+  o[198].Rotation = 0
+  o[198].Selectable = false
+  o[198].SelectionOrder = 0
+  o[198].Size = UDim2.new(0, 350, 0, 15)
+  o[198].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[198].Visible = true
+  o[198].ZIndex = 1
+  o[198].Parent = o[186]
+  o[199] = Instance.new("UIListLayout")
+  o[199].Name = "UIListLayout"
+  o[199].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[199].Padding = UDim.new(0, 1)
+  o[199].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[199].Wraps = false
+  o[199].FillDirection = ev(Enum.FillDirection, 1)
+  o[199].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[199].SortOrder = ev(Enum.SortOrder, 2)
+  o[199].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[199].Parent = o[198]
+  o[200] = Instance.new("UIPadding")
+  o[200].Name = "UIPadding"
+  o[200].PaddingBottom = UDim.new(0, 0)
+  o[200].PaddingLeft = UDim.new(0, 0)
+  o[200].PaddingRight = UDim.new(0, 0)
+  o[200].PaddingTop = UDim.new(0, 0)
+  o[200].Parent = o[198]
+  o[201] = Instance.new("UICorner")
+  o[201].Name = "UICorner"
+  o[201].BottomLeftRadius = UDim.new(0, 12)
+  o[201].BottomRightRadius = UDim.new(0, 12)
+  o[201].TopLeftRadius = UDim.new(0, 12)
+  o[201].TopRightRadius = UDim.new(0, 12)
+  o[201].Parent = o[198]
+  o[202] = Instance.new("UIStroke")
+  o[202].Name = "UIStroke"
+  o[202].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[202].BorderOffset = UDim.new(0, 0)
+  o[202].Color = Color3.new(0.235294119, 0.235294119, 0.235294119)
+  o[202].Enabled = true
+  o[202].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[202].Thickness = 0.5
+  o[202].Transparency = 0
+  o[202].ZIndex = 1
+  o[202].Parent = o[198]
+  o[203] = Instance.new("Frame")
+  o[203].Name = "SectionNameHolderFrame"
+  o[203].Active = false
+  o[203].AnchorPoint = Vector2.new(0, 0)
+  o[203].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[203].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[203].BackgroundTransparency = 1
+  o[203].BorderColor3 = Color3.new(0, 0, 0)
+  o[203].BorderSizePixel = 0
+  o[203].ClipsDescendants = false
+  o[203].Draggable = false
+  o[203].Interactable = true
+  o[203].LayoutOrder = 0
+  o[203].Position = UDim2.new(0, 0, 0, 0)
+  o[203].Rotation = 0
+  o[203].Selectable = false
+  o[203].SelectionOrder = 0
+  o[203].Size = UDim2.new(1, 0, 0, 50)
+  o[203].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[203].Visible = true
+  o[203].ZIndex = 1
+  o[203].Parent = o[198]
+  o[204] = Instance.new("ImageButton")
+  o[204].Name = "SectionButton"
+  o[204].HoverImage = ""
+  o[204].Image = ""
+  o[204].ImageColor3 = Color3.new(1, 1, 1)
+  o[204].ImageRectOffset = Vector2.new(0, 0)
+  o[204].ImageRectSize = Vector2.new(0, 0)
+  o[204].ImageTransparency = 1
+  o[204].PressedImage = ""
+  o[204].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[204].ScaleType = ev(Enum.ScaleType, 0)
+  o[204].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[204].SliceScale = 1
+  o[204].TileSize = UDim2.new(1, 0, 1, 0)
+  o[204].AutoButtonColor = true
+  o[204].Modal = false
+  o[204].Selected = false
+  o[204].Active = true
+  o[204].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[204].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[204].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[204].BackgroundTransparency = 1
+  o[204].BorderColor3 = Color3.new(0, 0, 0)
+  o[204].BorderSizePixel = 0
+  o[204].ClipsDescendants = false
+  o[204].Draggable = false
+  o[204].Interactable = true
+  o[204].LayoutOrder = 0
+  o[204].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[204].Rotation = 0
+  o[204].Selectable = true
+  o[204].SelectionOrder = 0
+  o[204].Size = UDim2.new(1, 0, 1, 0)
+  o[204].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[204].Visible = true
+  o[204].ZIndex = 5
+  o[204].Parent = o[203]
+  o[205] = Instance.new("ImageLabel")
+  o[205].Name = "Icon"
+  o[205].Image = "rbxassetid://82022839420755"
+  o[205].ImageColor3 = Color3.new(0.470588237, 0.470588237, 0.470588237)
+  o[205].ImageRectOffset = Vector2.new(0, 0)
+  o[205].ImageRectSize = Vector2.new(0, 0)
+  o[205].ImageTransparency = 0
+  o[205].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[205].ScaleType = ev(Enum.ScaleType, 0)
+  o[205].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[205].SliceScale = 1
+  o[205].TileSize = UDim2.new(1, 0, 1, 0)
+  o[205].Active = false
+  o[205].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[205].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[205].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[205].BackgroundTransparency = 1
+  o[205].BorderColor3 = Color3.new(0, 0, 0)
+  o[205].BorderSizePixel = 0
+  o[205].ClipsDescendants = false
+  o[205].Draggable = false
+  o[205].Interactable = true
+  o[205].LayoutOrder = 0
+  o[205].Position = UDim2.new(0.910000026, 0, 0.5, 0)
+  o[205].Rotation = 180
+  o[205].Selectable = false
+  o[205].SelectionOrder = 0
+  o[205].Size = UDim2.new(0, 15, 0, 15)
+  o[205].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[205].Visible = true
+  o[205].ZIndex = 1
+  o[205].Parent = o[203]
+  o[206] = Instance.new("TextLabel")
+  o[206].Name = "SectionName"
+  o[206].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[206].LineHeight = 1
+  o[206].LocalizationMatchedSourceText = ""
+  o[206].MaxVisibleGraphemes = -1
+  o[206].OpenTypeFeatures = ""
+  o[206].RichText = false
+  o[206].Text = "Toggles"
+  o[206].TextColor3 = Color3.new(0.847058892, 0.847058892, 0.847058892)
+  o[206].TextScaled = false
+  o[206].TextSize = 24
+  o[206].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[206].TextStrokeTransparency = 1
+  o[206].TextTransparency = 0
+  o[206].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[206].TextWrapped = false
+  o[206].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[206].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[206].Active = false
+  o[206].AnchorPoint = Vector2.new(0, 0.5)
+  o[206].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[206].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[206].BackgroundTransparency = 1
+  o[206].BorderColor3 = Color3.new(0, 0, 0)
+  o[206].BorderSizePixel = 0
+  o[206].ClipsDescendants = false
+  o[206].Draggable = false
+  o[206].Interactable = true
+  o[206].LayoutOrder = 0
+  o[206].Position = UDim2.new(0.0500000007, 0, 0.449999988, 0)
+  o[206].Rotation = 0
+  o[206].Selectable = false
+  o[206].SelectionOrder = 0
+  o[206].Size = UDim2.new(0, 0, 0.899999976, 0)
+  o[206].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[206].Visible = true
+  o[206].ZIndex = 1
+  o[206].Parent = o[203]
+  o[207] = Instance.new("Frame")
+  o[207].Name = "ButtonsHolderFrame"
+  o[207].Active = false
+  o[207].AnchorPoint = Vector2.new(0, 0)
+  o[207].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[207].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[207].BackgroundTransparency = 1
+  o[207].BorderColor3 = Color3.new(0, 0, 0)
+  o[207].BorderSizePixel = 0
+  o[207].ClipsDescendants = false
+  o[207].Draggable = false
+  o[207].Interactable = true
+  o[207].LayoutOrder = 0
+  o[207].Position = UDim2.new(0, 0, 0, 0)
+  o[207].Rotation = 0
+  o[207].Selectable = false
+  o[207].SelectionOrder = 0
+  o[207].Size = UDim2.new(1, 0, 0, 10)
+  o[207].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[207].Visible = true
+  o[207].ZIndex = 1
+  o[207].Parent = o[198]
+  o[208] = Instance.new("UIListLayout")
+  o[208].Name = "UIListLayout"
+  o[208].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[208].Padding = UDim.new(0, 2)
+  o[208].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[208].Wraps = false
+  o[208].FillDirection = ev(Enum.FillDirection, 1)
+  o[208].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[208].SortOrder = ev(Enum.SortOrder, 2)
+  o[208].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[208].Parent = o[207]
+  o[209] = Instance.new("ImageButton")
+  o[209].Name = "ToggleEnabled"
+  o[209].HoverImage = ""
+  o[209].Image = ""
+  o[209].ImageColor3 = Color3.new(1, 1, 1)
+  o[209].ImageRectOffset = Vector2.new(0, 0)
+  o[209].ImageRectSize = Vector2.new(0, 0)
+  o[209].ImageTransparency = 1
+  o[209].PressedImage = ""
+  o[209].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[209].ScaleType = ev(Enum.ScaleType, 0)
+  o[209].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[209].SliceScale = 1
+  o[209].TileSize = UDim2.new(1, 0, 1, 0)
+  o[209].AutoButtonColor = true
+  o[209].Modal = false
+  o[209].Selected = false
+  o[209].Active = true
+  o[209].AnchorPoint = Vector2.new(0, 0)
+  o[209].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[209].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[209].BackgroundTransparency = 1
+  o[209].BorderColor3 = Color3.new(0, 0, 0)
+  o[209].BorderSizePixel = 0
+  o[209].ClipsDescendants = false
+  o[209].Draggable = false
+  o[209].Interactable = true
+  o[209].LayoutOrder = 0
+  o[209].Position = UDim2.new(0, 0, 0, 0)
+  o[209].Rotation = 0
+  o[209].Selectable = true
+  o[209].SelectionOrder = 0
+  o[209].Size = UDim2.new(0.920000017, 0, 0, 50)
+  o[209].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[209].Visible = true
+  o[209].ZIndex = 1
+  o[209].Parent = o[207]
+  o[210] = Instance.new("TextLabel")
+  o[210].Name = "Name"
+  o[210].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[210].LineHeight = 1
+  o[210].LocalizationMatchedSourceText = ""
+  o[210].MaxVisibleGraphemes = -1
+  o[210].OpenTypeFeatures = ""
+  o[210].RichText = false
+  o[210].Text = "Toggle (enabled)"
+  o[210].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[210].TextScaled = false
+  o[210].TextSize = 16
+  o[210].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[210].TextStrokeTransparency = 1
+  o[210].TextTransparency = 0
+  o[210].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[210].TextWrapped = false
+  o[210].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[210].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[210].Active = false
+  o[210].AnchorPoint = Vector2.new(0, 0.5)
+  o[210].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[210].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[210].BackgroundTransparency = 1
+  o[210].BorderColor3 = Color3.new(0, 0, 0)
+  o[210].BorderSizePixel = 0
+  o[210].ClipsDescendants = false
+  o[210].Draggable = false
+  o[210].Interactable = true
+  o[210].LayoutOrder = 0
+  o[210].Position = UDim2.new(0.00999999978, 0, 0.5, 0)
+  o[210].Rotation = 0
+  o[210].Selectable = false
+  o[210].SelectionOrder = 0
+  o[210].Size = UDim2.new(0, 31, 0, 50)
+  o[210].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[210].Visible = true
+  o[210].ZIndex = 1
+  o[210].Parent = o[209]
+  o[211] = Instance.new("UIStroke")
+  o[211].Name = "UIStroke"
+  o[211].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[211].BorderOffset = UDim.new(0, 0)
+  o[211].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[211].Enabled = true
+  o[211].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[211].Thickness = 0.200000003
+  o[211].Transparency = 0
+  o[211].ZIndex = 1
+  o[211].Parent = o[210]
+  o[212] = Instance.new("Frame")
+  o[212].Name = "ToggleFrame"
+  o[212].Active = false
+  o[212].AnchorPoint = Vector2.new(1, 0.5)
+  o[212].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[212].BackgroundColor3 = Color3.new(0.188235313, 0.188235313, 0.184313729)
+  o[212].BackgroundTransparency = 0
+  o[212].BorderColor3 = Color3.new(0, 0, 0)
+  o[212].BorderSizePixel = 0
+  o[212].ClipsDescendants = false
+  o[212].Draggable = false
+  o[212].Interactable = true
+  o[212].LayoutOrder = 0
+  o[212].Position = UDim2.new(0.980000019, 0, 0.5, 0)
+  o[212].Rotation = 0
+  o[212].Selectable = false
+  o[212].SelectionOrder = 0
+  o[212].Size = UDim2.new(0, 45, 0, 25)
+  o[212].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[212].Visible = true
+  o[212].ZIndex = 1
+  o[212].Parent = o[209]
+  o[213] = Instance.new("UICorner")
+  o[213].Name = "UICorner"
+  o[213].BottomLeftRadius = UDim.new(1, 0)
+  o[213].BottomRightRadius = UDim.new(1, 0)
+  o[213].TopLeftRadius = UDim.new(1, 0)
+  o[213].TopRightRadius = UDim.new(1, 0)
+  o[213].Parent = o[212]
+  o[214] = Instance.new("UIStroke")
+  o[214].Name = "UIStroke"
+  o[214].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[214].BorderOffset = UDim.new(0, 0)
+  o[214].Color = Color3.new(0.686274529, 0.686274529, 0.686274529)
+  o[214].Enabled = true
+  o[214].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[214].Thickness = 0.5
+  o[214].Transparency = 0
+  o[214].ZIndex = 1
+  o[214].Parent = o[212]
+  o[215] = Instance.new("Frame")
+  o[215].Name = "Dot"
+  o[215].Active = false
+  o[215].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[215].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[215].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[215].BackgroundTransparency = 0
+  o[215].BorderColor3 = Color3.new(0, 0, 0)
+  o[215].BorderSizePixel = 0
+  o[215].ClipsDescendants = false
+  o[215].Draggable = false
+  o[215].Interactable = true
+  o[215].LayoutOrder = 0
+  o[215].Position = UDim2.new(0.699999988, 0, 0.5, 0)
+  o[215].Rotation = 0
+  o[215].Selectable = false
+  o[215].SelectionOrder = 0
+  o[215].Size = UDim2.new(0, 19, 0, 19)
+  o[215].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[215].Visible = true
+  o[215].ZIndex = 1
+  o[215].Parent = o[212]
+  o[216] = Instance.new("UICorner")
+  o[216].Name = "UICorner"
+  o[216].BottomLeftRadius = UDim.new(1, 0)
+  o[216].BottomRightRadius = UDim.new(1, 0)
+  o[216].TopLeftRadius = UDim.new(1, 0)
+  o[216].TopRightRadius = UDim.new(1, 0)
+  o[216].Parent = o[215]
+  o[217] = Instance.new("ImageLabel")
+  o[217].Name = "Glow"
+  o[217].Image = "rbxassetid://104778959707215"
+  o[217].ImageColor3 = Color3.new(1, 1, 1)
+  o[217].ImageRectOffset = Vector2.new(0, 0)
+  o[217].ImageRectSize = Vector2.new(0, 0)
+  o[217].ImageTransparency = 0
+  o[217].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[217].ScaleType = ev(Enum.ScaleType, 0)
+  o[217].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[217].SliceScale = 1
+  o[217].TileSize = UDim2.new(1, 0, 1, 0)
+  o[217].Active = false
+  o[217].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[217].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[217].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[217].BackgroundTransparency = 1
+  o[217].BorderColor3 = Color3.new(0, 0, 0)
+  o[217].BorderSizePixel = 0
+  o[217].ClipsDescendants = false
+  o[217].Draggable = false
+  o[217].Interactable = true
+  o[217].LayoutOrder = 0
+  o[217].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[217].Rotation = 0
+  o[217].Selectable = false
+  o[217].SelectionOrder = 0
+  o[217].Size = UDim2.new(2, 0, 2, 0)
+  o[217].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[217].Visible = false
+  o[217].ZIndex = 1
+  o[217].Parent = o[215]
+  o[218] = Instance.new("ImageLabel")
+  o[218].Name = "UIShadow"
+  o[218].BackgroundTransparency = 1
+  o[218].Image = "rbxassetid://130321961257203"
+  o[218].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[218].Position = UDim2.fromScale(0.5, 0.5)
+  o[218].Size = UDim2.fromScale(2, 2)
+  o[218].ImageColor3 = Color3.new(1, 1, 1)
+  o[218].ImageTransparency = 0.170000002
+  o[218].ZIndex = -1
+  o[218].Parent = o[215]
+  o[219] = Instance.new("TextLabel")
+  o[219].Name = "ToggleValue"
+  o[219].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Italic)
+  o[219].LineHeight = 1
+  o[219].LocalizationMatchedSourceText = ""
+  o[219].MaxVisibleGraphemes = -1
+  o[219].OpenTypeFeatures = ""
+  o[219].RichText = false
+  o[219].Text = "On"
+  o[219].TextColor3 = Color3.new(0.400000036, 0.400000036, 0.400000036)
+  o[219].TextScaled = false
+  o[219].TextSize = 16
+  o[219].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[219].TextStrokeTransparency = 1
+  o[219].TextTransparency = 0
+  o[219].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[219].TextWrapped = false
+  o[219].TextXAlignment = ev(Enum.TextXAlignment, 1)
+  o[219].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[219].Active = false
+  o[219].AnchorPoint = Vector2.new(1, 0.5)
+  o[219].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[219].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[219].BackgroundTransparency = 1
+  o[219].BorderColor3 = Color3.new(0, 0, 0)
+  o[219].BorderSizePixel = 0
+  o[219].ClipsDescendants = false
+  o[219].Draggable = false
+  o[219].Interactable = true
+  o[219].LayoutOrder = 0
+  o[219].Position = UDim2.new(0.801925004, 0, 0.5, 0)
+  o[219].Rotation = 0
+  o[219].Selectable = false
+  o[219].SelectionOrder = 0
+  o[219].Size = UDim2.new(0, 102, 0, 50)
+  o[219].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[219].Visible = true
+  o[219].ZIndex = 1
+  o[219].Parent = o[209]
+  o[220] = Instance.new("UIPadding")
+  o[220].Name = "UIPadding"
+  o[220].PaddingBottom = UDim.new(0, 4)
+  o[220].PaddingLeft = UDim.new(0, 0)
+  o[220].PaddingRight = UDim.new(0, 0)
+  o[220].PaddingTop = UDim.new(0, 0)
+  o[220].Parent = o[219]
+  o[221] = Instance.new("UIPadding")
+  o[221].Name = "UIPadding"
+  o[221].PaddingBottom = UDim.new(0, 12)
+  o[221].PaddingLeft = UDim.new(0, 0)
+  o[221].PaddingRight = UDim.new(0, 0)
+  o[221].PaddingTop = UDim.new(0, 0)
+  o[221].Parent = o[207]
+  o[222] = Instance.new("ImageButton")
+  o[222].Name = "ToggleDisabled"
+  o[222].HoverImage = ""
+  o[222].Image = ""
+  o[222].ImageColor3 = Color3.new(1, 1, 1)
+  o[222].ImageRectOffset = Vector2.new(0, 0)
+  o[222].ImageRectSize = Vector2.new(0, 0)
+  o[222].ImageTransparency = 1
+  o[222].PressedImage = ""
+  o[222].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[222].ScaleType = ev(Enum.ScaleType, 0)
+  o[222].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[222].SliceScale = 1
+  o[222].TileSize = UDim2.new(1, 0, 1, 0)
+  o[222].AutoButtonColor = true
+  o[222].Modal = false
+  o[222].Selected = false
+  o[222].Active = true
+  o[222].AnchorPoint = Vector2.new(0, 0)
+  o[222].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[222].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[222].BackgroundTransparency = 1
+  o[222].BorderColor3 = Color3.new(0, 0, 0)
+  o[222].BorderSizePixel = 0
+  o[222].ClipsDescendants = false
+  o[222].Draggable = false
+  o[222].Interactable = true
+  o[222].LayoutOrder = 3
+  o[222].Position = UDim2.new(0, 0, 0, 0)
+  o[222].Rotation = 0
+  o[222].Selectable = true
+  o[222].SelectionOrder = 0
+  o[222].Size = UDim2.new(0.920000017, 0, 0, 50)
+  o[222].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[222].Visible = true
+  o[222].ZIndex = 1
+  o[222].Parent = o[207]
+  o[223] = Instance.new("TextLabel")
+  o[223].Name = "Name"
+  o[223].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[223].LineHeight = 1
+  o[223].LocalizationMatchedSourceText = ""
+  o[223].MaxVisibleGraphemes = -1
+  o[223].OpenTypeFeatures = ""
+  o[223].RichText = false
+  o[223].Text = "Toggle (disabled)"
+  o[223].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[223].TextScaled = false
+  o[223].TextSize = 16
+  o[223].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[223].TextStrokeTransparency = 1
+  o[223].TextTransparency = 0
+  o[223].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[223].TextWrapped = false
+  o[223].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[223].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[223].Active = false
+  o[223].AnchorPoint = Vector2.new(0, 0.5)
+  o[223].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[223].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[223].BackgroundTransparency = 1
+  o[223].BorderColor3 = Color3.new(0, 0, 0)
+  o[223].BorderSizePixel = 0
+  o[223].ClipsDescendants = false
+  o[223].Draggable = false
+  o[223].Interactable = true
+  o[223].LayoutOrder = 0
+  o[223].Position = UDim2.new(0.00999999978, 0, 0.5, 0)
+  o[223].Rotation = 0
+  o[223].Selectable = false
+  o[223].SelectionOrder = 0
+  o[223].Size = UDim2.new(0, 31, 0, 50)
+  o[223].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[223].Visible = true
+  o[223].ZIndex = 1
+  o[223].Parent = o[222]
+  o[224] = Instance.new("UIStroke")
+  o[224].Name = "UIStroke"
+  o[224].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[224].BorderOffset = UDim.new(0, 0)
+  o[224].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[224].Enabled = true
+  o[224].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[224].Thickness = 0.200000003
+  o[224].Transparency = 0
+  o[224].ZIndex = 1
+  o[224].Parent = o[223]
+  o[225] = Instance.new("Frame")
+  o[225].Name = "ToggleFrame"
+  o[225].Active = false
+  o[225].AnchorPoint = Vector2.new(1, 0.5)
+  o[225].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[225].BackgroundColor3 = Color3.new(0.129411772, 0.129411772, 0.129411772)
+  o[225].BackgroundTransparency = 0
+  o[225].BorderColor3 = Color3.new(0, 0, 0)
+  o[225].BorderSizePixel = 0
+  o[225].ClipsDescendants = false
+  o[225].Draggable = false
+  o[225].Interactable = true
+  o[225].LayoutOrder = 0
+  o[225].Position = UDim2.new(0.980000019, 0, 0.5, 0)
+  o[225].Rotation = 0
+  o[225].Selectable = false
+  o[225].SelectionOrder = 0
+  o[225].Size = UDim2.new(0, 45, 0, 25)
+  o[225].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[225].Visible = true
+  o[225].ZIndex = 1
+  o[225].Parent = o[222]
+  o[226] = Instance.new("UICorner")
+  o[226].Name = "UICorner"
+  o[226].BottomLeftRadius = UDim.new(1, 0)
+  o[226].BottomRightRadius = UDim.new(1, 0)
+  o[226].TopLeftRadius = UDim.new(1, 0)
+  o[226].TopRightRadius = UDim.new(1, 0)
+  o[226].Parent = o[225]
+  o[227] = Instance.new("UIStroke")
+  o[227].Name = "UIStroke"
+  o[227].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[227].BorderOffset = UDim.new(0, 0)
+  o[227].Color = Color3.new(0.294117659, 0.294117659, 0.294117659)
+  o[227].Enabled = true
+  o[227].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[227].Thickness = 0.5
+  o[227].Transparency = 0
+  o[227].ZIndex = 1
+  o[227].Parent = o[225]
+  o[228] = Instance.new("Frame")
+  o[228].Name = "Dot"
+  o[228].Active = false
+  o[228].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[228].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[228].BackgroundColor3 = Color3.new(0.411764711, 0.411764711, 0.411764711)
+  o[228].BackgroundTransparency = 0
+  o[228].BorderColor3 = Color3.new(0, 0, 0)
+  o[228].BorderSizePixel = 0
+  o[228].ClipsDescendants = false
+  o[228].Draggable = false
+  o[228].Interactable = true
+  o[228].LayoutOrder = 0
+  o[228].Position = UDim2.new(0.300000012, 0, 0.5, 0)
+  o[228].Rotation = 0
+  o[228].Selectable = false
+  o[228].SelectionOrder = 0
+  o[228].Size = UDim2.new(0, 19, 0, 19)
+  o[228].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[228].Visible = true
+  o[228].ZIndex = 1
+  o[228].Parent = o[225]
+  o[229] = Instance.new("UICorner")
+  o[229].Name = "UICorner"
+  o[229].BottomLeftRadius = UDim.new(1, 0)
+  o[229].BottomRightRadius = UDim.new(1, 0)
+  o[229].TopLeftRadius = UDim.new(1, 0)
+  o[229].TopRightRadius = UDim.new(1, 0)
+  o[229].Parent = o[228]
+  o[230] = Instance.new("ImageLabel")
+  o[230].Name = "Glow"
+  o[230].Image = "rbxassetid://104778959707215"
+  o[230].ImageColor3 = Color3.new(1, 1, 1)
+  o[230].ImageRectOffset = Vector2.new(0, 0)
+  o[230].ImageRectSize = Vector2.new(0, 0)
+  o[230].ImageTransparency = 1
+  o[230].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[230].ScaleType = ev(Enum.ScaleType, 0)
+  o[230].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[230].SliceScale = 1
+  o[230].TileSize = UDim2.new(1, 0, 1, 0)
+  o[230].Active = false
+  o[230].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[230].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[230].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[230].BackgroundTransparency = 1
+  o[230].BorderColor3 = Color3.new(0, 0, 0)
+  o[230].BorderSizePixel = 0
+  o[230].ClipsDescendants = false
+  o[230].Draggable = false
+  o[230].Interactable = true
+  o[230].LayoutOrder = 0
+  o[230].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[230].Rotation = 0
+  o[230].Selectable = false
+  o[230].SelectionOrder = 0
+  o[230].Size = UDim2.new(2, 0, 2, 0)
+  o[230].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[230].Visible = true
+  o[230].ZIndex = 1
+  o[230].Parent = o[228]
+  o[231] = Instance.new("TextLabel")
+  o[231].Name = "ToggleValue"
+  o[231].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Italic)
+  o[231].LineHeight = 1
+  o[231].LocalizationMatchedSourceText = ""
+  o[231].MaxVisibleGraphemes = -1
+  o[231].OpenTypeFeatures = ""
+  o[231].RichText = false
+  o[231].Text = "Off"
+  o[231].TextColor3 = Color3.new(0.400000036, 0.400000036, 0.400000036)
+  o[231].TextScaled = false
+  o[231].TextSize = 16
+  o[231].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[231].TextStrokeTransparency = 1
+  o[231].TextTransparency = 0
+  o[231].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[231].TextWrapped = false
+  o[231].TextXAlignment = ev(Enum.TextXAlignment, 1)
+  o[231].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[231].Active = false
+  o[231].AnchorPoint = Vector2.new(1, 0.5)
+  o[231].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[231].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[231].BackgroundTransparency = 1
+  o[231].BorderColor3 = Color3.new(0, 0, 0)
+  o[231].BorderSizePixel = 0
+  o[231].ClipsDescendants = false
+  o[231].Draggable = false
+  o[231].Interactable = true
+  o[231].LayoutOrder = 0
+  o[231].Position = UDim2.new(0.801925004, 0, 0.5, 0)
+  o[231].Rotation = 0
+  o[231].Selectable = false
+  o[231].SelectionOrder = 0
+  o[231].Size = UDim2.new(0, 102, 0, 50)
+  o[231].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[231].Visible = true
+  o[231].ZIndex = 1
+  o[231].Parent = o[222]
+  o[232] = Instance.new("UIPadding")
+  o[232].Name = "UIPadding"
+  o[232].PaddingBottom = UDim.new(0, 4)
+  o[232].PaddingLeft = UDim.new(0, 0)
+  o[232].PaddingRight = UDim.new(0, 0)
+  o[232].PaddingTop = UDim.new(0, 0)
+  o[232].Parent = o[231]
+  o[233] = Instance.new("Frame")
+  o[233].Name = "ButtonsSection"
+  o[233].Active = false
+  o[233].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[233].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[233].BackgroundColor3 = Color3.new(0.105882354, 0.105882354, 0.105882354)
+  o[233].BackgroundTransparency = 0
+  o[233].BorderColor3 = Color3.new(0, 0, 0)
+  o[233].BorderSizePixel = 0
+  o[233].ClipsDescendants = false
+  o[233].Draggable = false
+  o[233].Interactable = true
+  o[233].LayoutOrder = 0
+  o[233].Position = UDim2.new(0.474999994, 0, 0.357442319, 0)
+  o[233].Rotation = 0
+  o[233].Selectable = false
+  o[233].SelectionOrder = 0
+  o[233].Size = UDim2.new(0, 350, 0, 15)
+  o[233].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[233].Visible = true
+  o[233].ZIndex = 1
+  o[233].Parent = o[186]
+  o[234] = Instance.new("UIListLayout")
+  o[234].Name = "UIListLayout"
+  o[234].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[234].Padding = UDim.new(0, 1)
+  o[234].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[234].Wraps = false
+  o[234].FillDirection = ev(Enum.FillDirection, 1)
+  o[234].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[234].SortOrder = ev(Enum.SortOrder, 2)
+  o[234].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[234].Parent = o[233]
+  o[235] = Instance.new("UIPadding")
+  o[235].Name = "UIPadding"
+  o[235].PaddingBottom = UDim.new(0, 0)
+  o[235].PaddingLeft = UDim.new(0, 0)
+  o[235].PaddingRight = UDim.new(0, 0)
+  o[235].PaddingTop = UDim.new(0, 0)
+  o[235].Parent = o[233]
+  o[236] = Instance.new("UICorner")
+  o[236].Name = "UICorner"
+  o[236].BottomLeftRadius = UDim.new(0, 12)
+  o[236].BottomRightRadius = UDim.new(0, 12)
+  o[236].TopLeftRadius = UDim.new(0, 12)
+  o[236].TopRightRadius = UDim.new(0, 12)
+  o[236].Parent = o[233]
+  o[237] = Instance.new("UIStroke")
+  o[237].Name = "UIStroke"
+  o[237].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[237].BorderOffset = UDim.new(0, 0)
+  o[237].Color = Color3.new(0.235294119, 0.235294119, 0.235294119)
+  o[237].Enabled = true
+  o[237].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[237].Thickness = 0.5
+  o[237].Transparency = 0
+  o[237].ZIndex = 1
+  o[237].Parent = o[233]
+  o[238] = Instance.new("Frame")
+  o[238].Name = "SectionNameHolderFrame"
+  o[238].Active = false
+  o[238].AnchorPoint = Vector2.new(0, 0)
+  o[238].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[238].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[238].BackgroundTransparency = 1
+  o[238].BorderColor3 = Color3.new(0, 0, 0)
+  o[238].BorderSizePixel = 0
+  o[238].ClipsDescendants = false
+  o[238].Draggable = false
+  o[238].Interactable = true
+  o[238].LayoutOrder = 0
+  o[238].Position = UDim2.new(0, 0, 0, 0)
+  o[238].Rotation = 0
+  o[238].Selectable = false
+  o[238].SelectionOrder = 0
+  o[238].Size = UDim2.new(1, 0, 0, 50)
+  o[238].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[238].Visible = true
+  o[238].ZIndex = 1
+  o[238].Parent = o[233]
+  o[239] = Instance.new("ImageButton")
+  o[239].Name = "SectionButton"
+  o[239].HoverImage = ""
+  o[239].Image = ""
+  o[239].ImageColor3 = Color3.new(1, 1, 1)
+  o[239].ImageRectOffset = Vector2.new(0, 0)
+  o[239].ImageRectSize = Vector2.new(0, 0)
+  o[239].ImageTransparency = 1
+  o[239].PressedImage = ""
+  o[239].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[239].ScaleType = ev(Enum.ScaleType, 0)
+  o[239].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[239].SliceScale = 1
+  o[239].TileSize = UDim2.new(1, 0, 1, 0)
+  o[239].AutoButtonColor = true
+  o[239].Modal = false
+  o[239].Selected = false
+  o[239].Active = true
+  o[239].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[239].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[239].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[239].BackgroundTransparency = 1
+  o[239].BorderColor3 = Color3.new(0, 0, 0)
+  o[239].BorderSizePixel = 0
+  o[239].ClipsDescendants = false
+  o[239].Draggable = false
+  o[239].Interactable = true
+  o[239].LayoutOrder = 0
+  o[239].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[239].Rotation = 0
+  o[239].Selectable = true
+  o[239].SelectionOrder = 0
+  o[239].Size = UDim2.new(1, 0, 1, 0)
+  o[239].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[239].Visible = true
+  o[239].ZIndex = 5
+  o[239].Parent = o[238]
+  o[240] = Instance.new("ImageLabel")
+  o[240].Name = "Icon"
+  o[240].Image = "rbxassetid://82022839420755"
+  o[240].ImageColor3 = Color3.new(0.470588237, 0.470588237, 0.470588237)
+  o[240].ImageRectOffset = Vector2.new(0, 0)
+  o[240].ImageRectSize = Vector2.new(0, 0)
+  o[240].ImageTransparency = 0
+  o[240].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[240].ScaleType = ev(Enum.ScaleType, 0)
+  o[240].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[240].SliceScale = 1
+  o[240].TileSize = UDim2.new(1, 0, 1, 0)
+  o[240].Active = false
+  o[240].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[240].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[240].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[240].BackgroundTransparency = 1
+  o[240].BorderColor3 = Color3.new(0, 0, 0)
+  o[240].BorderSizePixel = 0
+  o[240].ClipsDescendants = false
+  o[240].Draggable = false
+  o[240].Interactable = true
+  o[240].LayoutOrder = 0
+  o[240].Position = UDim2.new(0.910000026, 0, 0.5, 0)
+  o[240].Rotation = 180
+  o[240].Selectable = false
+  o[240].SelectionOrder = 0
+  o[240].Size = UDim2.new(0, 15, 0, 15)
+  o[240].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[240].Visible = true
+  o[240].ZIndex = 1
+  o[240].Parent = o[238]
+  o[241] = Instance.new("TextLabel")
+  o[241].Name = "SectionName"
+  o[241].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[241].LineHeight = 1
+  o[241].LocalizationMatchedSourceText = ""
+  o[241].MaxVisibleGraphemes = -1
+  o[241].OpenTypeFeatures = ""
+  o[241].RichText = false
+  o[241].Text = "Buttons"
+  o[241].TextColor3 = Color3.new(0.847058892, 0.847058892, 0.847058892)
+  o[241].TextScaled = false
+  o[241].TextSize = 24
+  o[241].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[241].TextStrokeTransparency = 1
+  o[241].TextTransparency = 0
+  o[241].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[241].TextWrapped = false
+  o[241].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[241].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[241].Active = false
+  o[241].AnchorPoint = Vector2.new(0, 0.5)
+  o[241].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[241].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[241].BackgroundTransparency = 1
+  o[241].BorderColor3 = Color3.new(0, 0, 0)
+  o[241].BorderSizePixel = 0
+  o[241].ClipsDescendants = false
+  o[241].Draggable = false
+  o[241].Interactable = true
+  o[241].LayoutOrder = 0
+  o[241].Position = UDim2.new(0.0500000007, 0, 0.449999988, 0)
+  o[241].Rotation = 0
+  o[241].Selectable = false
+  o[241].SelectionOrder = 0
+  o[241].Size = UDim2.new(0, 0, 0.899999976, 0)
+  o[241].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[241].Visible = true
+  o[241].ZIndex = 1
+  o[241].Parent = o[238]
+  o[242] = Instance.new("Frame")
+  o[242].Name = "ButtonsHolderFrame"
+  o[242].Active = false
+  o[242].AnchorPoint = Vector2.new(0, 0)
+  o[242].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[242].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[242].BackgroundTransparency = 1
+  o[242].BorderColor3 = Color3.new(0, 0, 0)
+  o[242].BorderSizePixel = 0
+  o[242].ClipsDescendants = false
+  o[242].Draggable = false
+  o[242].Interactable = true
+  o[242].LayoutOrder = 0
+  o[242].Position = UDim2.new(0, 0, 0, 0)
+  o[242].Rotation = 0
+  o[242].Selectable = false
+  o[242].SelectionOrder = 0
+  o[242].Size = UDim2.new(1, 0, 0, 10)
+  o[242].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[242].Visible = true
+  o[242].ZIndex = 1
+  o[242].Parent = o[233]
+  o[243] = Instance.new("UIListLayout")
+  o[243].Name = "UIListLayout"
+  o[243].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[243].Padding = UDim.new(0, 2)
+  o[243].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[243].Wraps = false
+  o[243].FillDirection = ev(Enum.FillDirection, 1)
+  o[243].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[243].SortOrder = ev(Enum.SortOrder, 2)
+  o[243].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[243].Parent = o[242]
+  o[244] = Instance.new("UIPadding")
+  o[244].Name = "UIPadding"
+  o[244].PaddingBottom = UDim.new(0, 12)
+  o[244].PaddingLeft = UDim.new(0, 0)
+  o[244].PaddingRight = UDim.new(0, 0)
+  o[244].PaddingTop = UDim.new(0, 0)
+  o[244].Parent = o[242]
+  o[245] = Instance.new("Frame")
+  o[245].Name = "Button"
+  o[245].Active = false
+  o[245].AnchorPoint = Vector2.new(0, 0)
+  o[245].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[245].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[245].BackgroundTransparency = 1
+  o[245].BorderColor3 = Color3.new(0, 0, 0)
+  o[245].BorderSizePixel = 0
+  o[245].ClipsDescendants = false
+  o[245].Draggable = false
+  o[245].Interactable = true
+  o[245].LayoutOrder = 2
+  o[245].Position = UDim2.new(0, 0, 0, 0)
+  o[245].Rotation = 0
+  o[245].Selectable = false
+  o[245].SelectionOrder = 0
+  o[245].Size = UDim2.new(0.920000017, 0, 0, 40)
+  o[245].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[245].Visible = true
+  o[245].ZIndex = 1
+  o[245].Parent = o[242]
+  o[246] = Instance.new("ImageButton")
+  o[246].Name = "ButtonButton"
+  o[246].HoverImage = ""
+  o[246].Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+  o[246].ImageColor3 = Color3.new(1, 1, 1)
+  o[246].ImageRectOffset = Vector2.new(0, 0)
+  o[246].ImageRectSize = Vector2.new(0, 0)
+  o[246].ImageTransparency = 1
+  o[246].PressedImage = ""
+  o[246].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[246].ScaleType = ev(Enum.ScaleType, 0)
+  o[246].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[246].SliceScale = 1
+  o[246].TileSize = UDim2.new(1, 0, 1, 0)
+  o[246].AutoButtonColor = false
+  o[246].Modal = false
+  o[246].Selected = false
+  o[246].Active = true
+  o[246].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[246].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[246].BackgroundColor3 = Color3.new(0.0509803966, 0.0509803966, 0.054901965)
+  o[246].BackgroundTransparency = 0
+  o[246].BorderColor3 = Color3.new(0, 0, 0)
+  o[246].BorderSizePixel = 0
+  o[246].ClipsDescendants = false
+  o[246].Draggable = false
+  o[246].Interactable = true
+  o[246].LayoutOrder = 0
+  o[246].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[246].Rotation = 0
+  o[246].Selectable = true
+  o[246].SelectionOrder = 0
+  o[246].Size = UDim2.new(0.949999988, 0, 0.699999988, 0)
+  o[246].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[246].Visible = true
+  o[246].ZIndex = 1
+  o[246].Parent = o[245]
+  o[247] = Instance.new("TextLabel")
+  o[247].Name = "Name"
+  o[247].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[247].LineHeight = 1
+  o[247].LocalizationMatchedSourceText = ""
+  o[247].MaxVisibleGraphemes = -1
+  o[247].OpenTypeFeatures = ""
+  o[247].RichText = false
+  o[247].Text = "Button"
+  o[247].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[247].TextScaled = false
+  o[247].TextSize = 16
+  o[247].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[247].TextStrokeTransparency = 1
+  o[247].TextTransparency = 0
+  o[247].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[247].TextWrapped = false
+  o[247].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[247].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[247].Active = false
+  o[247].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[247].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[247].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[247].BackgroundTransparency = 1
+  o[247].BorderColor3 = Color3.new(0, 0, 0)
+  o[247].BorderSizePixel = 0
+  o[247].ClipsDescendants = false
+  o[247].Draggable = false
+  o[247].Interactable = true
+  o[247].LayoutOrder = 0
+  o[247].Position = UDim2.new(0.5, 0, 0.479999989, 0)
+  o[247].Rotation = 0
+  o[247].Selectable = false
+  o[247].SelectionOrder = 0
+  o[247].Size = UDim2.new(0, 31, 1, 0)
+  o[247].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[247].Visible = true
+  o[247].ZIndex = 1
+  o[247].Parent = o[246]
+  o[248] = Instance.new("UIStroke")
+  o[248].Name = "UIStroke"
+  o[248].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[248].BorderOffset = UDim.new(0, 0)
+  o[248].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[248].Enabled = true
+  o[248].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[248].Thickness = 0.200000003
+  o[248].Transparency = 0
+  o[248].ZIndex = 1
+  o[248].Parent = o[247]
+  o[249] = Instance.new("UICorner")
+  o[249].Name = "UICorner"
+  o[249].BottomLeftRadius = UDim.new(0, 8)
+  o[249].BottomRightRadius = UDim.new(0, 8)
+  o[249].TopLeftRadius = UDim.new(0, 8)
+  o[249].TopRightRadius = UDim.new(0, 8)
+  o[249].Parent = o[246]
+  o[250] = Instance.new("UIStroke")
+  o[250].Name = "UIStroke"
+  o[250].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[250].BorderOffset = UDim.new(0, 0)
+  o[250].Color = Color3.new(0.196078449, 0.196078449, 0.196078449)
+  o[250].Enabled = true
+  o[250].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[250].Thickness = 1
+  o[250].Transparency = 0
+  o[250].ZIndex = 1
+  o[250].Parent = o[246]
+  o[251] = Instance.new("Frame")
+  o[251].Name = "Button2"
+  o[251].Active = false
+  o[251].AnchorPoint = Vector2.new(0, 0)
+  o[251].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[251].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[251].BackgroundTransparency = 1
+  o[251].BorderColor3 = Color3.new(0, 0, 0)
+  o[251].BorderSizePixel = 0
+  o[251].ClipsDescendants = false
+  o[251].Draggable = false
+  o[251].Interactable = true
+  o[251].LayoutOrder = 2
+  o[251].Position = UDim2.new(0, 0, 0, 0)
+  o[251].Rotation = 0
+  o[251].Selectable = false
+  o[251].SelectionOrder = 0
+  o[251].Size = UDim2.new(0.920000017, 0, 0, 40)
+  o[251].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[251].Visible = true
+  o[251].ZIndex = 1
+  o[251].Parent = o[242]
+  o[252] = Instance.new("ImageButton")
+  o[252].Name = "ButtonButton"
+  o[252].HoverImage = ""
+  o[252].Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+  o[252].ImageColor3 = Color3.new(1, 1, 1)
+  o[252].ImageRectOffset = Vector2.new(0, 0)
+  o[252].ImageRectSize = Vector2.new(0, 0)
+  o[252].ImageTransparency = 1
+  o[252].PressedImage = ""
+  o[252].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[252].ScaleType = ev(Enum.ScaleType, 0)
+  o[252].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[252].SliceScale = 1
+  o[252].TileSize = UDim2.new(1, 0, 1, 0)
+  o[252].AutoButtonColor = false
+  o[252].Modal = false
+  o[252].Selected = false
+  o[252].Active = true
+  o[252].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[252].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[252].BackgroundColor3 = Color3.new(0.0509803966, 0.0509803966, 0.054901965)
+  o[252].BackgroundTransparency = 0
+  o[252].BorderColor3 = Color3.new(0, 0, 0)
+  o[252].BorderSizePixel = 0
+  o[252].ClipsDescendants = false
+  o[252].Draggable = false
+  o[252].Interactable = true
+  o[252].LayoutOrder = 0
+  o[252].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[252].Rotation = 0
+  o[252].Selectable = true
+  o[252].SelectionOrder = 0
+  o[252].Size = UDim2.new(0.949999988, 0, 0.699999988, 0)
+  o[252].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[252].Visible = true
+  o[252].ZIndex = 1
+  o[252].Parent = o[251]
+  o[253] = Instance.new("TextLabel")
+  o[253].Name = "Name"
+  o[253].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[253].LineHeight = 1
+  o[253].LocalizationMatchedSourceText = ""
+  o[253].MaxVisibleGraphemes = -1
+  o[253].OpenTypeFeatures = ""
+  o[253].RichText = false
+  o[253].Text = "Button 2"
+  o[253].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[253].TextScaled = false
+  o[253].TextSize = 16
+  o[253].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[253].TextStrokeTransparency = 1
+  o[253].TextTransparency = 0
+  o[253].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[253].TextWrapped = false
+  o[253].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[253].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[253].Active = false
+  o[253].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[253].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[253].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[253].BackgroundTransparency = 1
+  o[253].BorderColor3 = Color3.new(0, 0, 0)
+  o[253].BorderSizePixel = 0
+  o[253].ClipsDescendants = false
+  o[253].Draggable = false
+  o[253].Interactable = true
+  o[253].LayoutOrder = 0
+  o[253].Position = UDim2.new(0.5, 0, 0.479999989, 0)
+  o[253].Rotation = 0
+  o[253].Selectable = false
+  o[253].SelectionOrder = 0
+  o[253].Size = UDim2.new(0, 31, 1, 0)
+  o[253].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[253].Visible = true
+  o[253].ZIndex = 1
+  o[253].Parent = o[252]
+  o[254] = Instance.new("UIStroke")
+  o[254].Name = "UIStroke"
+  o[254].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[254].BorderOffset = UDim.new(0, 0)
+  o[254].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[254].Enabled = true
+  o[254].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[254].Thickness = 0.200000003
+  o[254].Transparency = 0
+  o[254].ZIndex = 1
+  o[254].Parent = o[253]
+  o[255] = Instance.new("UICorner")
+  o[255].Name = "UICorner"
+  o[255].BottomLeftRadius = UDim.new(0, 8)
+  o[255].BottomRightRadius = UDim.new(0, 8)
+  o[255].TopLeftRadius = UDim.new(0, 8)
+  o[255].TopRightRadius = UDim.new(0, 8)
+  o[255].Parent = o[252]
+  o[256] = Instance.new("UIStroke")
+  o[256].Name = "UIStroke"
+  o[256].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[256].BorderOffset = UDim.new(0, 0)
+  o[256].Color = Color3.new(0.196078449, 0.196078449, 0.196078449)
+  o[256].Enabled = true
+  o[256].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[256].Thickness = 1
+  o[256].Transparency = 0
+  o[256].ZIndex = 1
+  o[256].Parent = o[252]
+  o[257] = Instance.new("Frame")
+  o[257].Name = "NumberPickerSection"
+  o[257].Active = false
+  o[257].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[257].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[257].BackgroundColor3 = Color3.new(0.105882354, 0.105882354, 0.105882354)
+  o[257].BackgroundTransparency = 0
+  o[257].BorderColor3 = Color3.new(0, 0, 0)
+  o[257].BorderSizePixel = 0
+  o[257].ClipsDescendants = false
+  o[257].Draggable = false
+  o[257].Interactable = true
+  o[257].LayoutOrder = 0
+  o[257].Position = UDim2.new(0.678248823, 0, 0.854988396, 0)
+  o[257].Rotation = 0
+  o[257].Selectable = false
+  o[257].SelectionOrder = 0
+  o[257].Size = UDim2.new(0, 350, 0, 15)
+  o[257].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[257].Visible = true
+  o[257].ZIndex = 1
+  o[257].Parent = o[186]
+  o[258] = Instance.new("UIListLayout")
+  o[258].Name = "UIListLayout"
+  o[258].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[258].Padding = UDim.new(0, 1)
+  o[258].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[258].Wraps = false
+  o[258].FillDirection = ev(Enum.FillDirection, 1)
+  o[258].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[258].SortOrder = ev(Enum.SortOrder, 2)
+  o[258].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[258].Parent = o[257]
+  o[259] = Instance.new("UIPadding")
+  o[259].Name = "UIPadding"
+  o[259].PaddingBottom = UDim.new(0, 0)
+  o[259].PaddingLeft = UDim.new(0, 0)
+  o[259].PaddingRight = UDim.new(0, 0)
+  o[259].PaddingTop = UDim.new(0, 0)
+  o[259].Parent = o[257]
+  o[260] = Instance.new("UICorner")
+  o[260].Name = "UICorner"
+  o[260].BottomLeftRadius = UDim.new(0, 12)
+  o[260].BottomRightRadius = UDim.new(0, 12)
+  o[260].TopLeftRadius = UDim.new(0, 12)
+  o[260].TopRightRadius = UDim.new(0, 12)
+  o[260].Parent = o[257]
+  o[261] = Instance.new("UIStroke")
+  o[261].Name = "UIStroke"
+  o[261].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[261].BorderOffset = UDim.new(0, 0)
+  o[261].Color = Color3.new(0.235294119, 0.235294119, 0.235294119)
+  o[261].Enabled = true
+  o[261].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[261].Thickness = 0.5
+  o[261].Transparency = 0
+  o[261].ZIndex = 1
+  o[261].Parent = o[257]
+  o[262] = Instance.new("Frame")
+  o[262].Name = "SectionNameHolderFrame"
+  o[262].Active = false
+  o[262].AnchorPoint = Vector2.new(0, 0)
+  o[262].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[262].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[262].BackgroundTransparency = 1
+  o[262].BorderColor3 = Color3.new(0, 0, 0)
+  o[262].BorderSizePixel = 0
+  o[262].ClipsDescendants = false
+  o[262].Draggable = false
+  o[262].Interactable = true
+  o[262].LayoutOrder = 0
+  o[262].Position = UDim2.new(0, 0, 0, 0)
+  o[262].Rotation = 0
+  o[262].Selectable = false
+  o[262].SelectionOrder = 0
+  o[262].Size = UDim2.new(1, 0, 0, 50)
+  o[262].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[262].Visible = true
+  o[262].ZIndex = 1
+  o[262].Parent = o[257]
+  o[263] = Instance.new("ImageButton")
+  o[263].Name = "SectionButton"
+  o[263].HoverImage = ""
+  o[263].Image = ""
+  o[263].ImageColor3 = Color3.new(1, 1, 1)
+  o[263].ImageRectOffset = Vector2.new(0, 0)
+  o[263].ImageRectSize = Vector2.new(0, 0)
+  o[263].ImageTransparency = 1
+  o[263].PressedImage = ""
+  o[263].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[263].ScaleType = ev(Enum.ScaleType, 0)
+  o[263].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[263].SliceScale = 1
+  o[263].TileSize = UDim2.new(1, 0, 1, 0)
+  o[263].AutoButtonColor = true
+  o[263].Modal = false
+  o[263].Selected = false
+  o[263].Active = true
+  o[263].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[263].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[263].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[263].BackgroundTransparency = 1
+  o[263].BorderColor3 = Color3.new(0, 0, 0)
+  o[263].BorderSizePixel = 0
+  o[263].ClipsDescendants = false
+  o[263].Draggable = false
+  o[263].Interactable = true
+  o[263].LayoutOrder = 0
+  o[263].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[263].Rotation = 0
+  o[263].Selectable = true
+  o[263].SelectionOrder = 0
+  o[263].Size = UDim2.new(1, 0, 1, 0)
+  o[263].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[263].Visible = true
+  o[263].ZIndex = 5
+  o[263].Parent = o[262]
+  o[264] = Instance.new("ImageLabel")
+  o[264].Name = "Icon"
+  o[264].Image = "rbxassetid://82022839420755"
+  o[264].ImageColor3 = Color3.new(0.470588237, 0.470588237, 0.470588237)
+  o[264].ImageRectOffset = Vector2.new(0, 0)
+  o[264].ImageRectSize = Vector2.new(0, 0)
+  o[264].ImageTransparency = 0
+  o[264].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[264].ScaleType = ev(Enum.ScaleType, 0)
+  o[264].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[264].SliceScale = 1
+  o[264].TileSize = UDim2.new(1, 0, 1, 0)
+  o[264].Active = false
+  o[264].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[264].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[264].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[264].BackgroundTransparency = 1
+  o[264].BorderColor3 = Color3.new(0, 0, 0)
+  o[264].BorderSizePixel = 0
+  o[264].ClipsDescendants = false
+  o[264].Draggable = false
+  o[264].Interactable = true
+  o[264].LayoutOrder = 0
+  o[264].Position = UDim2.new(0.910000026, 0, 0.5, 0)
+  o[264].Rotation = 180
+  o[264].Selectable = false
+  o[264].SelectionOrder = 0
+  o[264].Size = UDim2.new(0, 15, 0, 15)
+  o[264].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[264].Visible = true
+  o[264].ZIndex = 1
+  o[264].Parent = o[262]
+  o[265] = Instance.new("TextLabel")
+  o[265].Name = "SectionName"
+  o[265].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[265].LineHeight = 1
+  o[265].LocalizationMatchedSourceText = ""
+  o[265].MaxVisibleGraphemes = -1
+  o[265].OpenTypeFeatures = ""
+  o[265].RichText = false
+  o[265].Text = "Number Pickers"
+  o[265].TextColor3 = Color3.new(0.847058892, 0.847058892, 0.847058892)
+  o[265].TextScaled = false
+  o[265].TextSize = 24
+  o[265].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[265].TextStrokeTransparency = 1
+  o[265].TextTransparency = 0
+  o[265].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[265].TextWrapped = false
+  o[265].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[265].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[265].Active = false
+  o[265].AnchorPoint = Vector2.new(0, 0.5)
+  o[265].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[265].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[265].BackgroundTransparency = 1
+  o[265].BorderColor3 = Color3.new(0, 0, 0)
+  o[265].BorderSizePixel = 0
+  o[265].ClipsDescendants = false
+  o[265].Draggable = false
+  o[265].Interactable = true
+  o[265].LayoutOrder = 0
+  o[265].Position = UDim2.new(0.0500000007, 0, 0.449999988, 0)
+  o[265].Rotation = 0
+  o[265].Selectable = false
+  o[265].SelectionOrder = 0
+  o[265].Size = UDim2.new(0, 0, 0.899999976, 0)
+  o[265].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[265].Visible = true
+  o[265].ZIndex = 1
+  o[265].Parent = o[262]
+  o[266] = Instance.new("Frame")
+  o[266].Name = "ButtonsHolderFrame"
+  o[266].Active = false
+  o[266].AnchorPoint = Vector2.new(0, 0)
+  o[266].AutomaticSize = ev(Enum.AutomaticSize, 2)
+  o[266].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[266].BackgroundTransparency = 1
+  o[266].BorderColor3 = Color3.new(0, 0, 0)
+  o[266].BorderSizePixel = 0
+  o[266].ClipsDescendants = false
+  o[266].Draggable = false
+  o[266].Interactable = true
+  o[266].LayoutOrder = 0
+  o[266].Position = UDim2.new(0, 0, 0, 0)
+  o[266].Rotation = 0
+  o[266].Selectable = false
+  o[266].SelectionOrder = 0
+  o[266].Size = UDim2.new(1, 0, 0, 10)
+  o[266].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[266].Visible = true
+  o[266].ZIndex = 1
+  o[266].Parent = o[257]
+  o[267] = Instance.new("UIListLayout")
+  o[267].Name = "UIListLayout"
+  o[267].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[267].Padding = UDim.new(0, 2)
+  o[267].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[267].Wraps = false
+  o[267].FillDirection = ev(Enum.FillDirection, 1)
+  o[267].HorizontalAlignment = ev(Enum.HorizontalAlignment, 0)
+  o[267].SortOrder = ev(Enum.SortOrder, 2)
+  o[267].VerticalAlignment = ev(Enum.VerticalAlignment, 1)
+  o[267].Parent = o[266]
+  o[268] = Instance.new("UIPadding")
+  o[268].Name = "UIPadding"
+  o[268].PaddingBottom = UDim.new(0, 12)
+  o[268].PaddingLeft = UDim.new(0, 0)
+  o[268].PaddingRight = UDim.new(0, 0)
+  o[268].PaddingTop = UDim.new(0, 0)
+  o[268].Parent = o[266]
+  o[269] = Instance.new("Frame")
+  o[269].Name = "NumberPicker"
+  o[269].Active = false
+  o[269].AnchorPoint = Vector2.new(0, 0)
+  o[269].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[269].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[269].BackgroundTransparency = 1
+  o[269].BorderColor3 = Color3.new(0, 0, 0)
+  o[269].BorderSizePixel = 0
+  o[269].ClipsDescendants = false
+  o[269].Draggable = false
+  o[269].Interactable = true
+  o[269].LayoutOrder = 2
+  o[269].Position = UDim2.new(0, 0, 0, 0)
+  o[269].Rotation = 0
+  o[269].Selectable = false
+  o[269].SelectionOrder = 0
+  o[269].Size = UDim2.new(0.920000017, 0, 0, 50)
+  o[269].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[269].Visible = true
+  o[269].ZIndex = 1
+  o[269].Parent = o[266]
+  o[270] = Instance.new("TextLabel")
+  o[270].Name = "Name"
+  o[270].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[270].LineHeight = 1
+  o[270].LocalizationMatchedSourceText = ""
+  o[270].MaxVisibleGraphemes = -1
+  o[270].OpenTypeFeatures = ""
+  o[270].RichText = false
+  o[270].Text = "Number Picker"
+  o[270].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[270].TextScaled = false
+  o[270].TextSize = 16
+  o[270].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[270].TextStrokeTransparency = 1
+  o[270].TextTransparency = 0
+  o[270].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[270].TextWrapped = false
+  o[270].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[270].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[270].Active = false
+  o[270].AnchorPoint = Vector2.new(0, 0.5)
+  o[270].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[270].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[270].BackgroundTransparency = 1
+  o[270].BorderColor3 = Color3.new(0, 0, 0)
+  o[270].BorderSizePixel = 0
+  o[270].ClipsDescendants = false
+  o[270].Draggable = false
+  o[270].Interactable = true
+  o[270].LayoutOrder = 0
+  o[270].Position = UDim2.new(0.00999999978, 0, 0.5, 0)
+  o[270].Rotation = 0
+  o[270].Selectable = false
+  o[270].SelectionOrder = 0
+  o[270].Size = UDim2.new(0, 31, 0, 50)
+  o[270].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[270].Visible = true
+  o[270].ZIndex = 1
+  o[270].Parent = o[269]
+  o[271] = Instance.new("UIStroke")
+  o[271].Name = "UIStroke"
+  o[271].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[271].BorderOffset = UDim.new(0, 0)
+  o[271].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[271].Enabled = true
+  o[271].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[271].Thickness = 0.200000003
+  o[271].Transparency = 0
+  o[271].ZIndex = 1
+  o[271].Parent = o[270]
+  o[272] = Instance.new("Frame")
+  o[272].Name = "NumberPickerHolder"
+  o[272].Active = false
+  o[272].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[272].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[272].BackgroundColor3 = Color3.new(0.0509803966, 0.0509803966, 0.054901965)
+  o[272].BackgroundTransparency = 0
+  o[272].BorderColor3 = Color3.new(0, 0, 0)
+  o[272].BorderSizePixel = 0
+  o[272].ClipsDescendants = false
+  o[272].Draggable = false
+  o[272].Interactable = true
+  o[272].LayoutOrder = 0
+  o[272].Position = UDim2.new(0.813664615, 0, 0.5, 0)
+  o[272].Rotation = 0
+  o[272].Selectable = false
+  o[272].SelectionOrder = 0
+  o[272].Size = UDim2.new(0, 106, 0, 32)
+  o[272].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[272].Visible = true
+  o[272].ZIndex = 1
+  o[272].Parent = o[269]
+  o[273] = Instance.new("UICorner")
+  o[273].Name = "UICorner"
+  o[273].BottomLeftRadius = UDim.new(0, 12)
+  o[273].BottomRightRadius = UDim.new(0, 12)
+  o[273].TopLeftRadius = UDim.new(0, 12)
+  o[273].TopRightRadius = UDim.new(0, 12)
+  o[273].Parent = o[272]
+  o[274] = Instance.new("Frame")
+  o[274].Name = "NumberValueHolder"
+  o[274].Active = false
+  o[274].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[274].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[274].BackgroundColor3 = Color3.new(0.0862745121, 0.0862745121, 0.0862745121)
+  o[274].BackgroundTransparency = 1
+  o[274].BorderColor3 = Color3.new(0, 0, 0)
+  o[274].BorderSizePixel = 0
+  o[274].ClipsDescendants = false
+  o[274].Draggable = false
+  o[274].Interactable = true
+  o[274].LayoutOrder = 0
+  o[274].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[274].Rotation = 0
+  o[274].Selectable = false
+  o[274].SelectionOrder = 0
+  o[274].Size = UDim2.new(0, 50, 1, 0)
+  o[274].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[274].Visible = true
+  o[274].ZIndex = 1
+  o[274].Parent = o[272]
+  o[275] = Instance.new("TextLabel")
+  o[275].Name = "NumberValue"
+  o[275].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[275].LineHeight = 1
+  o[275].LocalizationMatchedSourceText = ""
+  o[275].MaxVisibleGraphemes = -1
+  o[275].OpenTypeFeatures = ""
+  o[275].RichText = false
+  o[275].Text = "20"
+  o[275].TextColor3 = Color3.new(1, 1, 1)
+  o[275].TextScaled = false
+  o[275].TextSize = 20
+  o[275].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[275].TextStrokeTransparency = 1
+  o[275].TextTransparency = 0
+  o[275].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[275].TextWrapped = false
+  o[275].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[275].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[275].Active = false
+  o[275].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[275].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[275].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[275].BackgroundTransparency = 1
+  o[275].BorderColor3 = Color3.new(0, 0, 0)
+  o[275].BorderSizePixel = 0
+  o[275].ClipsDescendants = false
+  o[275].Draggable = false
+  o[275].Interactable = true
+  o[275].LayoutOrder = 0
+  o[275].Position = UDim2.new(0.5, 0, 0.496582806, 0)
+  o[275].Rotation = 0
+  o[275].Selectable = false
+  o[275].SelectionOrder = 0
+  o[275].Size = UDim2.new(1, 0, 0.850000024, 0)
+  o[275].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[275].Visible = true
+  o[275].ZIndex = 1
+  o[275].Parent = o[274]
+  o[276] = Instance.new("ImageButton")
+  o[276].Name = "Minus"
+  o[276].HoverImage = ""
+  o[276].Image = ""
+  o[276].ImageColor3 = Color3.new(1, 1, 1)
+  o[276].ImageRectOffset = Vector2.new(0, 0)
+  o[276].ImageRectSize = Vector2.new(0, 0)
+  o[276].ImageTransparency = 1
+  o[276].PressedImage = ""
+  o[276].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[276].ScaleType = ev(Enum.ScaleType, 0)
+  o[276].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[276].SliceScale = 1
+  o[276].TileSize = UDim2.new(1, 0, 1, 0)
+  o[276].AutoButtonColor = false
+  o[276].Modal = false
+  o[276].Selected = false
+  o[276].Active = true
+  o[276].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[276].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[276].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[276].BackgroundTransparency = 1
+  o[276].BorderColor3 = Color3.new(0, 0, 0)
+  o[276].BorderSizePixel = 0
+  o[276].ClipsDescendants = false
+  o[276].Draggable = false
+  o[276].Interactable = true
+  o[276].LayoutOrder = 0
+  o[276].Position = UDim2.new(0.134728789, 0, 0.493164062, 0)
+  o[276].Rotation = 0
+  o[276].Selectable = true
+  o[276].SelectionOrder = 0
+  o[276].Size = UDim2.new(0, 27, 0, 31)
+  o[276].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[276].Visible = true
+  o[276].ZIndex = 1
+  o[276].Parent = o[272]
+  o[277] = Instance.new("ImageLabel")
+  o[277].Name = "Icon"
+  o[277].Image = "rbxassetid://128229913388215"
+  o[277].ImageColor3 = Color3.new(1, 1, 1)
+  o[277].ImageRectOffset = Vector2.new(0, 0)
+  o[277].ImageRectSize = Vector2.new(0, 0)
+  o[277].ImageTransparency = 0.400000006
+  o[277].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[277].ScaleType = ev(Enum.ScaleType, 0)
+  o[277].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[277].SliceScale = 1
+  o[277].TileSize = UDim2.new(1, 0, 1, 0)
+  o[277].Active = false
+  o[277].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[277].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[277].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[277].BackgroundTransparency = 1
+  o[277].BorderColor3 = Color3.new(0, 0, 0)
+  o[277].BorderSizePixel = 0
+  o[277].ClipsDescendants = false
+  o[277].Draggable = false
+  o[277].Interactable = true
+  o[277].LayoutOrder = 0
+  o[277].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[277].Rotation = 0
+  o[277].Selectable = false
+  o[277].SelectionOrder = 0
+  o[277].Size = UDim2.new(0, 20, 0, 20)
+  o[277].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[277].Visible = true
+  o[277].ZIndex = 1
+  o[277].Parent = o[276]
+  o[278] = Instance.new("ImageButton")
+  o[278].Name = "Plus"
+  o[278].HoverImage = ""
+  o[278].Image = ""
+  o[278].ImageColor3 = Color3.new(1, 1, 1)
+  o[278].ImageRectOffset = Vector2.new(0, 0)
+  o[278].ImageRectSize = Vector2.new(0, 0)
+  o[278].ImageTransparency = 1
+  o[278].PressedImage = ""
+  o[278].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[278].ScaleType = ev(Enum.ScaleType, 0)
+  o[278].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[278].SliceScale = 1
+  o[278].TileSize = UDim2.new(1, 0, 1, 0)
+  o[278].AutoButtonColor = false
+  o[278].Modal = false
+  o[278].Selected = false
+  o[278].Active = true
+  o[278].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[278].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[278].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[278].BackgroundTransparency = 1
+  o[278].BorderColor3 = Color3.new(0, 0, 0)
+  o[278].BorderSizePixel = 0
+  o[278].ClipsDescendants = false
+  o[278].Draggable = false
+  o[278].Interactable = true
+  o[278].LayoutOrder = 0
+  o[278].Position = UDim2.new(0.870577812, 0, 0.493164062, 0)
+  o[278].Rotation = 0
+  o[278].Selectable = true
+  o[278].SelectionOrder = 0
+  o[278].Size = UDim2.new(0, 27, 0, 31)
+  o[278].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[278].Visible = true
+  o[278].ZIndex = 1
+  o[278].Parent = o[272]
+  o[279] = Instance.new("ImageLabel")
+  o[279].Name = "Icon"
+  o[279].Image = "rbxassetid://96950735183906"
+  o[279].ImageColor3 = Color3.new(1, 1, 1)
+  o[279].ImageRectOffset = Vector2.new(0, 0)
+  o[279].ImageRectSize = Vector2.new(0, 0)
+  o[279].ImageTransparency = 0.400000006
+  o[279].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[279].ScaleType = ev(Enum.ScaleType, 0)
+  o[279].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[279].SliceScale = 1
+  o[279].TileSize = UDim2.new(1, 0, 1, 0)
+  o[279].Active = false
+  o[279].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[279].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[279].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[279].BackgroundTransparency = 1
+  o[279].BorderColor3 = Color3.new(0, 0, 0)
+  o[279].BorderSizePixel = 0
+  o[279].ClipsDescendants = false
+  o[279].Draggable = false
+  o[279].Interactable = true
+  o[279].LayoutOrder = 0
+  o[279].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[279].Rotation = 0
+  o[279].Selectable = false
+  o[279].SelectionOrder = 0
+  o[279].Size = UDim2.new(0, 20, 0, 20)
+  o[279].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[279].Visible = true
+  o[279].ZIndex = 1
+  o[279].Parent = o[278]
+  o[280] = Instance.new("Frame")
+  o[280].Name = "NumberPicker2"
+  o[280].Active = false
+  o[280].AnchorPoint = Vector2.new(0, 0)
+  o[280].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[280].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[280].BackgroundTransparency = 1
+  o[280].BorderColor3 = Color3.new(0, 0, 0)
+  o[280].BorderSizePixel = 0
+  o[280].ClipsDescendants = false
+  o[280].Draggable = false
+  o[280].Interactable = true
+  o[280].LayoutOrder = 2
+  o[280].Position = UDim2.new(0, 0, 0, 0)
+  o[280].Rotation = 0
+  o[280].Selectable = false
+  o[280].SelectionOrder = 0
+  o[280].Size = UDim2.new(0.920000017, 0, 0, 50)
+  o[280].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[280].Visible = true
+  o[280].ZIndex = 1
+  o[280].Parent = o[266]
+  o[281] = Instance.new("TextLabel")
+  o[281].Name = "Name"
+  o[281].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[281].LineHeight = 1
+  o[281].LocalizationMatchedSourceText = ""
+  o[281].MaxVisibleGraphemes = -1
+  o[281].OpenTypeFeatures = ""
+  o[281].RichText = false
+  o[281].Text = "Number Picker 2"
+  o[281].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[281].TextScaled = false
+  o[281].TextSize = 16
+  o[281].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[281].TextStrokeTransparency = 1
+  o[281].TextTransparency = 0
+  o[281].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[281].TextWrapped = false
+  o[281].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[281].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[281].Active = false
+  o[281].AnchorPoint = Vector2.new(0, 0.5)
+  o[281].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[281].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[281].BackgroundTransparency = 1
+  o[281].BorderColor3 = Color3.new(0, 0, 0)
+  o[281].BorderSizePixel = 0
+  o[281].ClipsDescendants = false
+  o[281].Draggable = false
+  o[281].Interactable = true
+  o[281].LayoutOrder = 0
+  o[281].Position = UDim2.new(0.00999999978, 0, 0.5, 0)
+  o[281].Rotation = 0
+  o[281].Selectable = false
+  o[281].SelectionOrder = 0
+  o[281].Size = UDim2.new(0, 31, 0, 50)
+  o[281].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[281].Visible = true
+  o[281].ZIndex = 1
+  o[281].Parent = o[280]
+  o[282] = Instance.new("UIStroke")
+  o[282].Name = "UIStroke"
+  o[282].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[282].BorderOffset = UDim.new(0, 0)
+  o[282].Color = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[282].Enabled = true
+  o[282].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[282].Thickness = 0.200000003
+  o[282].Transparency = 0
+  o[282].ZIndex = 1
+  o[282].Parent = o[281]
+  o[283] = Instance.new("Frame")
+  o[283].Name = "NumberPickerHolder"
+  o[283].Active = false
+  o[283].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[283].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[283].BackgroundColor3 = Color3.new(0.0509803966, 0.0509803966, 0.054901965)
+  o[283].BackgroundTransparency = 0
+  o[283].BorderColor3 = Color3.new(0, 0, 0)
+  o[283].BorderSizePixel = 0
+  o[283].ClipsDescendants = false
+  o[283].Draggable = false
+  o[283].Interactable = true
+  o[283].LayoutOrder = 0
+  o[283].Position = UDim2.new(0.813664615, 0, 0.5, 0)
+  o[283].Rotation = 0
+  o[283].Selectable = false
+  o[283].SelectionOrder = 0
+  o[283].Size = UDim2.new(0, 106, 0, 32)
+  o[283].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[283].Visible = true
+  o[283].ZIndex = 1
+  o[283].Parent = o[280]
+  o[284] = Instance.new("UICorner")
+  o[284].Name = "UICorner"
+  o[284].BottomLeftRadius = UDim.new(0, 12)
+  o[284].BottomRightRadius = UDim.new(0, 12)
+  o[284].TopLeftRadius = UDim.new(0, 12)
+  o[284].TopRightRadius = UDim.new(0, 12)
+  o[284].Parent = o[283]
+  o[285] = Instance.new("Frame")
+  o[285].Name = "NumberValueHolder"
+  o[285].Active = false
+  o[285].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[285].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[285].BackgroundColor3 = Color3.new(0.0862745121, 0.0862745121, 0.0862745121)
+  o[285].BackgroundTransparency = 1
+  o[285].BorderColor3 = Color3.new(0, 0, 0)
+  o[285].BorderSizePixel = 0
+  o[285].ClipsDescendants = false
+  o[285].Draggable = false
+  o[285].Interactable = true
+  o[285].LayoutOrder = 0
+  o[285].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[285].Rotation = 0
+  o[285].Selectable = false
+  o[285].SelectionOrder = 0
+  o[285].Size = UDim2.new(0, 50, 1, 0)
+  o[285].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[285].Visible = true
+  o[285].ZIndex = 1
+  o[285].Parent = o[283]
+  o[286] = Instance.new("TextLabel")
+  o[286].Name = "NumberValue"
+  o[286].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[286].LineHeight = 1
+  o[286].LocalizationMatchedSourceText = ""
+  o[286].MaxVisibleGraphemes = -1
+  o[286].OpenTypeFeatures = ""
+  o[286].RichText = false
+  o[286].Text = "15"
+  o[286].TextColor3 = Color3.new(1, 1, 1)
+  o[286].TextScaled = false
+  o[286].TextSize = 20
+  o[286].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[286].TextStrokeTransparency = 1
+  o[286].TextTransparency = 0
+  o[286].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[286].TextWrapped = false
+  o[286].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[286].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[286].Active = false
+  o[286].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[286].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[286].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[286].BackgroundTransparency = 1
+  o[286].BorderColor3 = Color3.new(0, 0, 0)
+  o[286].BorderSizePixel = 0
+  o[286].ClipsDescendants = false
+  o[286].Draggable = false
+  o[286].Interactable = true
+  o[286].LayoutOrder = 0
+  o[286].Position = UDim2.new(0.5, 0, 0.496582806, 0)
+  o[286].Rotation = 0
+  o[286].Selectable = false
+  o[286].SelectionOrder = 0
+  o[286].Size = UDim2.new(1, 0, 0.850000024, 0)
+  o[286].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[286].Visible = true
+  o[286].ZIndex = 1
+  o[286].Parent = o[285]
+  o[287] = Instance.new("ImageButton")
+  o[287].Name = "Minus"
+  o[287].HoverImage = ""
+  o[287].Image = ""
+  o[287].ImageColor3 = Color3.new(1, 1, 1)
+  o[287].ImageRectOffset = Vector2.new(0, 0)
+  o[287].ImageRectSize = Vector2.new(0, 0)
+  o[287].ImageTransparency = 1
+  o[287].PressedImage = ""
+  o[287].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[287].ScaleType = ev(Enum.ScaleType, 0)
+  o[287].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[287].SliceScale = 1
+  o[287].TileSize = UDim2.new(1, 0, 1, 0)
+  o[287].AutoButtonColor = false
+  o[287].Modal = false
+  o[287].Selected = false
+  o[287].Active = true
+  o[287].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[287].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[287].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[287].BackgroundTransparency = 1
+  o[287].BorderColor3 = Color3.new(0, 0, 0)
+  o[287].BorderSizePixel = 0
+  o[287].ClipsDescendants = false
+  o[287].Draggable = false
+  o[287].Interactable = true
+  o[287].LayoutOrder = 0
+  o[287].Position = UDim2.new(0.134728789, 0, 0.493164062, 0)
+  o[287].Rotation = 0
+  o[287].Selectable = true
+  o[287].SelectionOrder = 0
+  o[287].Size = UDim2.new(0, 27, 0, 31)
+  o[287].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[287].Visible = true
+  o[287].ZIndex = 1
+  o[287].Parent = o[283]
+  o[288] = Instance.new("ImageLabel")
+  o[288].Name = "Icon"
+  o[288].Image = "rbxassetid://128229913388215"
+  o[288].ImageColor3 = Color3.new(1, 1, 1)
+  o[288].ImageRectOffset = Vector2.new(0, 0)
+  o[288].ImageRectSize = Vector2.new(0, 0)
+  o[288].ImageTransparency = 0.400000006
+  o[288].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[288].ScaleType = ev(Enum.ScaleType, 0)
+  o[288].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[288].SliceScale = 1
+  o[288].TileSize = UDim2.new(1, 0, 1, 0)
+  o[288].Active = false
+  o[288].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[288].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[288].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[288].BackgroundTransparency = 1
+  o[288].BorderColor3 = Color3.new(0, 0, 0)
+  o[288].BorderSizePixel = 0
+  o[288].ClipsDescendants = false
+  o[288].Draggable = false
+  o[288].Interactable = true
+  o[288].LayoutOrder = 0
+  o[288].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[288].Rotation = 0
+  o[288].Selectable = false
+  o[288].SelectionOrder = 0
+  o[288].Size = UDim2.new(0, 20, 0, 20)
+  o[288].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[288].Visible = true
+  o[288].ZIndex = 1
+  o[288].Parent = o[287]
+  o[289] = Instance.new("ImageButton")
+  o[289].Name = "Plus"
+  o[289].HoverImage = ""
+  o[289].Image = ""
+  o[289].ImageColor3 = Color3.new(1, 1, 1)
+  o[289].ImageRectOffset = Vector2.new(0, 0)
+  o[289].ImageRectSize = Vector2.new(0, 0)
+  o[289].ImageTransparency = 1
+  o[289].PressedImage = ""
+  o[289].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[289].ScaleType = ev(Enum.ScaleType, 0)
+  o[289].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[289].SliceScale = 1
+  o[289].TileSize = UDim2.new(1, 0, 1, 0)
+  o[289].AutoButtonColor = false
+  o[289].Modal = false
+  o[289].Selected = false
+  o[289].Active = true
+  o[289].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[289].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[289].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[289].BackgroundTransparency = 1
+  o[289].BorderColor3 = Color3.new(0, 0, 0)
+  o[289].BorderSizePixel = 0
+  o[289].ClipsDescendants = false
+  o[289].Draggable = false
+  o[289].Interactable = true
+  o[289].LayoutOrder = 0
+  o[289].Position = UDim2.new(0.870577812, 0, 0.493164062, 0)
+  o[289].Rotation = 0
+  o[289].Selectable = true
+  o[289].SelectionOrder = 0
+  o[289].Size = UDim2.new(0, 27, 0, 31)
+  o[289].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[289].Visible = true
+  o[289].ZIndex = 1
+  o[289].Parent = o[283]
+  o[290] = Instance.new("ImageLabel")
+  o[290].Name = "Icon"
+  o[290].Image = "rbxassetid://96950735183906"
+  o[290].ImageColor3 = Color3.new(1, 1, 1)
+  o[290].ImageRectOffset = Vector2.new(0, 0)
+  o[290].ImageRectSize = Vector2.new(0, 0)
+  o[290].ImageTransparency = 0.400000006
+  o[290].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[290].ScaleType = ev(Enum.ScaleType, 0)
+  o[290].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[290].SliceScale = 1
+  o[290].TileSize = UDim2.new(1, 0, 1, 0)
+  o[290].Active = false
+  o[290].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[290].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[290].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[290].BackgroundTransparency = 1
+  o[290].BorderColor3 = Color3.new(0, 0, 0)
+  o[290].BorderSizePixel = 0
+  o[290].ClipsDescendants = false
+  o[290].Draggable = false
+  o[290].Interactable = true
+  o[290].LayoutOrder = 0
+  o[290].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[290].Rotation = 0
+  o[290].Selectable = false
+  o[290].SelectionOrder = 0
+  o[290].Size = UDim2.new(0, 20, 0, 20)
+  o[290].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[290].Visible = true
+  o[290].ZIndex = 1
+  o[290].Parent = o[289]
+  o[291] = Instance.new("Frame")
+  o[291].Name = "TabInfoFrameHolder"
+  o[291].Active = false
+  o[291].AnchorPoint = Vector2.new(0, 0)
+  o[291].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[291].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[291].BackgroundTransparency = 1
+  o[291].BorderColor3 = Color3.new(0, 0, 0)
+  o[291].BorderSizePixel = 0
+  o[291].ClipsDescendants = false
+  o[291].Draggable = false
+  o[291].Interactable = true
+  o[291].LayoutOrder = 0
+  o[291].Position = UDim2.new(0, 0, 0, 0)
+  o[291].Rotation = 0
+  o[291].Selectable = false
+  o[291].SelectionOrder = 0
+  o[291].Size = UDim2.new(1, 0, 0.100000001, 0)
+  o[291].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[291].Visible = true
+  o[291].ZIndex = 1
+  o[291].Parent = o[50]
+  o[292] = Instance.new("TextLabel")
+  o[292].Name = "TabName"
+  o[292].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+  o[292].LineHeight = 1
+  o[292].LocalizationMatchedSourceText = ""
+  o[292].MaxVisibleGraphemes = -1
+  o[292].OpenTypeFeatures = ""
+  o[292].RichText = false
+  o[292].Text = "Player"
+  o[292].TextColor3 = Color3.new(0.847058833, 0.847058833, 0.847058833)
+  o[292].TextScaled = false
+  o[292].TextSize = 25
+  o[292].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[292].TextStrokeTransparency = 1
+  o[292].TextTransparency = 0
+  o[292].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[292].TextWrapped = false
+  o[292].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[292].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[292].Active = false
+  o[292].AnchorPoint = Vector2.new(0, 0.5)
+  o[292].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[292].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[292].BackgroundTransparency = 1
+  o[292].BorderColor3 = Color3.new(0, 0, 0)
+  o[292].BorderSizePixel = 0
+  o[292].ClipsDescendants = false
+  o[292].Draggable = false
+  o[292].Interactable = true
+  o[292].LayoutOrder = 1
+  o[292].Position = UDim2.new(0.0213125795, 0, 0.5, 0)
+  o[292].Rotation = 0
+  o[292].Selectable = false
+  o[292].SelectionOrder = 0
+  o[292].Size = UDim2.new(0, 0, 1, 0)
+  o[292].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[292].Visible = true
+  o[292].ZIndex = 1
+  o[292].Parent = o[291]
+  o[293] = Instance.new("UIPadding")
+  o[293].Name = "UIPadding"
+  o[293].PaddingBottom = UDim.new(0, 0)
+  o[293].PaddingLeft = UDim.new(0, 0)
+  o[293].PaddingRight = UDim.new(0, 2)
+  o[293].PaddingTop = UDim.new(0, 0)
+  o[293].Parent = o[292]
+  o[294] = Instance.new("UIListLayout")
+  o[294].Name = "UIListLayout"
+  o[294].HorizontalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[294].Padding = UDim.new(0, 10)
+  o[294].VerticalFlex = ev(Enum.UIFlexAlignment, 0)
+  o[294].Wraps = false
+  o[294].FillDirection = ev(Enum.FillDirection, 0)
+  o[294].HorizontalAlignment = ev(Enum.HorizontalAlignment, 1)
+  o[294].SortOrder = ev(Enum.SortOrder, 2)
+  o[294].VerticalAlignment = ev(Enum.VerticalAlignment, 0)
+  o[294].Parent = o[291]
+  o[295] = Instance.new("UIPadding")
+  o[295].Name = "UIPadding"
+  o[295].PaddingBottom = UDim.new(0, 0)
+  o[295].PaddingLeft = UDim.new(0, 30)
+  o[295].PaddingRight = UDim.new(0, 0)
+  o[295].PaddingTop = UDim.new(0, 0)
+  o[295].Parent = o[291]
+  o[296] = Instance.new("ImageLabel")
+  o[296].Name = "Divider"
+  o[296].Image = "rbxassetid://124160192323665"
+  o[296].ImageColor3 = Color3.new(0.192156881, 0.192156881, 0.192156881)
+  o[296].ImageRectOffset = Vector2.new(0, 0)
+  o[296].ImageRectSize = Vector2.new(0, 0)
+  o[296].ImageTransparency = 0
+  o[296].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[296].ScaleType = ev(Enum.ScaleType, 0)
+  o[296].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[296].SliceScale = 1
+  o[296].TileSize = UDim2.new(1, 0, 1, 0)
+  o[296].Active = false
+  o[296].AnchorPoint = Vector2.new(0, 0)
+  o[296].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[296].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[296].BackgroundTransparency = 1
+  o[296].BorderColor3 = Color3.new(0, 0, 0)
+  o[296].BorderSizePixel = 0
+  o[296].ClipsDescendants = false
+  o[296].Draggable = false
+  o[296].Interactable = true
+  o[296].LayoutOrder = 2
+  o[296].Position = UDim2.new(0, 0, 0, 0)
+  o[296].Rotation = 0
+  o[296].Selectable = false
+  o[296].SelectionOrder = 0
+  o[296].Size = UDim2.new(0, 9, 0, 9)
+  o[296].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[296].Visible = true
+  o[296].ZIndex = 1
+  o[296].Parent = o[291]
+  o[297] = Instance.new("TextLabel")
+  o[297].Name = "TabGroupName"
+  o[297].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Italic)
+  o[297].LineHeight = 1
+  o[297].LocalizationMatchedSourceText = ""
+  o[297].MaxVisibleGraphemes = -1
+  o[297].OpenTypeFeatures = ""
+  o[297].RichText = false
+  o[297].Text = "Main"
+  o[297].TextColor3 = Color3.new(0.392156869, 0.392156869, 0.392156869)
+  o[297].TextScaled = false
+  o[297].TextSize = 19
+  o[297].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[297].TextStrokeTransparency = 1
+  o[297].TextTransparency = 0
+  o[297].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[297].TextWrapped = false
+  o[297].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[297].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[297].Active = false
+  o[297].AnchorPoint = Vector2.new(0, 0.5)
+  o[297].AutomaticSize = ev(Enum.AutomaticSize, 1)
+  o[297].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[297].BackgroundTransparency = 1
+  o[297].BorderColor3 = Color3.new(0, 0, 0)
+  o[297].BorderSizePixel = 0
+  o[297].ClipsDescendants = false
+  o[297].Draggable = false
+  o[297].Interactable = true
+  o[297].LayoutOrder = 3
+  o[297].Position = UDim2.new(0.0213125795, 0, 0.5, 0)
+  o[297].Rotation = 0
+  o[297].Selectable = false
+  o[297].SelectionOrder = 0
+  o[297].Size = UDim2.new(0, 0, 1, 0)
+  o[297].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[297].Visible = true
+  o[297].ZIndex = 1
+  o[297].Parent = o[291]
+  o[298] = Instance.new("UIPadding")
+  o[298].Name = "UIPadding"
+  o[298].PaddingBottom = UDim.new(0, 0)
+  o[298].PaddingLeft = UDim.new(0, 0)
+  o[298].PaddingRight = UDim.new(0, 0)
+  o[298].PaddingTop = UDim.new(0, 6)
+  o[298].Parent = o[297]
+  o[299] = Instance.new("UIPadding")
+  o[299].Name = "UIPadding"
+  o[299].PaddingBottom = UDim.new(0, 60)
+  o[299].PaddingLeft = UDim.new(0, 0)
+  o[299].PaddingRight = UDim.new(0, 0)
+  o[299].PaddingTop = UDim.new(0, 0)
+  o[299].Parent = o[50]
+  o[300] = Instance.new("Folder")
+  o[300].Name = "Screens"
+  o[300].Parent = o[1]
+  o[301] = Instance.new("Frame")
+  o[301].Name = "LoadingScreen"
+  o[301].Active = false
+  o[301].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[301].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[301].BackgroundColor3 = Color3.new(0.0509803928, 0.0509803928, 0.0549019612)
+  o[301].BackgroundTransparency = 0
+  o[301].BorderColor3 = Color3.new(0, 0, 0)
+  o[301].BorderSizePixel = 0
+  o[301].ClipsDescendants = false
+  o[301].Draggable = false
+  o[301].Interactable = true
+  o[301].LayoutOrder = 0
+  o[301].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[301].Rotation = 0
+  o[301].Selectable = false
+  o[301].SelectionOrder = 0
+  o[301].Size = UDim2.new(1, 0, 1, 0)
+  o[301].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[301].Visible = false
+  o[301].ZIndex = 11
+  o[301].Parent = o[300]
+  o[302] = Instance.new("UICorner")
+  o[302].Name = "UICorner"
+  o[302].BottomLeftRadius = UDim.new(0, 20)
+  o[302].BottomRightRadius = UDim.new(0, 20)
+  o[302].TopLeftRadius = UDim.new(0, 20)
+  o[302].TopRightRadius = UDim.new(0, 20)
+  o[302].Parent = o[301]
+  o[303] = Instance.new("ImageLabel")
+  o[303].Name = "WhiteGlow"
+  o[303].Image = "rbxassetid://130321961257203"
+  o[303].ImageColor3 = Color3.new(1, 1, 1)
+  o[303].ImageRectOffset = Vector2.new(0, 0)
+  o[303].ImageRectSize = Vector2.new(0, 0)
+  o[303].ImageTransparency = 0.930000007
+  o[303].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[303].ScaleType = ev(Enum.ScaleType, 0)
+  o[303].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[303].SliceScale = 1
+  o[303].TileSize = UDim2.new(1, 0, 1, 0)
+  o[303].Active = false
+  o[303].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[303].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[303].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[303].BackgroundTransparency = 1
+  o[303].BorderColor3 = Color3.new(0, 0, 0)
+  o[303].BorderSizePixel = 0
+  o[303].ClipsDescendants = false
+  o[303].Draggable = false
+  o[303].Interactable = true
+  o[303].LayoutOrder = 0
+  o[303].Position = UDim2.new(0.50999999, 0, -0.0450000018, 0)
+  o[303].Rotation = 0
+  o[303].Selectable = false
+  o[303].SelectionOrder = 0
+  o[303].Size = UDim2.new(0, 1068, 0, 1068)
+  o[303].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[303].Visible = true
+  o[303].ZIndex = -1
+  o[303].Parent = o[301]
+  o[304] = Instance.new("TextLabel")
+  o[304].Name = "LoadingTitle"
+  o[304].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[304].LineHeight = 1
+  o[304].LocalizationMatchedSourceText = ""
+  o[304].MaxVisibleGraphemes = -1
+  o[304].OpenTypeFeatures = ""
+  o[304].RichText = false
+  o[304].Text = "Just a momentâ¦"
+  o[304].TextColor3 = Color3.new(0.835294187, 0.835294187, 0.835294187)
+  o[304].TextScaled = false
+  o[304].TextSize = 35
+  o[304].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[304].TextStrokeTransparency = 1
+  o[304].TextTransparency = 0
+  o[304].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[304].TextWrapped = false
+  o[304].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[304].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[304].Active = false
+  o[304].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[304].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[304].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[304].BackgroundTransparency = 1
+  o[304].BorderColor3 = Color3.new(0, 0, 0)
+  o[304].BorderSizePixel = 0
+  o[304].ClipsDescendants = false
+  o[304].Draggable = false
+  o[304].Interactable = true
+  o[304].LayoutOrder = 0
+  o[304].Position = UDim2.new(0.5, 0, 0.427671075, 0)
+  o[304].Rotation = 0
+  o[304].Selectable = false
+  o[304].SelectionOrder = 0
+  o[304].Size = UDim2.new(1, 0, 0, 70)
+  o[304].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[304].Visible = true
+  o[304].ZIndex = 1
+  o[304].Parent = o[301]
+  o[305] = Instance.new("Frame")
+  o[305].Name = "LoadingLine"
+  o[305].Active = false
+  o[305].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[305].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[305].BackgroundColor3 = Color3.new(0.0980392173, 0.0980392173, 0.0980392173)
+  o[305].BackgroundTransparency = 0
+  o[305].BorderColor3 = Color3.new(0, 0, 0)
+  o[305].BorderSizePixel = 0
+  o[305].ClipsDescendants = false
+  o[305].Draggable = false
+  o[305].Interactable = true
+  o[305].LayoutOrder = 0
+  o[305].Position = UDim2.new(0.5, 0, 0.540000021, 0)
+  o[305].Rotation = 0
+  o[305].Selectable = false
+  o[305].SelectionOrder = 0
+  o[305].Size = UDim2.new(0, 224, 0, 9)
+  o[305].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[305].Visible = true
+  o[305].ZIndex = 1
+  o[305].Parent = o[301]
+  o[306] = Instance.new("UICorner")
+  o[306].Name = "UICorner"
+  o[306].BottomLeftRadius = UDim.new(1, 0)
+  o[306].BottomRightRadius = UDim.new(1, 0)
+  o[306].TopLeftRadius = UDim.new(1, 0)
+  o[306].TopRightRadius = UDim.new(1, 0)
+  o[306].Parent = o[305]
+  o[307] = Instance.new("Frame")
+  o[307].Name = "Fill"
+  o[307].Active = false
+  o[307].AnchorPoint = Vector2.new(0, 0)
+  o[307].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[307].BackgroundColor3 = Color3.new(0.882352948, 0.882352948, 0.882352948)
+  o[307].BackgroundTransparency = 0
+  o[307].BorderColor3 = Color3.new(0, 0, 0)
+  o[307].BorderSizePixel = 0
+  o[307].ClipsDescendants = false
+  o[307].Draggable = false
+  o[307].Interactable = true
+  o[307].LayoutOrder = 0
+  o[307].Position = UDim2.new(0, 0, 0, 0)
+  o[307].Rotation = 0
+  o[307].Selectable = false
+  o[307].SelectionOrder = 0
+  o[307].Size = UDim2.new(0.5, 0, 1, 0)
+  o[307].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[307].Visible = true
+  o[307].ZIndex = 1
+  o[307].Parent = o[305]
+  o[308] = Instance.new("UICorner")
+  o[308].Name = "UICorner"
+  o[308].BottomLeftRadius = UDim.new(1, 0)
+  o[308].BottomRightRadius = UDim.new(1, 0)
+  o[308].TopLeftRadius = UDim.new(1, 0)
+  o[308].TopRightRadius = UDim.new(1, 0)
+  o[308].Parent = o[307]
+  o[309] = Instance.new("TextLabel")
+  o[309].Name = "LoadingDesc"
+  o[309].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Italic)
+  o[309].LineHeight = 1
+  o[309].LocalizationMatchedSourceText = ""
+  o[309].MaxVisibleGraphemes = -1
+  o[309].OpenTypeFeatures = ""
+  o[309].RichText = false
+  o[309].Text = "Setting things up â this won't take long."
+  o[309].TextColor3 = Color3.new(0.470588237, 0.470588237, 0.470588237)
+  o[309].TextScaled = false
+  o[309].TextSize = 17
+  o[309].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[309].TextStrokeTransparency = 1
+  o[309].TextTransparency = 0
+  o[309].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[309].TextWrapped = false
+  o[309].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[309].TextYAlignment = ev(Enum.TextYAlignment, 0)
+  o[309].Active = false
+  o[309].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[309].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[309].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[309].BackgroundTransparency = 1
+  o[309].BorderColor3 = Color3.new(0, 0, 0)
+  o[309].BorderSizePixel = 0
+  o[309].ClipsDescendants = false
+  o[309].Draggable = false
+  o[309].Interactable = true
+  o[309].LayoutOrder = 0
+  o[309].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[309].Rotation = 0
+  o[309].Selectable = false
+  o[309].SelectionOrder = 0
+  o[309].Size = UDim2.new(1, 0, -0.037482664, 70)
+  o[309].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[309].Visible = true
+  o[309].ZIndex = 1
+  o[309].Parent = o[301]
+  o[310] = Instance.new("TextLabel")
+  o[310].Name = "Timer"
+  o[310].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Italic)
+  o[310].LineHeight = 1
+  o[310].LocalizationMatchedSourceText = ""
+  o[310].MaxVisibleGraphemes = -1
+  o[310].OpenTypeFeatures = ""
+  o[310].RichText = false
+  o[310].Text = "~6s"
+  o[310].TextColor3 = Color3.new(0.196078435, 0.196078435, 0.196078435)
+  o[310].TextScaled = false
+  o[310].TextSize = 16
+  o[310].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[310].TextStrokeTransparency = 1
+  o[310].TextTransparency = 0
+  o[310].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[310].TextWrapped = false
+  o[310].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[310].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[310].Active = false
+  o[310].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[310].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[310].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[310].BackgroundTransparency = 1
+  o[310].BorderColor3 = Color3.new(0, 0, 0)
+  o[310].BorderSizePixel = 0
+  o[310].ClipsDescendants = false
+  o[310].Draggable = false
+  o[310].Interactable = true
+  o[310].LayoutOrder = 0
+  o[310].Position = UDim2.new(0.5, 0, 0.579999983, 0)
+  o[310].Rotation = 0
+  o[310].Selectable = false
+  o[310].SelectionOrder = 0
+  o[310].Size = UDim2.new(0.0344478227, 0, -0.0761900917, 70)
+  o[310].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[310].Visible = true
+  o[310].ZIndex = 1
+  o[310].Parent = o[301]
+  o[311] = Instance.new("Frame")
+  o[311].Name = "EnterKeyScreen"
+  o[311].Active = false
+  o[311].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[311].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[311].BackgroundColor3 = Color3.new(0.0509803928, 0.0509803928, 0.0549019612)
+  o[311].BackgroundTransparency = 0
+  o[311].BorderColor3 = Color3.new(0, 0, 0)
+  o[311].BorderSizePixel = 0
+  o[311].ClipsDescendants = false
+  o[311].Draggable = false
+  o[311].Interactable = true
+  o[311].LayoutOrder = 0
+  o[311].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[311].Rotation = 0
+  o[311].Selectable = false
+  o[311].SelectionOrder = 0
+  o[311].Size = UDim2.new(1, 0, 1, 0)
+  o[311].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[311].Visible = false
+  o[311].ZIndex = 12
+  o[311].Parent = o[300]
+  o[312] = Instance.new("UICorner")
+  o[312].Name = "UICorner"
+  o[312].BottomLeftRadius = UDim.new(0, 20)
+  o[312].BottomRightRadius = UDim.new(0, 20)
+  o[312].TopLeftRadius = UDim.new(0, 20)
+  o[312].TopRightRadius = UDim.new(0, 20)
+  o[312].Parent = o[311]
+  o[313] = Instance.new("ImageLabel")
+  o[313].Name = "WhiteGlow"
+  o[313].Image = "rbxassetid://130321961257203"
+  o[313].ImageColor3 = Color3.new(1, 1, 1)
+  o[313].ImageRectOffset = Vector2.new(0, 0)
+  o[313].ImageRectSize = Vector2.new(0, 0)
+  o[313].ImageTransparency = 0.930000007
+  o[313].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[313].ScaleType = ev(Enum.ScaleType, 0)
+  o[313].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[313].SliceScale = 1
+  o[313].TileSize = UDim2.new(1, 0, 1, 0)
+  o[313].Active = false
+  o[313].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[313].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[313].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[313].BackgroundTransparency = 1
+  o[313].BorderColor3 = Color3.new(0, 0, 0)
+  o[313].BorderSizePixel = 0
+  o[313].ClipsDescendants = false
+  o[313].Draggable = false
+  o[313].Interactable = true
+  o[313].LayoutOrder = 0
+  o[313].Position = UDim2.new(0.50999999, 0, -0.0450000018, 0)
+  o[313].Rotation = 0
+  o[313].Selectable = false
+  o[313].SelectionOrder = 0
+  o[313].Size = UDim2.new(0, 1068, 0, 1068)
+  o[313].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[313].Visible = true
+  o[313].ZIndex = -1
+  o[313].Parent = o[311]
+  o[314] = Instance.new("TextLabel")
+  o[314].Name = "WelcomeText"
+  o[314].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[314].LineHeight = 1
+  o[314].LocalizationMatchedSourceText = ""
+  o[314].MaxVisibleGraphemes = -1
+  o[314].OpenTypeFeatures = ""
+  o[314].RichText = false
+  o[314].Text = "Welcome to amphibia."
+  o[314].TextColor3 = Color3.new(0.835294187, 0.835294187, 0.835294187)
+  o[314].TextScaled = false
+  o[314].TextSize = 35
+  o[314].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[314].TextStrokeTransparency = 1
+  o[314].TextTransparency = 0
+  o[314].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[314].TextWrapped = false
+  o[314].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[314].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[314].Active = false
+  o[314].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[314].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[314].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[314].BackgroundTransparency = 1
+  o[314].BorderColor3 = Color3.new(0, 0, 0)
+  o[314].BorderSizePixel = 0
+  o[314].ClipsDescendants = false
+  o[314].Draggable = false
+  o[314].Interactable = true
+  o[314].LayoutOrder = 0
+  o[314].Position = UDim2.new(0.5, 0, 0.401355296, 0)
+  o[314].Rotation = 0
+  o[314].Selectable = false
+  o[314].SelectionOrder = 0
+  o[314].Size = UDim2.new(1, 0, 0, 70)
+  o[314].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[314].Visible = true
+  o[314].ZIndex = 1
+  o[314].Parent = o[311]
+  o[315] = Instance.new("TextLabel")
+  o[315].Name = "WelcomeDesc"
+  o[315].FontFace = Font.new("rbxassetid://12187368093", Enum.FontWeight.Regular, Enum.FontStyle.Italic)
+  o[315].LineHeight = 1
+  o[315].LocalizationMatchedSourceText = ""
+  o[315].MaxVisibleGraphemes = -1
+  o[315].OpenTypeFeatures = ""
+  o[315].RichText = false
+  o[315].Text = "Enter your key to get started."
+  o[315].TextColor3 = Color3.new(0.470588237, 0.470588237, 0.470588237)
+  o[315].TextScaled = false
+  o[315].TextSize = 19
+  o[315].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[315].TextStrokeTransparency = 1
+  o[315].TextTransparency = 0
+  o[315].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[315].TextWrapped = false
+  o[315].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[315].TextYAlignment = ev(Enum.TextYAlignment, 0)
+  o[315].Active = false
+  o[315].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[315].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[315].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[315].BackgroundTransparency = 1
+  o[315].BorderColor3 = Color3.new(0, 0, 0)
+  o[315].BorderSizePixel = 0
+  o[315].ClipsDescendants = false
+  o[315].Draggable = false
+  o[315].Interactable = true
+  o[315].LayoutOrder = 0
+  o[315].Position = UDim2.new(0.5, 0, 0.479999989, 0)
+  o[315].Rotation = 0
+  o[315].Selectable = false
+  o[315].SelectionOrder = 0
+  o[315].Size = UDim2.new(1, 0, -0.0381599739, 70)
+  o[315].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[315].Visible = true
+  o[315].ZIndex = 1
+  o[315].Parent = o[311]
+  o[316] = Instance.new("Frame")
+  o[316].Name = "KeyInputBG"
+  o[316].Active = false
+  o[316].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[316].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[316].BackgroundColor3 = Color3.new(0.113725498, 0.113725498, 0.113725498)
+  o[316].BackgroundTransparency = 0
+  o[316].BorderColor3 = Color3.new(0, 0, 0)
+  o[316].BorderSizePixel = 0
+  o[316].ClipsDescendants = false
+  o[316].Draggable = false
+  o[316].Interactable = true
+  o[316].LayoutOrder = 0
+  o[316].Position = UDim2.new(0.5, 0, 0.558000028, 0)
+  o[316].Rotation = 0
+  o[316].Selectable = false
+  o[316].SelectionOrder = 0
+  o[316].Size = UDim2.new(0, 319, 0, 23)
+  o[316].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[316].Visible = true
+  o[316].ZIndex = 3
+  o[316].Parent = o[311]
+  o[317] = Instance.new("UICorner")
+  o[317].Name = "UICorner"
+  o[317].BottomLeftRadius = UDim.new(0, 9)
+  o[317].BottomRightRadius = UDim.new(0, 9)
+  o[317].TopLeftRadius = UDim.new(0, 9)
+  o[317].TopRightRadius = UDim.new(0, 9)
+  o[317].Parent = o[316]
+  o[318] = Instance.new("UIStroke")
+  o[318].Name = "UIStroke"
+  o[318].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[318].BorderOffset = UDim.new(0, 0)
+  o[318].Color = Color3.new(0.215686277, 0.215686277, 0.215686277)
+  o[318].Enabled = true
+  o[318].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[318].Thickness = 1
+  o[318].Transparency = 0
+  o[318].ZIndex = 1
+  o[318].Parent = o[316]
+  o[319] = Instance.new("ImageButton")
+  o[319].Name = "InputButton"
+  o[319].HoverImage = ""
+  o[319].Image = ""
+  o[319].ImageColor3 = Color3.new(1, 1, 1)
+  o[319].ImageRectOffset = Vector2.new(0, 0)
+  o[319].ImageRectSize = Vector2.new(0, 0)
+  o[319].ImageTransparency = 1
+  o[319].PressedImage = ""
+  o[319].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[319].ScaleType = ev(Enum.ScaleType, 0)
+  o[319].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[319].SliceScale = 1
+  o[319].TileSize = UDim2.new(1, 0, 1, 0)
+  o[319].AutoButtonColor = true
+  o[319].Modal = false
+  o[319].Selected = false
+  o[319].Active = true
+  o[319].AnchorPoint = Vector2.new(0, 0)
+  o[319].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[319].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[319].BackgroundTransparency = 1
+  o[319].BorderColor3 = Color3.new(0, 0, 0)
+  o[319].BorderSizePixel = 0
+  o[319].ClipsDescendants = false
+  o[319].Draggable = false
+  o[319].Interactable = true
+  o[319].LayoutOrder = 0
+  o[319].Position = UDim2.new(0, 0, 0, 0)
+  o[319].Rotation = 0
+  o[319].Selectable = true
+  o[319].SelectionOrder = 0
+  o[319].Size = UDim2.new(1, 0, 1, 0)
+  o[319].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[319].Visible = true
+  o[319].ZIndex = 1
+  o[319].Parent = o[316]
+  o[320] = Instance.new("TextLabel")
+  o[320].Name = "Text"
+  o[320].FontFace = Font.new("rbxasset://fonts/families/RobotoMono.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[320].LineHeight = 1
+  o[320].LocalizationMatchedSourceText = ""
+  o[320].MaxVisibleGraphemes = -1
+  o[320].OpenTypeFeatures = ""
+  o[320].RichText = false
+  o[320].Text = "Enter key here"
+  o[320].TextColor3 = Color3.new(0.615686297, 0.615686297, 0.615686297)
+  o[320].TextScaled = false
+  o[320].TextSize = 14
+  o[320].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[320].TextStrokeTransparency = 1
+  o[320].TextTransparency = 0
+  o[320].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[320].TextWrapped = false
+  o[320].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[320].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[320].Active = false
+  o[320].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[320].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[320].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[320].BackgroundTransparency = 1
+  o[320].BorderColor3 = Color3.new(0, 0, 0)
+  o[320].BorderSizePixel = 0
+  o[320].ClipsDescendants = false
+  o[320].Draggable = false
+  o[320].Interactable = true
+  o[320].LayoutOrder = 0
+  o[320].Position = UDim2.new(0.462382436, 0, 0.5, 0)
+  o[320].Rotation = 0
+  o[320].Selectable = false
+  o[320].SelectionOrder = 0
+  o[320].Size = UDim2.new(0.865203738, 0, 1, 0)
+  o[320].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[320].Visible = true
+  o[320].ZIndex = 1
+  o[320].Parent = o[316]
+  o[321] = Instance.new("ImageButton")
+  o[321].Name = "ActivateButton"
+  o[321].HoverImage = ""
+  o[321].Image = "rbxassetid://94816744026537"
+  o[321].ImageColor3 = Color3.new(1, 1, 1)
+  o[321].ImageRectOffset = Vector2.new(0, 0)
+  o[321].ImageRectSize = Vector2.new(0, 0)
+  o[321].ImageTransparency = 0.800000012
+  o[321].PressedImage = ""
+  o[321].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[321].ScaleType = ev(Enum.ScaleType, 0)
+  o[321].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[321].SliceScale = 1
+  o[321].TileSize = UDim2.new(1, 0, 1, 0)
+  o[321].AutoButtonColor = true
+  o[321].Modal = false
+  o[321].Selected = false
+  o[321].Active = true
+  o[321].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[321].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[321].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[321].BackgroundTransparency = 1
+  o[321].BorderColor3 = Color3.new(0, 0, 0)
+  o[321].BorderSizePixel = 0
+  o[321].ClipsDescendants = false
+  o[321].Draggable = false
+  o[321].Interactable = true
+  o[321].LayoutOrder = 0
+  o[321].Position = UDim2.new(0.954545438, 0, 0.5, 0)
+  o[321].Rotation = 90
+  o[321].Selectable = true
+  o[321].SelectionOrder = 0
+  o[321].Size = UDim2.new(0, 20, 0, 18)
+  o[321].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[321].Visible = true
+  o[321].ZIndex = 0
+  o[321].Parent = o[316]
+  o[322] = Instance.new("ImageButton")
+  o[322].Name = "CopyDiscrod"
+  o[322].HoverImage = ""
+  o[322].Image = "rbxassetid://122829741481584"
+  o[322].ImageColor3 = Color3.new(1, 1, 1)
+  o[322].ImageRectOffset = Vector2.new(0, 0)
+  o[322].ImageRectSize = Vector2.new(0, 0)
+  o[322].ImageTransparency = 0.800000012
+  o[322].PressedImage = ""
+  o[322].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[322].ScaleType = ev(Enum.ScaleType, 0)
+  o[322].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[322].SliceScale = 1
+  o[322].TileSize = UDim2.new(1, 0, 1, 0)
+  o[322].AutoButtonColor = false
+  o[322].Modal = false
+  o[322].Selected = false
+  o[322].Active = true
+  o[322].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[322].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[322].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[322].BackgroundTransparency = 1
+  o[322].BorderColor3 = Color3.new(0, 0, 0)
+  o[322].BorderSizePixel = 0
+  o[322].ClipsDescendants = false
+  o[322].Draggable = false
+  o[322].Interactable = true
+  o[322].LayoutOrder = 0
+  o[322].Position = UDim2.new(0.449999988, 0, 0.944999993, 0)
+  o[322].Rotation = 0
+  o[322].Selectable = true
+  o[322].SelectionOrder = 0
+  o[322].Size = UDim2.new(0, 30, 0, 30)
+  o[322].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[322].Visible = true
+  o[322].ZIndex = 1
+  o[322].Parent = o[311]
+  o[323] = Instance.new("ImageButton")
+  o[323].Name = "CopySite"
+  o[323].HoverImage = ""
+  o[323].Image = "rbxassetid://109323416778766"
+  o[323].ImageColor3 = Color3.new(1, 1, 1)
+  o[323].ImageRectOffset = Vector2.new(0, 0)
+  o[323].ImageRectSize = Vector2.new(0, 0)
+  o[323].ImageTransparency = 0.800000012
+  o[323].PressedImage = ""
+  o[323].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[323].ScaleType = ev(Enum.ScaleType, 0)
+  o[323].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[323].SliceScale = 1
+  o[323].TileSize = UDim2.new(1, 0, 1, 0)
+  o[323].AutoButtonColor = false
+  o[323].Modal = false
+  o[323].Selected = false
+  o[323].Active = true
+  o[323].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[323].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[323].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[323].BackgroundTransparency = 1
+  o[323].BorderColor3 = Color3.new(0, 0, 0)
+  o[323].BorderSizePixel = 0
+  o[323].ClipsDescendants = false
+  o[323].Draggable = false
+  o[323].Interactable = true
+  o[323].LayoutOrder = 0
+  o[323].Position = UDim2.new(0.5, 0, 0.944999993, 0)
+  o[323].Rotation = 0
+  o[323].Selectable = true
+  o[323].SelectionOrder = 0
+  o[323].Size = UDim2.new(0, 30, 0, 30)
+  o[323].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[323].Visible = true
+  o[323].ZIndex = 1
+  o[323].Parent = o[311]
+  o[324] = Instance.new("ImageButton")
+  o[324].Name = "CopyYoutube"
+  o[324].HoverImage = ""
+  o[324].Image = "rbxassetid://80810391923936"
+  o[324].ImageColor3 = Color3.new(1, 1, 1)
+  o[324].ImageRectOffset = Vector2.new(0, 0)
+  o[324].ImageRectSize = Vector2.new(0, 0)
+  o[324].ImageTransparency = 0.800000012
+  o[324].PressedImage = ""
+  o[324].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[324].ScaleType = ev(Enum.ScaleType, 0)
+  o[324].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[324].SliceScale = 1
+  o[324].TileSize = UDim2.new(1, 0, 1, 0)
+  o[324].AutoButtonColor = false
+  o[324].Modal = false
+  o[324].Selected = false
+  o[324].Active = true
+  o[324].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[324].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[324].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[324].BackgroundTransparency = 1
+  o[324].BorderColor3 = Color3.new(0, 0, 0)
+  o[324].BorderSizePixel = 0
+  o[324].ClipsDescendants = false
+  o[324].Draggable = false
+  o[324].Interactable = true
+  o[324].LayoutOrder = 0
+  o[324].Position = UDim2.new(0.550000012, 0, 0.944999993, 0)
+  o[324].Rotation = 0
+  o[324].Selectable = true
+  o[324].SelectionOrder = 0
+  o[324].Size = UDim2.new(0, 30, 0, 30)
+  o[324].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[324].Visible = true
+  o[324].ZIndex = 1
+  o[324].Parent = o[311]
+  o[325] = Instance.new("ImageLabel")
+  o[325].Name = "KeyInputGlow"
+  o[325].Image = "rbxassetid://70620626215499"
+  o[325].ImageColor3 = Color3.new(0.372549027, 0.372549027, 0.372549027)
+  o[325].ImageRectOffset = Vector2.new(0, 0)
+  o[325].ImageRectSize = Vector2.new(0, 0)
+  o[325].ImageTransparency = 1
+  o[325].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[325].ScaleType = ev(Enum.ScaleType, 0)
+  o[325].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[325].SliceScale = 1
+  o[325].TileSize = UDim2.new(1, 0, 1, 0)
+  o[325].Active = false
+  o[325].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[325].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[325].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[325].BackgroundTransparency = 1
+  o[325].BorderColor3 = Color3.new(0, 0, 0)
+  o[325].BorderSizePixel = 0
+  o[325].ClipsDescendants = false
+  o[325].Draggable = false
+  o[325].Interactable = true
+  o[325].LayoutOrder = 0
+  o[325].Position = UDim2.new(0.5, 0, 0.560000002, 0)
+  o[325].Rotation = 0
+  o[325].Selectable = false
+  o[325].SelectionOrder = 0
+  o[325].Size = UDim2.new(0, 483, 0, 272)
+  o[325].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[325].Visible = true
+  o[325].ZIndex = 1
+  o[325].Parent = o[311]
+  o[326] = Instance.new("TextButton")
+  o[326].Name = "KeyInputStopButton"
+  o[326].FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[326].LineHeight = 1
+  o[326].LocalizationMatchedSourceText = ""
+  o[326].MaxVisibleGraphemes = -1
+  o[326].OpenTypeFeatures = ""
+  o[326].RichText = false
+  o[326].Text = "Button"
+  o[326].TextColor3 = Color3.new(0, 0, 0)
+  o[326].TextScaled = false
+  o[326].TextSize = 1
+  o[326].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[326].TextStrokeTransparency = 1
+  o[326].TextTransparency = 1
+  o[326].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[326].TextWrapped = false
+  o[326].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[326].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[326].AutoButtonColor = true
+  o[326].Modal = false
+  o[326].Selected = false
+  o[326].Active = true
+  o[326].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[326].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[326].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[326].BackgroundTransparency = 1
+  o[326].BorderColor3 = Color3.new(0, 0, 0)
+  o[326].BorderSizePixel = 0
+  o[326].ClipsDescendants = false
+  o[326].Draggable = false
+  o[326].Interactable = true
+  o[326].LayoutOrder = 0
+  o[326].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[326].Rotation = 0
+  o[326].Selectable = true
+  o[326].SelectionOrder = 0
+  o[326].Size = UDim2.new(1, 0, 1, 0)
+  o[326].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[326].Visible = true
+  o[326].ZIndex = 1
+  o[326].Parent = o[311]
+  o[327] = Instance.new("UICorner")
+  o[327].Name = "UICorner"
+  o[327].BottomLeftRadius = UDim.new(0, 20)
+  o[327].BottomRightRadius = UDim.new(0, 20)
+  o[327].TopLeftRadius = UDim.new(0, 20)
+  o[327].TopRightRadius = UDim.new(0, 20)
+  o[327].Parent = o[326]
+  o[328] = Instance.new("ImageLabel")
+  o[328].Name = "Icon"
+  o[328].Image = "rbxassetid://134303082879830"
+  o[328].ImageColor3 = Color3.new(1, 1, 1)
+  o[328].ImageRectOffset = Vector2.new(0, 0)
+  o[328].ImageRectSize = Vector2.new(0, 0)
+  o[328].ImageTransparency = 0.239999995
+  o[328].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[328].ScaleType = ev(Enum.ScaleType, 0)
+  o[328].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[328].SliceScale = 1
+  o[328].TileSize = UDim2.new(1, 0, 1, 0)
+  o[328].Active = false
+  o[328].AnchorPoint = Vector2.new(0, 0)
+  o[328].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[328].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[328].BackgroundTransparency = 1
+  o[328].BorderColor3 = Color3.new(0, 0, 0)
+  o[328].BorderSizePixel = 0
+  o[328].ClipsDescendants = false
+  o[328].Draggable = false
+  o[328].Interactable = true
+  o[328].LayoutOrder = 0
+  o[328].Position = UDim2.new(0.457953393, 0, 0.220394731, 0)
+  o[328].Rotation = 0
+  o[328].Selectable = false
+  o[328].SelectionOrder = 0
+  o[328].Size = UDim2.new(0, 82, 0, 82)
+  o[328].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[328].Visible = true
+  o[328].ZIndex = 1
+  o[328].Parent = o[311]
+  o[329] = Instance.new("Folder")
+  o[329].Name = "Other"
+  o[329].Parent = o[1]
+  o[330] = Instance.new("ImageLabel")
+  o[330].Name = "UIShadow"
+  o[330].BackgroundTransparency = 1
+  o[330].Image = "rbxassetid://130321961257203"
+  o[330].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[330].Position = UDim2.fromScale(0.5, 0.5)
+  o[330].Size = UDim2.fromScale(2, 2)
+  o[330].ImageColor3 = Color3.new(0, 0, 0)
+  o[330].ImageTransparency = 0.200000003
+  o[330].ZIndex = -1
+  o[330].Parent = o[1]
+  o[331] = Instance.new("ImageButton")
+  o[331].Name = "ShowUiButton"
+  o[331].HoverImage = ""
+  o[331].Image = ""
+  o[331].ImageColor3 = Color3.new(1, 1, 1)
+  o[331].ImageRectOffset = Vector2.new(0, 0)
+  o[331].ImageRectSize = Vector2.new(0, 0)
+  o[331].ImageTransparency = 1
+  o[331].PressedImage = ""
+  o[331].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[331].ScaleType = ev(Enum.ScaleType, 0)
+  o[331].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[331].SliceScale = 1
+  o[331].TileSize = UDim2.new(1, 0, 1, 0)
+  o[331].AutoButtonColor = false
+  o[331].Modal = false
+  o[331].Selected = false
+  o[331].Active = true
+  o[331].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[331].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[331].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[331].BackgroundTransparency = 0
+  o[331].BorderColor3 = Color3.new(0, 0, 0)
+  o[331].BorderSizePixel = 0
+  o[331].ClipsDescendants = false
+  o[331].Draggable = false
+  o[331].Interactable = true
+  o[331].LayoutOrder = 0
+  o[331].Position = UDim2.new(0.5, 0, 0.0176851843, 0)
+  o[331].Rotation = 0
+  o[331].Selectable = true
+  o[331].SelectionOrder = 0
+  o[331].Size = UDim2.new(0, 236, 0, 8)
+  o[331].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[331].Visible = true
+  o[331].ZIndex = 1
+  o[331].Parent = parentGui
+  o[332] = Instance.new("UICorner")
+  o[332].Name = "UICorner"
+  o[332].BottomLeftRadius = UDim.new(1, 0)
+  o[332].BottomRightRadius = UDim.new(1, 0)
+  o[332].TopLeftRadius = UDim.new(1, 0)
+  o[332].TopRightRadius = UDim.new(1, 0)
+  o[332].Parent = o[331]
+  o[333] = Instance.new("UIGradient")
+  o[333].Name = "UIGradient"
+  o[333].Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.new(0.862745, 0.862745, 0.862745)), ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))})
+  o[333].Enabled = true
+  o[333].Offset = Vector2.new(0, 0)
+  o[333].Rotation = -90
+  o[333].Scale = 1
+  o[333].Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0)})
+  o[333].Parent = o[331]
+  o[334] = Instance.new("ImageLabel")
+  o[334].Name = "UIShadow"
+  o[334].BackgroundTransparency = 1
+  o[334].Image = "rbxassetid://130321961257203"
+  o[334].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[334].Position = UDim2.fromScale(0.5, 0.5)
+  o[334].Size = UDim2.fromScale(2, 2)
+  o[334].ImageColor3 = Color3.new(1, 1, 1)
+  o[334].ImageTransparency = 0
+  o[334].ZIndex = -1
+  o[334].Parent = o[331]
+  o[335] = Instance.new("ImageLabel")
+  o[335].Name = "Shadow"
+  o[335].Image = "rbxassetid://76575266047430"
+  o[335].ImageColor3 = Color3.new(1, 1, 1)
+  o[335].ImageRectOffset = Vector2.new(0, 0)
+  o[335].ImageRectSize = Vector2.new(0, 0)
+  o[335].ImageTransparency = 0.389999986
+  o[335].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[335].ScaleType = ev(Enum.ScaleType, 0)
+  o[335].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[335].SliceScale = 1
+  o[335].TileSize = UDim2.new(1, 0, 1, 0)
+  o[335].Active = false
+  o[335].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[335].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[335].BackgroundColor3 = Color3.new(0, 0, 0)
+  o[335].BackgroundTransparency = 1
+  o[335].BorderColor3 = Color3.new(0, 0, 0)
+  o[335].BorderSizePixel = 0
+  o[335].ClipsDescendants = false
+  o[335].Draggable = false
+  o[335].Interactable = true
+  o[335].LayoutOrder = 0
+  o[335].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[335].Rotation = 0
+  o[335].Selectable = false
+  o[335].SelectionOrder = 0
+  o[335].Size = UDim2.new(0, 1907, 0, 1444)
+  o[335].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[335].Visible = true
+  o[335].ZIndex = -1
+  o[335].Parent = parentGui
+  o[336] = Instance.new("Frame")
+  o[336].Name = "ColorPicker"
+  o[336].Active = false
+  o[336].AnchorPoint = Vector2.new(0, 0)
+  o[336].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[336].BackgroundColor3 = Color3.new(0.0705882385, 0.0705882385, 0.0705882385)
+  o[336].BackgroundTransparency = 0
+  o[336].BorderColor3 = Color3.new(0, 0, 0)
+  o[336].BorderSizePixel = 0
+  o[336].ClipsDescendants = false
+  o[336].Draggable = false
+  o[336].Interactable = true
+  o[336].LayoutOrder = 0
+  o[336].Position = UDim2.new(0.774999976, 0, 0.502019644, 0)
+  o[336].Rotation = 0
+  o[336].Selectable = false
+  o[336].SelectionOrder = 0
+  o[336].Size = UDim2.new(0, 195, 0, 349)
+  o[336].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[336].Visible = false
+  o[336].ZIndex = 5
+  o[336].Parent = parentGui
+  o[337] = Instance.new("UICorner")
+  o[337].Name = "UICorner"
+  o[337].BottomLeftRadius = UDim.new(0, 8)
+  o[337].BottomRightRadius = UDim.new(0, 8)
+  o[337].TopLeftRadius = UDim.new(0, 8)
+  o[337].TopRightRadius = UDim.new(0, 8)
+  o[337].Parent = o[336]
+  o[338] = Instance.new("UIStroke")
+  o[338].Name = "UIStroke"
+  o[338].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[338].BorderOffset = UDim.new(0, 0)
+  o[338].Color = Color3.new(0.156862751, 0.156862751, 0.156862751)
+  o[338].Enabled = true
+  o[338].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[338].Thickness = 1
+  o[338].Transparency = 0
+  o[338].ZIndex = 1
+  o[338].Parent = o[336]
+  o[339] = Instance.new("Frame")
+  o[339].Name = "ColorPickerFunctionsHolder"
+  o[339].Active = false
+  o[339].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[339].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[339].BackgroundColor3 = Color3.new(0.0705882385, 0.0705882385, 0.0705882385)
+  o[339].BackgroundTransparency = 0.850000024
+  o[339].BorderColor3 = Color3.new(0, 0, 0)
+  o[339].BorderSizePixel = 0
+  o[339].ClipsDescendants = false
+  o[339].Draggable = false
+  o[339].Interactable = true
+  o[339].LayoutOrder = 0
+  o[339].Position = UDim2.new(0.5, 0, 0.566593349, 0)
+  o[339].Rotation = 0
+  o[339].Selectable = false
+  o[339].SelectionOrder = 0
+  o[339].Size = UDim2.new(0, 195, 0, 301)
+  o[339].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[339].Visible = true
+  o[339].ZIndex = 5
+  o[339].Parent = o[336]
+  o[340] = Instance.new("Frame")
+  o[340].Name = "ColorPicker"
+  o[340].Active = false
+  o[340].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[340].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[340].BackgroundColor3 = Color3.new(0.56078434, 0.65882355, 0.627451003)
+  o[340].BackgroundTransparency = 0
+  o[340].BorderColor3 = Color3.new(0, 0, 0)
+  o[340].BorderSizePixel = 0
+  o[340].ClipsDescendants = false
+  o[340].Draggable = false
+  o[340].Interactable = true
+  o[340].LayoutOrder = 0
+  o[340].Position = UDim2.new(0.5, 0, 0.322240084, 0)
+  o[340].Rotation = 0
+  o[340].Selectable = false
+  o[340].SelectionOrder = 0
+  o[340].Size = UDim2.new(0, 178, 0, 178)
+  o[340].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[340].Visible = true
+  o[340].ZIndex = 1
+  o[340].Parent = o[339]
+  o[341] = Instance.new("UICorner")
+  o[341].Name = "UICorner"
+  o[341].BottomLeftRadius = UDim.new(0, 5)
+  o[341].BottomRightRadius = UDim.new(0, 5)
+  o[341].TopLeftRadius = UDim.new(0, 5)
+  o[341].TopRightRadius = UDim.new(0, 5)
+  o[341].Parent = o[340]
+  o[342] = Instance.new("Frame")
+  o[342].Name = "Dark"
+  o[342].Active = false
+  o[342].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[342].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[342].BackgroundColor3 = Color3.new(0, 0, 0)
+  o[342].BackgroundTransparency = 0
+  o[342].BorderColor3 = Color3.new(0, 0, 0)
+  o[342].BorderSizePixel = 0
+  o[342].ClipsDescendants = false
+  o[342].Draggable = false
+  o[342].Interactable = true
+  o[342].LayoutOrder = 0
+  o[342].Position = UDim2.new(0.393258423, 0, 0.5, 0)
+  o[342].Rotation = 0
+  o[342].Selectable = false
+  o[342].SelectionOrder = 0
+  o[342].Size = UDim2.new(0.786516845, 0, 1, 0)
+  o[342].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[342].Visible = true
+  o[342].ZIndex = 2
+  o[342].Parent = o[340]
+  o[343] = Instance.new("UIGradient")
+  o[343].Name = "UIGradient"
+  o[343].Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)), ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))})
+  o[343].Enabled = true
+  o[343].Offset = Vector2.new(0, 0)
+  o[343].Rotation = 0
+  o[343].Scale = 1
+  o[343].Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)})
+  o[343].Parent = o[342]
+  o[344] = Instance.new("UICorner")
+  o[344].Name = "UICorner"
+  o[344].BottomLeftRadius = UDim.new(0, 4)
+  o[344].BottomRightRadius = UDim.new(0, 4)
+  o[344].TopLeftRadius = UDim.new(0, 4)
+  o[344].TopRightRadius = UDim.new(0, 4)
+  o[344].Parent = o[342]
+  o[345] = Instance.new("Frame")
+  o[345].Name = "White"
+  o[345].Active = false
+  o[345].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[345].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[345].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[345].BackgroundTransparency = 0
+  o[345].BorderColor3 = Color3.new(0, 0, 0)
+  o[345].BorderSizePixel = 0
+  o[345].ClipsDescendants = false
+  o[345].Draggable = false
+  o[345].Interactable = true
+  o[345].LayoutOrder = 0
+  o[345].Position = UDim2.new(0.5, 0, 0.696629226, 0)
+  o[345].Rotation = 0
+  o[345].Selectable = false
+  o[345].SelectionOrder = 0
+  o[345].Size = UDim2.new(1, 0, 0.606741548, 0)
+  o[345].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[345].Visible = true
+  o[345].ZIndex = 1
+  o[345].Parent = o[340]
+  o[346] = Instance.new("UIGradient")
+  o[346].Name = "UIGradient"
+  o[346].Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)), ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))})
+  o[346].Enabled = true
+  o[346].Offset = Vector2.new(0, 0)
+  o[346].Rotation = -90
+  o[346].Scale = 1
+  o[346].Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)})
+  o[346].Parent = o[345]
+  o[347] = Instance.new("UICorner")
+  o[347].Name = "UICorner"
+  o[347].BottomLeftRadius = UDim.new(0, 5)
+  o[347].BottomRightRadius = UDim.new(0, 5)
+  o[347].TopLeftRadius = UDim.new(0, 5)
+  o[347].TopRightRadius = UDim.new(0, 5)
+  o[347].Parent = o[345]
+  o[348] = Instance.new("Frame")
+  o[348].Name = "Knob"
+  o[348].Active = false
+  o[348].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[348].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[348].BackgroundColor3 = Color3.new(0.56078434, 0.65882355, 0.627451003)
+  o[348].BackgroundTransparency = 0
+  o[348].BorderColor3 = Color3.new(0, 0, 0)
+  o[348].BorderSizePixel = 0
+  o[348].ClipsDescendants = false
+  o[348].Draggable = false
+  o[348].Interactable = true
+  o[348].LayoutOrder = 0
+  o[348].Position = UDim2.new(0.848717928, 0, 0.157807305, 0)
+  o[348].Rotation = 0
+  o[348].Selectable = false
+  o[348].SelectionOrder = 0
+  o[348].Size = UDim2.new(0, 14, 0, 14)
+  o[348].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[348].Visible = true
+  o[348].ZIndex = 1
+  o[348].Parent = o[340]
+  o[349] = Instance.new("UICorner")
+  o[349].Name = "UICorner"
+  o[349].BottomLeftRadius = UDim.new(1, 0)
+  o[349].BottomRightRadius = UDim.new(1, 0)
+  o[349].TopLeftRadius = UDim.new(1, 0)
+  o[349].TopRightRadius = UDim.new(1, 0)
+  o[349].Parent = o[348]
+  o[350] = Instance.new("UIStroke")
+  o[350].Name = "UIStroke"
+  o[350].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[350].BorderOffset = UDim.new(0, 0)
+  o[350].Color = Color3.new(1, 1, 1)
+  o[350].Enabled = true
+  o[350].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[350].Thickness = 1.5
+  o[350].Transparency = 0
+  o[350].ZIndex = 1
+  o[350].Parent = o[348]
+  o[351] = Instance.new("Frame")
+  o[351].Name = "ColorSlider"
+  o[351].Active = false
+  o[351].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[351].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[351].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[351].BackgroundTransparency = 0
+  o[351].BorderColor3 = Color3.new(0, 0, 0)
+  o[351].BorderSizePixel = 0
+  o[351].ClipsDescendants = false
+  o[351].Draggable = false
+  o[351].Interactable = true
+  o[351].LayoutOrder = 0
+  o[351].Position = UDim2.new(0.5, 0, 0.679999948, 0)
+  o[351].Rotation = 0
+  o[351].Selectable = false
+  o[351].SelectionOrder = 0
+  o[351].Size = UDim2.new(0, 178, 0, 20)
+  o[351].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[351].Visible = true
+  o[351].ZIndex = 1
+  o[351].Parent = o[339]
+  o[352] = Instance.new("UICorner")
+  o[352].Name = "UICorner"
+  o[352].BottomLeftRadius = UDim.new(0, 5)
+  o[352].BottomRightRadius = UDim.new(0, 5)
+  o[352].TopLeftRadius = UDim.new(0, 5)
+  o[352].TopRightRadius = UDim.new(0, 5)
+  o[352].Parent = o[351]
+  o[353] = Instance.new("UIGradient")
+  o[353].Name = "UIGradient"
+  o[353].Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.new(1, 0, 0)), ColorSequenceKeypoint.new(0.115717, Color3.new(1, 0.615686, 0)), ColorSequenceKeypoint.new(0.250432, Color3.new(0.984314, 1, 0)), ColorSequenceKeypoint.new(0.38342, Color3.new(0.180392, 0.988235, 0)), ColorSequenceKeypoint.new(0.566494, Color3.new(0, 1, 0.933333)), ColorSequenceKeypoint.new(0.699482, Color3.new(0, 0.0156863, 1)), ColorSequenceKeypoint.new(0.829016, Color3.new(0.85098, 0, 1)), ColorSequenceKeypoint.new(1, Color3.new(1, 0, 0))})
+  o[353].Enabled = true
+  o[353].Offset = Vector2.new(0, 0)
+  o[353].Rotation = 0
+  o[353].Scale = 1
+  o[353].Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0)})
+  o[353].Parent = o[351]
+  o[354] = Instance.new("Frame")
+  o[354].Name = "Knob"
+  o[354].Active = false
+  o[354].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[354].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[354].BackgroundColor3 = Color3.new(0, 0, 0)
+  o[354].BackgroundTransparency = 0
+  o[354].BorderColor3 = Color3.new(0, 0, 0)
+  o[354].BorderSizePixel = 0
+  o[354].ClipsDescendants = false
+  o[354].Draggable = false
+  o[354].Interactable = true
+  o[354].LayoutOrder = 0
+  o[354].Position = UDim2.new(0.200000003, 0, 0.5, 0)
+  o[354].Rotation = 0
+  o[354].Selectable = false
+  o[354].SelectionOrder = 0
+  o[354].Size = UDim2.new(0, 2, 0, 15)
+  o[354].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[354].Visible = true
+  o[354].ZIndex = 1
+  o[354].Parent = o[351]
+  o[355] = Instance.new("UIStroke")
+  o[355].Name = "UIStroke"
+  o[355].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[355].BorderOffset = UDim.new(0, 0)
+  o[355].Color = Color3.new(0, 0, 0)
+  o[355].Enabled = true
+  o[355].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[355].Thickness = 1
+  o[355].Transparency = 0.649999976
+  o[355].ZIndex = 1
+  o[355].Parent = o[354]
+  o[356] = Instance.new("Frame")
+  o[356].Name = "TransparencySlider"
+  o[356].Active = false
+  o[356].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[356].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[356].BackgroundColor3 = Color3.new(0.56078434, 0.65882355, 0.627451003)
+  o[356].BackgroundTransparency = 0
+  o[356].BorderColor3 = Color3.new(0, 0, 0)
+  o[356].BorderSizePixel = 0
+  o[356].ClipsDescendants = false
+  o[356].Draggable = false
+  o[356].Interactable = true
+  o[356].LayoutOrder = 0
+  o[356].Position = UDim2.new(0.5, 0, 0.779999971, 0)
+  o[356].Rotation = 0
+  o[356].Selectable = false
+  o[356].SelectionOrder = 0
+  o[356].Size = UDim2.new(0, 178, 0, 20)
+  o[356].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[356].Visible = true
+  o[356].ZIndex = 1
+  o[356].Parent = o[339]
+  o[357] = Instance.new("UICorner")
+  o[357].Name = "UICorner"
+  o[357].BottomLeftRadius = UDim.new(0, 5)
+  o[357].BottomRightRadius = UDim.new(0, 5)
+  o[357].TopLeftRadius = UDim.new(0, 5)
+  o[357].TopRightRadius = UDim.new(0, 5)
+  o[357].Parent = o[356]
+  o[358] = Instance.new("ImageLabel")
+  o[358].Name = "ChessTexture"
+  o[358].Image = "rbxassetid://107060544057249"
+  o[358].ImageColor3 = Color3.new(0.478431404, 0.478431404, 0.478431404)
+  o[358].ImageRectOffset = Vector2.new(0, 0)
+  o[358].ImageRectSize = Vector2.new(0, 0)
+  o[358].ImageTransparency = 0
+  o[358].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[358].ScaleType = ev(Enum.ScaleType, 4)
+  o[358].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[358].SliceScale = 1
+  o[358].TileSize = UDim2.new(1, 0, 1, 0)
+  o[358].Active = false
+  o[358].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[358].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[358].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[358].BackgroundTransparency = 1
+  o[358].BorderColor3 = Color3.new(0, 0, 0)
+  o[358].BorderSizePixel = 0
+  o[358].ClipsDescendants = false
+  o[358].Draggable = false
+  o[358].Interactable = true
+  o[358].LayoutOrder = 0
+  o[358].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[358].Rotation = 0
+  o[358].Selectable = false
+  o[358].SelectionOrder = 0
+  o[358].Size = UDim2.new(1, 0, 1, 0)
+  o[358].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[358].Visible = true
+  o[358].ZIndex = 1
+  o[358].Parent = o[356]
+  o[359] = Instance.new("UICorner")
+  o[359].Name = "UICorner"
+  o[359].BottomLeftRadius = UDim.new(0, 5)
+  o[359].BottomRightRadius = UDim.new(0, 5)
+  o[359].TopLeftRadius = UDim.new(0, 5)
+  o[359].TopRightRadius = UDim.new(0, 5)
+  o[359].Parent = o[358]
+  o[360] = Instance.new("UIGradient")
+  o[360].Name = "UIGradient"
+  o[360].Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)), ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))})
+  o[360].Enabled = true
+  o[360].Offset = Vector2.new(0, 0)
+  o[360].Rotation = 0
+  o[360].Scale = 1
+  o[360].Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.897883, 1), NumberSequenceKeypoint.new(1, 1)})
+  o[360].Parent = o[358]
+  o[361] = Instance.new("Frame")
+  o[361].Name = "Knob"
+  o[361].Active = false
+  o[361].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[361].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[361].BackgroundColor3 = Color3.new(0, 0, 0)
+  o[361].BackgroundTransparency = 0
+  o[361].BorderColor3 = Color3.new(0, 0, 0)
+  o[361].BorderSizePixel = 0
+  o[361].ClipsDescendants = false
+  o[361].Draggable = false
+  o[361].Interactable = true
+  o[361].LayoutOrder = 0
+  o[361].Position = UDim2.new(0.5, 0, 0.5, 0)
+  o[361].Rotation = 0
+  o[361].Selectable = false
+  o[361].SelectionOrder = 0
+  o[361].Size = UDim2.new(0, 2, 0, 15)
+  o[361].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[361].Visible = true
+  o[361].ZIndex = 1
+  o[361].Parent = o[356]
+  o[362] = Instance.new("UIStroke")
+  o[362].Name = "UIStroke"
+  o[362].ApplyStrokeMode = ev(Enum.ApplyStrokeMode, 0)
+  o[362].BorderOffset = UDim.new(0, 0)
+  o[362].Color = Color3.new(0, 0, 0)
+  o[362].Enabled = true
+  o[362].LineJoinMode = ev(Enum.LineJoinMode, 0)
+  o[362].Thickness = 1
+  o[362].Transparency = 0.649999976
+  o[362].ZIndex = 1
+  o[362].Parent = o[361]
+  o[363] = Instance.new("Frame")
+  o[363].Name = "HexUnputHolder"
+  o[363].Active = false
+  o[363].AnchorPoint = Vector2.new(0, 0)
+  o[363].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[363].BackgroundColor3 = Color3.new(0.0862745121, 0.0862745121, 0.0862745121)
+  o[363].BackgroundTransparency = 0
+  o[363].BorderColor3 = Color3.new(0, 0, 0)
+  o[363].BorderSizePixel = 0
+  o[363].ClipsDescendants = false
+  o[363].Draggable = false
+  o[363].Interactable = true
+  o[363].LayoutOrder = 0
+  o[363].Position = UDim2.new(0.0435897447, 0, 0.853820622, 0)
+  o[363].Rotation = 0
+  o[363].Selectable = false
+  o[363].SelectionOrder = 0
+  o[363].Size = UDim2.new(0, 177, 0, 38)
+  o[363].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[363].Visible = true
+  o[363].ZIndex = 1
+  o[363].Parent = o[339]
+  o[364] = Instance.new("UICorner")
+  o[364].Name = "UICorner"
+  o[364].BottomLeftRadius = UDim.new(0, 5)
+  o[364].BottomRightRadius = UDim.new(0, 5)
+  o[364].TopLeftRadius = UDim.new(0, 5)
+  o[364].TopRightRadius = UDim.new(0, 5)
+  o[364].Parent = o[363]
+  o[365] = Instance.new("Frame")
+  o[365].Name = "HexTextFrame"
+  o[365].Active = false
+  o[365].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[365].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[365].BackgroundColor3 = Color3.new(0.0705882385, 0.0705882385, 0.0705882385)
+  o[365].BackgroundTransparency = 0
+  o[365].BorderColor3 = Color3.new(0, 0, 0)
+  o[365].BorderSizePixel = 0
+  o[365].ClipsDescendants = false
+  o[365].Draggable = false
+  o[365].Interactable = true
+  o[365].LayoutOrder = 0
+  o[365].Position = UDim2.new(0.150000006, 0, 0.5, 0)
+  o[365].Rotation = 0
+  o[365].Selectable = false
+  o[365].SelectionOrder = 0
+  o[365].Size = UDim2.new(0, 41, 0, 26)
+  o[365].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[365].Visible = true
+  o[365].ZIndex = 1
+  o[365].Parent = o[363]
+  o[366] = Instance.new("UICorner")
+  o[366].Name = "UICorner"
+  o[366].BottomLeftRadius = UDim.new(0, 6)
+  o[366].BottomRightRadius = UDim.new(0, 6)
+  o[366].TopLeftRadius = UDim.new(0, 6)
+  o[366].TopRightRadius = UDim.new(0, 6)
+  o[366].Parent = o[365]
+  o[367] = Instance.new("TextLabel")
+  o[367].Name = "TextLabel"
+  o[367].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[367].LineHeight = 1
+  o[367].LocalizationMatchedSourceText = ""
+  o[367].MaxVisibleGraphemes = -1
+  o[367].OpenTypeFeatures = ""
+  o[367].RichText = false
+  o[367].Text = "HEX"
+  o[367].TextColor3 = Color3.new(0.823529482, 0.823529482, 0.823529482)
+  o[367].TextScaled = false
+  o[367].TextSize = 18
+  o[367].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[367].TextStrokeTransparency = 1
+  o[367].TextTransparency = 0
+  o[367].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[367].TextWrapped = false
+  o[367].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[367].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[367].Active = false
+  o[367].AnchorPoint = Vector2.new(0, 0)
+  o[367].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[367].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[367].BackgroundTransparency = 1
+  o[367].BorderColor3 = Color3.new(0, 0, 0)
+  o[367].BorderSizePixel = 0
+  o[367].ClipsDescendants = false
+  o[367].Draggable = false
+  o[367].Interactable = true
+  o[367].LayoutOrder = 0
+  o[367].Position = UDim2.new(0, 0, 0, 0)
+  o[367].Rotation = 0
+  o[367].Selectable = false
+  o[367].SelectionOrder = 0
+  o[367].Size = UDim2.new(1, 0, 1, 0)
+  o[367].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[367].Visible = true
+  o[367].ZIndex = 1
+  o[367].Parent = o[365]
+  o[368] = Instance.new("TextLabel")
+  o[368].Name = "HexPrefix"
+  o[368].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[368].LineHeight = 1
+  o[368].LocalizationMatchedSourceText = ""
+  o[368].MaxVisibleGraphemes = -1
+  o[368].OpenTypeFeatures = ""
+  o[368].RichText = false
+  o[368].Text = "#"
+  o[368].TextColor3 = Color3.new(0.745098054, 0.745098054, 0.745098054)
+  o[368].TextScaled = false
+  o[368].TextSize = 18
+  o[368].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[368].TextStrokeTransparency = 1
+  o[368].TextTransparency = 0
+  o[368].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[368].TextWrapped = false
+  o[368].TextXAlignment = ev(Enum.TextXAlignment, 2)
+  o[368].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[368].Active = false
+  o[368].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[368].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[368].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[368].BackgroundTransparency = 1
+  o[368].BorderColor3 = Color3.new(0, 0, 0)
+  o[368].BorderSizePixel = 0
+  o[368].ClipsDescendants = false
+  o[368].Draggable = false
+  o[368].Interactable = true
+  o[368].LayoutOrder = 0
+  o[368].Position = UDim2.new(0.362599164, 0, 0.5, 0)
+  o[368].Rotation = 0
+  o[368].Selectable = false
+  o[368].SelectionOrder = 0
+  o[368].Size = UDim2.new(0, 15, 1, 0)
+  o[368].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[368].Visible = true
+  o[368].ZIndex = 1
+  o[368].Parent = o[363]
+  o[369] = Instance.new("TextLabel")
+  o[369].Name = "Hex"
+  o[369].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[369].LineHeight = 1
+  o[369].LocalizationMatchedSourceText = ""
+  o[369].MaxVisibleGraphemes = -1
+  o[369].OpenTypeFeatures = ""
+  o[369].RichText = false
+  o[369].Text = "8FA8A0"
+  o[369].TextColor3 = Color3.new(0.745098054, 0.745098054, 0.745098054)
+  o[369].TextScaled = false
+  o[369].TextSize = 14
+  o[369].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[369].TextStrokeTransparency = 1
+  o[369].TextTransparency = 0
+  o[369].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[369].TextWrapped = false
+  o[369].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[369].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[369].Active = false
+  o[369].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[369].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[369].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[369].BackgroundTransparency = 1
+  o[369].BorderColor3 = Color3.new(0, 0, 0)
+  o[369].BorderSizePixel = 0
+  o[369].ClipsDescendants = false
+  o[369].Draggable = false
+  o[369].Interactable = true
+  o[369].LayoutOrder = 0
+  o[369].Position = UDim2.new(0.46259889, 0, 0.51000011, 0)
+  o[369].Rotation = 0
+  o[369].Selectable = false
+  o[369].SelectionOrder = 0
+  o[369].Size = UDim2.new(0, 15, 1, 0)
+  o[369].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[369].Visible = true
+  o[369].ZIndex = 1
+  o[369].Parent = o[363]
+  o[370] = Instance.new("TextLabel")
+  o[370].Name = "Transparency"
+  o[370].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[370].LineHeight = 1
+  o[370].LocalizationMatchedSourceText = ""
+  o[370].MaxVisibleGraphemes = -1
+  o[370].OpenTypeFeatures = ""
+  o[370].RichText = false
+  o[370].Text = "40%"
+  o[370].TextColor3 = Color3.new(0.745098054, 0.745098054, 0.745098054)
+  o[370].TextScaled = false
+  o[370].TextSize = 12
+  o[370].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[370].TextStrokeTransparency = 1
+  o[370].TextTransparency = 0
+  o[370].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[370].TextWrapped = false
+  o[370].TextXAlignment = ev(Enum.TextXAlignment, 1)
+  o[370].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[370].Active = false
+  o[370].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[370].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[370].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[370].BackgroundTransparency = 1
+  o[370].BorderColor3 = Color3.new(0, 0, 0)
+  o[370].BorderSizePixel = 0
+  o[370].ClipsDescendants = false
+  o[370].Draggable = false
+  o[370].Interactable = true
+  o[370].LayoutOrder = 0
+  o[370].Position = UDim2.new(0.672999978, 0, 0.5, 0)
+  o[370].Rotation = 0
+  o[370].Selectable = false
+  o[370].SelectionOrder = 0
+  o[370].Size = UDim2.new(0.466779679, 15, 1, 0)
+  o[370].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[370].Visible = true
+  o[370].ZIndex = 1
+  o[370].Parent = o[363]
+  o[371] = Instance.new("Frame")
+  o[371].Name = "Title"
+  o[371].Active = false
+  o[371].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[371].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[371].BackgroundColor3 = Color3.new(0.0549019612, 0.0549019612, 0.0549019612)
+  o[371].BackgroundTransparency = 0
+  o[371].BorderColor3 = Color3.new(0, 0, 0)
+  o[371].BorderSizePixel = 0
+  o[371].ClipsDescendants = false
+  o[371].Draggable = false
+  o[371].Interactable = true
+  o[371].LayoutOrder = 0
+  o[371].Position = UDim2.new(0.5, 0, 0.0784282535, 0)
+  o[371].Rotation = 0
+  o[371].Selectable = false
+  o[371].SelectionOrder = 0
+  o[371].Size = UDim2.new(0, 177, 0, 38)
+  o[371].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[371].Visible = true
+  o[371].ZIndex = 1
+  o[371].Parent = o[336]
+  o[372] = Instance.new("UICorner")
+  o[372].Name = "UICorner"
+  o[372].BottomLeftRadius = UDim.new(0, 5)
+  o[372].BottomRightRadius = UDim.new(0, 5)
+  o[372].TopLeftRadius = UDim.new(0, 5)
+  o[372].TopRightRadius = UDim.new(0, 5)
+  o[372].Parent = o[371]
+  o[373] = Instance.new("TextLabel")
+  o[373].Name = "FromText"
+  o[373].FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+  o[373].LineHeight = 1
+  o[373].LocalizationMatchedSourceText = ""
+  o[373].MaxVisibleGraphemes = -1
+  o[373].OpenTypeFeatures = ""
+  o[373].RichText = false
+  o[373].Text = "Color Picker"
+  o[373].TextColor3 = Color3.new(0.784313738, 0.784313738, 0.784313738)
+  o[373].TextScaled = false
+  o[373].TextSize = 16
+  o[373].TextStrokeColor3 = Color3.new(0, 0, 0)
+  o[373].TextStrokeTransparency = 1
+  o[373].TextTransparency = 0
+  o[373].TextTruncate = ev(Enum.TextTruncate, 0)
+  o[373].TextWrapped = false
+  o[373].TextXAlignment = ev(Enum.TextXAlignment, 0)
+  o[373].TextYAlignment = ev(Enum.TextYAlignment, 1)
+  o[373].Active = false
+  o[373].AnchorPoint = Vector2.new(0, 0)
+  o[373].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[373].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[373].BackgroundTransparency = 1
+  o[373].BorderColor3 = Color3.new(0, 0, 0)
+  o[373].BorderSizePixel = 0
+  o[373].ClipsDescendants = false
+  o[373].Draggable = false
+  o[373].Interactable = true
+  o[373].LayoutOrder = 0
+  o[373].Position = UDim2.new(0.0473356955, 0, 0, 0)
+  o[373].Rotation = 0
+  o[373].Selectable = false
+  o[373].SelectionOrder = 0
+  o[373].Size = UDim2.new(0.952664316, 0, 1, 0)
+  o[373].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[373].Visible = true
+  o[373].ZIndex = 1
+  o[373].Parent = o[371]
+  o[374] = Instance.new("ImageButton")
+  o[374].Name = "CloseButton"
+  o[374].HoverImage = ""
+  o[374].Image = "rbxassetid://79136524656561"
+  o[374].ImageColor3 = Color3.new(1, 1, 1)
+  o[374].ImageRectOffset = Vector2.new(0, 0)
+  o[374].ImageRectSize = Vector2.new(0, 0)
+  o[374].ImageTransparency = 0.5
+  o[374].PressedImage = ""
+  o[374].ResampleMode = ev(Enum.ResamplerMode, 0)
+  o[374].ScaleType = ev(Enum.ScaleType, 0)
+  o[374].SliceCenter = Rect.new(0, 0, 0, 0)
+  o[374].SliceScale = 1
+  o[374].TileSize = UDim2.new(1, 0, 1, 0)
+  o[374].AutoButtonColor = true
+  o[374].Modal = false
+  o[374].Selected = false
+  o[374].Active = true
+  o[374].AnchorPoint = Vector2.new(0.5, 0.5)
+  o[374].AutomaticSize = ev(Enum.AutomaticSize, 0)
+  o[374].BackgroundColor3 = Color3.new(1, 1, 1)
+  o[374].BackgroundTransparency = 1
+  o[374].BorderColor3 = Color3.new(0, 0, 0)
+  o[374].BorderSizePixel = 0
+  o[374].ClipsDescendants = false
+  o[374].Draggable = false
+  o[374].Interactable = true
+  o[374].LayoutOrder = 0
+  o[374].Position = UDim2.new(0.878531098, 0, 0.5, 0)
+  o[374].Rotation = 0
+  o[374].Selectable = true
+  o[374].SelectionOrder = 0
+  o[374].Size = UDim2.new(0, 25, 0, 25)
+  o[374].SizeConstraint = ev(Enum.SizeConstraint, 0)
+  o[374].Visible = true
+  o[374].ZIndex = 1
+  o[374].Parent = o[371]
+  return { ["MainBackground"] = o[1], ["ShowUiButton"] = o[331], ["Shadow"] = o[335], ["ColorPicker"] = o[336] }
+end
+
+
 --============================================================================--
---  GUI PARENT  (executor-safe)
+--  WINDOW
 --============================================================================--
-local function getGuiParent()
+local Window = {} Window.__index = Window
+local Tab = {} Tab.__index = Tab
+local Section = {} Section.__index = Section
+
+local function guiParent()
     local ok, hui = pcall(function() return gethui and gethui() end)
     if ok and hui then return hui end
     local ok2, cg = pcall(function() return CoreGui end)
@@ -452,249 +8009,158 @@ local function getGuiParent()
     return LocalPlayer:WaitForChild("PlayerGui")
 end
 
---============================================================================--
---  CONFIG  (executor filesystem — save/load flags)
---============================================================================--
-local function hasFS()
-    return (writefile and readfile and isfolder and makefolder) and true or false
-end
-local Config = {}
-Config.__index = Config
-function Config.new(folder, file)
-    local self = setmetatable({}, Config)
-    self.enabled = hasFS()
-    self.folder  = folder or "Amphibia"
-    self.file    = (file or "config") .. ".json"
-    self.data    = {}
-    if self.enabled then
-        pcall(function()
-            if not isfolder(self.folder) then makefolder(self.folder) end
-        end)
-        self:Load()
-    end
-    return self
-end
-function Config:path() return self.folder .. "/" .. self.file end
-function Config:Load()
-    if not self.enabled then return end
-    pcall(function()
-        if isfile and isfile(self:path()) then
-            self.data = HttpService:JSONDecode(readfile(self:path())) or {}
-        end
-    end)
-end
-function Config:Save()
-    if not self.enabled then return end
-    pcall(function()
-        writefile(self:path(), HttpService:JSONEncode(self.data))
-    end)
-end
-function Config:Set(flag, value)
-    if flag == nil then return end
-    self.data[flag] = value
-    self:Save()
-end
-function Config:Get(flag, default)
-    if flag ~= nil and self.data[flag] ~= nil then return self.data[flag] end
-    return default
-end
-
---============================================================================--
---  WINDOW
---============================================================================--
-local Window = {}
-Window.__index = Window
-
 function Amphibia:CreateWindow(cfg)
     cfg = cfg or {}
     local self = setmetatable({}, Window)
+    self._cfg        = cfg
     self.Tabs        = {}
-    self.Categories  = {}          -- group name -> category frame
-    self.SearchIndex = {}          -- list of {element, name, section, tab, show, hide}
+    self.Categories  = {}
+    self.SearchIndex = {}
+    self.OpenPopups  = {}
     self.ActiveTab   = nil
-    self.OpenPopups  = {}          -- popups to close on outside click
+    self.ConfigEnabled = cfg.ConfigSaving == nil or cfg.ConfigSaving.Enabled ~= false
     self.Config      = Config.new(
         (cfg.ConfigSaving and cfg.ConfigSaving.FolderName) or "Amphibia",
         (cfg.ConfigSaving and cfg.ConfigSaving.FileName) or "config")
-    self.ConfigEnabled = cfg.ConfigSaving == nil or cfg.ConfigSaving.Enabled ~= false
 
-    ------------------------------------------------------------------ ScreenGui
-    local gui = Create("ScreenGui", {
-        Name = "Amphibia_" .. tostring(math.random(1000, 9999)),
-        ResetOnSpawn = false, IgnoreGuiInset = true,
-        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-        DisplayOrder = 9999,
-    })
-    pcall(function()
-        if syn and syn.protect_gui then syn.protect_gui(gui) end
-    end)
-    gui.Parent = getGuiParent()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "Amphibia_" .. tostring(math.random(1000, 9999))
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.DisplayOrder = 9999
+    pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+    gui.Parent = guiParent()
     self.Gui = gui
 
-    ------------------------------------------------------------------ main frame
-    local main = Create("Frame", {
-        Name = "MainBackground", BackgroundColor3 = Theme.Window,
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.fromOffset(987, 608),
-        Visible = false, Parent = gui,
-    })
-    corner(8, main)
-    stroke(Theme.WindowStroke, 1, main)
-    self.Main = main
+    -- build the exact tree
+    local tree = buildTree(gui)
+    local main = tree.MainBackground
+    self.Main       = main
+    self.ShowBtn    = tree.ShowUiButton
+    self.CPWindow   = tree.ColorPicker
+    self.Shadow     = tree.Shadow
+    if self.Shadow then self.Shadow.Parent = main; self.Shadow.ZIndex = 0 end
 
-    -- drop shadow behind the whole window
-    Create("ImageLabel", {
-        Name = "Shadow", BackgroundTransparency = 1, Image = Icons.Shadow,
-        ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 0.39,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.fromScale(1.9, 2.35), ZIndex = 0, Parent = main,
-    })
+    -- key nodes
+    self.Header   = get(main, "HeaderFrame")
+    self.SearchBg = get(self.Header, "SearchBg")
+    self.CloseBtn = get(self.Header, "CloseMenuButton")
+    self.Info     = get(main, "InfoFrame")
+    self.TabsFrame= get(main, "TabsFrame")
+    self.Holder   = get(self.TabsFrame, "Holder")
+    self.Pages    = get(main, "Pages")
+    self.Screens  = get(main, "Screens")
 
-    -- subtle white glow at the top
-    Create("ImageLabel", {
-        Name = "WhiteGlow", BackgroundTransparency = 1, Image = Icons.WhiteGlow,
-        ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.93,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.51, -0.55),
-        Size = UDim2.fromOffset(1068, 1068), ZIndex = 0, Parent = main,
-    })
+    -- harvest templates from the demo before clearing it
+    local pages   = self.Pages
+    local tabP    = get(pages, "TabPlayer")
+    local scroll  = get(tabP, "ScrollingFrame")
+    local right   = get(scroll, "RightColumn")
+    local left    = get(scroll, "LeftColumn")
+    local T = {}
+    T.slider   = getD(get(right, "SlidersSection"), "SliderNumber"):Clone()
+    T.color    = getD(get(right, "ColorPickersSection"), "ColorPicker"):Clone()
+    T.selector = getD(get(right, "SelectorSection"), "Selector"):Clone()
+    T.dropdown = getD(get(right, "DropdownSection"), "Dropdown"):Clone()
+    T.toggle   = getD(get(left, "TogglesSection"), "ToggleEnabled"):Clone()
+    T.button   = getD(get(left, "ButtonsSection"), "Button"):Clone()
+    T.number   = getD(get(left, "NumberPickerSection"), "NumberPicker"):Clone()
+    T.section  = get(left, "TogglesSection"):Clone()
+    T.page     = tabP:Clone()
+    T.category = get(self.Holder, "MainCategory"):Clone()
+    T.tabButton= getD(get(self.Holder, "MainCategory"), "PlayerTabButton"):Clone()
+    -- clean the section template body
+    clearElements(get(T.section, "ButtonsHolderFrame"))
+    self.T = T
 
-    --============================ HEADER ============================--
-    local header = Create("Frame", {
-        Name = "Header", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 58), Position = UDim2.fromScale(0, 0),
-        ZIndex = 10, Parent = main,
-    })
-    Create("Frame", {  -- bottom splitter
-        Name = "Splitter", BackgroundColor3 = Theme.Splitter, BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, 0), Parent = header,
-    })
-    Create("TextLabel", {
-        Name = "Logo", BackgroundTransparency = 1, Text = (cfg.Name or "amphibia"),
-        FontFace = Fonts.Serif, TextSize = 23, TextColor3 = Theme.Logo,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Size = UDim2.new(0, 120, 1, 0), Position = UDim2.new(0, 20, 0, 0), Parent = header,
-    })
-    local logoW = TextService:GetTextSize((cfg.Name or "amphibia"), 23, Enum.Font.SourceSans, Vector2.new(300, 60)).X
-    Create("TextLabel", {
-        Name = "Version", BackgroundTransparency = 1, Text = (cfg.Version or "v0.1"),
-        FontFace = Fonts.Sans, TextSize = 13, TextColor3 = Theme.Version,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Size = UDim2.new(0, 60, 0, 20), Position = UDim2.new(0, 26 + logoW, 0, 22), Parent = header,
-    })
+    -- clear the demo content -> empty shell
+    clearElements(self.Holder)          -- remove demo categories
+    clearElements(pages)                -- remove demo page
+    if self.Screens then self.Screens.Parent = main end
 
-    -- search box (top center) - functionality wired in the search section
-    local searchBg = Create("Frame", {
-        Name = "SearchBg", BackgroundColor3 = Theme.Search,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.new(0, 300, 0, 34), ZIndex = 11, Parent = header,
-    })
-    corner(8, searchBg)
-    stroke(Theme.SectionStroke, 0.5, searchBg)
-    Create("ImageLabel", {
-        Name = "SearchIcon", BackgroundTransparency = 1, Image = Icons.Search,
-        ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.65,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 18, 0.5, 0),
-        Size = UDim2.fromOffset(15, 15), ZIndex = 11, Parent = searchBg,
-    })
-    self.SearchBg = searchBg
+    -- wire the persistent chrome
+    self:_wireStatus()
+    self:_wireHeader()
+    self:_wireColorPicker()
+    self:_outsideClickWatcher()
+    self:_wireSearch()
 
-    local closeBtn = Create("ImageButton", {
-        Name = "CloseMenuButton", BackgroundTransparency = 1, Image = Icons.Close,
-        ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.85,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -22, 0.5, 0),
-        Size = UDim2.fromOffset(30, 30), ZIndex = 12, Parent = header,
-    })
-    closeBtn.MouseEnter:Connect(function() Anim.to(closeBtn, { ImageTransparency = 0.4 }, Anim.Fast) end)
-    closeBtn.MouseLeave:Connect(function() Anim.to(closeBtn, { ImageTransparency = 0.85 }, Anim.Fast) end)
+    -- start hidden, run the intro
+    main.Size = UDim2.fromOffset(0, 0)
+    task.spawn(function() self:_runIntro() end)
+    return self
+end
 
-    --============================ TABS COLUMN ============================--
-    local tabsFrame = Create("Frame", {
-        Name = "TabsFrame", BackgroundTransparency = 1,
-        Position = UDim2.new(0, 0, 0, 58), Size = UDim2.new(0, 218, 1, -58 - 39),
-        ZIndex = 10, Parent = main,
-    })
-    Create("Frame", {  -- right splitter
-        Name = "Splitter", BackgroundColor3 = Theme.Splitter, BorderSizePixel = 0,
-        Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = tabsFrame,
-    })
-    local tabsHolder = Create("ScrollingFrame", {
-        Name = "Holder", BackgroundTransparency = 1, BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 1, 0), ScrollBarThickness = 0,
-        CanvasSize = UDim2.new(0, 0, 0, 0),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y, Parent = tabsFrame,
-    })
-    listLayout(tabsHolder, Enum.FillDirection.Vertical, 18)
-    pad(tabsHolder, 20, 10, 24, 10)
-    self.TabsHolder = tabsHolder
+--============================ POPUPS ============================--
+function Window:CloseAllPopups()
+    for _, p in ipairs(self.OpenPopups) do if p.close then pcall(p.close) end end
+    self.OpenPopups = {}
+end
+function Window:_outsideClickWatcher()
+    UserInputService.InputBegan:Connect(function(inp)
+        if inp.UserInputType ~= Enum.UserInputType.MouseButton1
+        and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+        if #self.OpenPopups == 0 then return end
+        local m = UserInputService:GetMouseLocation()
+        local function inside(f)
+            if not (f and f.Parent and f.Visible) then return false end
+            local ap, sz = f.AbsolutePosition, f.AbsoluteSize
+            return m.X >= ap.X and m.X <= ap.X + sz.X and m.Y >= ap.Y and m.Y <= ap.Y + sz.Y
+        end
+        local keep = {}
+        for _, p in ipairs(self.OpenPopups) do
+            if inside(p.frame) or inside(p.owner) then table.insert(keep, p)
+            elseif p.close then pcall(p.close) end
+        end
+        self.OpenPopups = keep
+    end)
+end
 
-    --============================ PAGES ============================--
-    local pages = Create("Frame", {
-        Name = "Pages", BackgroundTransparency = 1,
-        Position = UDim2.new(0, 218, 0, 58), Size = UDim2.new(1, -218, 1, -58 - 39),
-        ClipsDescendants = true, ZIndex = 10, Parent = main,
-    })
-    self.Pages = pages
-
-    --============================ INFO / STATUS ============================--
-    local info = Create("Frame", {
-        Name = "InfoFrame", BackgroundTransparency = 1,
-        AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0),
-        Size = UDim2.new(1, 0, 0, 39), ZIndex = 10, Parent = main,
-    })
-    Create("Frame", {
-        Name = "Splitter", BackgroundColor3 = Theme.Splitter, BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 1), Position = UDim2.fromScale(0, 0), Parent = info,
-    })
-    local dot = Create("Frame", {
-        Name = "DotConnected", BackgroundColor3 = Color3.new(1, 1, 1),
-        BackgroundTransparency = 0.3, AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0, 22, 0.5, 0), Size = UDim2.fromOffset(7, 7), ZIndex = 2, Parent = info,
-    })
-    corner(999, dot)
-    local dotShadow = addShadow(dot, Color3.new(1, 1, 1), 0.6, 3)
-    Create("TextLabel", {
-        Name = "ConnectStatusText", BackgroundTransparency = 1, Text = (cfg.Status or "Connected"),
-        FontFace = Fonts.Sans, TextSize = 16, TextColor3 = Theme.Status,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Position = UDim2.new(0, 38, 0, 0), Size = UDim2.new(0, 200, 1, 0), Parent = info,
-    })
-    -- pulsing connected dot
+--============================ STATUS DOT ============================--
+function Window:_wireStatus()
+    local dot = get(self.Info, "DotConnected")
+    if not dot then return end
+    local sh = dot:FindFirstChild("UIShadow")
+    if self._cfg.Status then
+        local txt = get(self.Info, "ConnectStatusText"); if txt then txt.Text = self._cfg.Status end
+    end
     task.spawn(function()
-        while gui.Parent do
+        while self.Gui.Parent do
             Anim.to(dot, { BackgroundTransparency = 0 }, Anim.Slow)
-            Anim.to(dotShadow, { ImageTransparency = 0.35 }, Anim.Slow)
+            if sh then Anim.to(sh, { ImageTransparency = 0.4 }, Anim.Slow) end
             task.wait(1.1)
             Anim.to(dot, { BackgroundTransparency = 0.45 }, Anim.Slow)
-            Anim.to(dotShadow, { ImageTransparency = 0.85 }, Anim.Slow)
+            if sh then Anim.to(sh, { ImageTransparency = 0.85 }, Anim.Slow) end
             task.wait(1.1)
         end
     end)
+end
 
-    --============================ SHOW-UI BUTTON (minimized) ============================--
-    local showBtn = Create("ImageButton", {
-        Name = "ShowUiButton", BackgroundColor3 = Color3.new(1, 1, 1),
-        ImageTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 0, 0, 14), Size = UDim2.fromOffset(236, 8),
-        Visible = false, BackgroundTransparency = 0, Parent = gui,
-    })
-    corner(999, showBtn)
-    local showGrad = Create("UIGradient", {
-        Color = ColorSequence.new(Color3.fromRGB(220,220,220), Color3.new(1,1,1)),
-        Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0),
-            NumberSequenceKeypoint.new(1, 1) }),
-        Rotation = 0, Parent = showBtn,
-    })
-    local showShadow = addShadow(showBtn, Color3.new(1, 1, 1), 1, 2.4)
-    showBtn.MouseEnter:Connect(function() Anim.to(showShadow, { ImageTransparency = 0.55 }, Anim.Spring) end)
-    showBtn.MouseLeave:Connect(function() Anim.to(showShadow, { ImageTransparency = 1 }, Anim.Spring) end)
-    self.ShowBtn = showBtn
+--============================ HEADER / MINIMIZE ============================--
+function Window:_wireHeader()
+    local main, header = self.Main, self.Header
+    if self._cfg.Name then local l = get(header, "Logo"); if l then l.Text = self._cfg.Name end end
+    if self._cfg.Version then local v = get(header, "Version"); if v then v.Text = self._cfg.Version end end
 
-    ------------------------------------------------------------ dragging (header)
+    local close = self.CloseBtn
+    if close then
+        close.MouseEnter:Connect(function() Anim.to(close, { ImageTransparency = 0.4 }, Anim.Fast) end)
+        close.MouseLeave:Connect(function() Anim.to(close, { ImageTransparency = 0.85 }, Anim.Fast) end)
+    end
+
+    -- ShowUiButton glow on hover
+    local showBtn = self.ShowBtn
+    local showGlow = showBtn and showBtn:FindFirstChild("UIShadow")
+    showBtn.Visible = false
+    if showGlow then showGlow.ImageTransparency = 1 end
+    if showBtn then
+        showBtn.MouseEnter:Connect(function() if showGlow then Anim.to(showGlow, { ImageTransparency = 0.5 }, Anim.Spring) end end)
+        showBtn.MouseLeave:Connect(function() if showGlow then Anim.to(showGlow, { ImageTransparency = 1 }, Anim.Spring) end end)
+    end
+
     makeDraggable(header, main)
 
-    ------------------------------------------------------------ minimize / restore
     local minimized = false
     local function minimize()
         if minimized then return end
@@ -710,347 +8176,353 @@ function Amphibia:CreateWindow(cfg)
         if not minimized then return end
         minimized = false
         Anim.to(showBtn, { BackgroundTransparency = 1 }, Anim.Fast)
-        Anim.to(showShadow, { ImageTransparency = 1 }, Anim.Fast)
+        if showGlow then Anim.to(showGlow, { ImageTransparency = 1 }, Anim.Fast) end
         task.delay(0.16, function() if not minimized then showBtn.Visible = false end end)
         main.Visible = true
         main.Size = UDim2.fromOffset(0, 0)
         Anim.to(main, { Size = UDim2.fromOffset(987, 608) }, Anim.Spring)
     end
-    closeBtn.MouseButton1Click:Connect(minimize)
-    showBtn.MouseButton1Click:Connect(restore)
+    if close then close.MouseButton1Click:Connect(minimize) end
+    if showBtn then showBtn.MouseButton1Click:Connect(restore) end
+    self.Minimize, self.Restore = minimize, restore
 
-    -- toggle keybind
     UserInputService.InputBegan:Connect(function(inp, gp)
         if gp then return end
-        if inp.KeyCode == (cfg.ToggleKey or Enum.KeyCode.RightShift) then
+        if inp.KeyCode == (self._cfg.ToggleKey or Enum.KeyCode.RightShift) then
             if minimized then restore() else minimize() end
         end
     end)
-
-    self.Minimize = minimize
-    self.Restore  = restore
-
-    -- store cfg for screens
-    self._cfg = cfg
-    self._closeBtn = closeBtn
-
-    -- build the colorpicker singleton window + outside-click watcher + search
-    self:_BuildColorPickerWindow()
-    self:_BuildOutsideClickWatcher()
-    self:_BuildSearch()
-
-    -- run the intro flow (key -> loading -> reveal) in the background
-    task.spawn(function() self:_RunIntro() end)
-
-    return self
 end
 
-function Window:CloseAllPopups()
-    for _, p in ipairs(self.OpenPopups) do
-        if p.close then pcall(p.close) end
+--============================ COLOR PICKER WINDOW ============================--
+local function toHex(c) return string.format("%02X%02X%02X",
+    math.floor(c.R*255+0.5), math.floor(c.G*255+0.5), math.floor(c.B*255+0.5)) end
+local function fromHex(h)
+    h = h:gsub("#",""); if #h ~= 6 then return nil end
+    local r,g,b = tonumber(h:sub(1,2),16), tonumber(h:sub(3,4),16), tonumber(h:sub(5,6),16)
+    if not (r and g and b) then return nil end
+    return Color3.fromRGB(r,g,b)
+end
+local function frac(f, x) return math.clamp((x - f.AbsolutePosition.X) / math.max(1, f.AbsoluteSize.X), 0, 1) end
+local function fracY(f, y) return math.clamp((y - f.AbsolutePosition.Y) / math.max(1, f.AbsoluteSize.Y), 0, 1) end
+
+function Window:_wireColorPicker()
+    local w = self.CPWindow
+    if not w then return end
+    w.Visible = false
+    local funcs = get(w, "ColorPickerFunctionsHolder")
+    local square = get(funcs, "ColorPicker")
+    local svKnob = get(square, "Knob")
+    local hue = get(funcs, "ColorSlider")
+    local hueKnob = get(hue, "Knob")
+    local trans = get(funcs, "TransparencySlider")
+    local transKnob = get(trans, "Knob")
+    local chess = get(trans, "ChessTexture")
+    local chessGrad = chess and chess:FindFirstChildOfClass("UIGradient")
+    local hexHolder = get(funcs, "HexUnputHolder")
+    local hexLbl = get(hexHolder, "Hex")
+    local transLbl = get(hexHolder, "Transparency")
+    local title = get(w, "Title")
+    local closeBtn = title and get(title, "CloseButton")
+    if title then makeDraggable(title, w) end
+
+    -- mount a custom input over the hex label
+    local hexInput
+    if hexLbl then
+        hexLbl.TextTransparency = 1
+        local holder = Instance.new("Frame")
+        holder.BackgroundTransparency = 1; holder.Size = UDim2.fromScale(1,1); holder.Parent = hexLbl
+        hexInput = CustomInput.new(holder, { Font = Fonts.Sans, TextSize = 14,
+            TextColor = Color3.fromRGB(190,190,190), MaxLen = 6, Align = Enum.HorizontalAlignment.Center })
     end
-    self.OpenPopups = {}
+
+    local st = { h=0, s=1, v=1, a=0, onChange=nil }
+    local function apply(fireHex)
+        if square then square.BackgroundColor3 = Color3.fromHSV(st.h, 1, 1) end
+        local col = Color3.fromHSV(st.h, st.s, st.v)
+        if svKnob then svKnob.Position = UDim2.fromScale(st.s, 1 - st.v); svKnob.BackgroundColor3 = col end
+        if hueKnob then hueKnob.Position = UDim2.new(st.h, 0, 0.5, 0) end
+        if transKnob then transKnob.Position = UDim2.new(st.a, 0, 0.5, 0) end
+        if chessGrad then chessGrad.Color = ColorSequence.new(col) end
+        if transLbl then transLbl.Text = math.floor(st.a*100+0.5) .. "%" end
+        if fireHex and hexInput then hexInput:SetText(toHex(col), true) end
+        if st.onChange then task.spawn(st.onChange, col, st.a) end
+    end
+    self._cpApply = apply
+    if hexInput then hexInput.onEnter = function(t)
+        local c = fromHex(t); if c then local h,s,v = Color3.toHSV(c); st.h,st.s,st.v = h,s,v; apply(false) end
+    end end
+
+    local drag
+    local function bind(f, kind)
+        if not f then return end
+        f.InputBegan:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+                drag = kind
+                if kind=="sv" then st.s=frac(square,i.Position.X); st.v=1-fracY(square,i.Position.Y)
+                elseif kind=="hue" then st.h=frac(hue,i.Position.X)
+                elseif kind=="trans" then st.a=frac(trans,i.Position.X) end
+                apply(true)
+            end
+        end)
+    end
+    bind(square,"sv"); bind(hue,"hue"); bind(trans,"trans")
+    UserInputService.InputChanged:Connect(function(i)
+        if not drag then return end
+        if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
+        if drag=="sv" then st.s=frac(square,i.Position.X); st.v=1-fracY(square,i.Position.Y)
+        elseif drag=="hue" then st.h=frac(hue,i.Position.X)
+        elseif drag=="trans" then st.a=frac(trans,i.Position.X) end
+        apply(true)
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drag=nil end
+    end)
+
+    local function closeCP()
+        Anim.to(w, { Size = UDim2.fromOffset(w.AbsoluteSize.X, 0) }, Anim.Fast)
+        task.delay(0.18, function() w.Visible = false end)
+    end
+    if closeBtn then
+        closeBtn.MouseButton1Click:Connect(closeCP)
+        closeBtn.MouseEnter:Connect(function() Anim.to(closeBtn, { ImageTransparency = 0.15 }, Anim.Fast) end)
+        closeBtn.MouseLeave:Connect(function() Anim.to(closeBtn, { ImageTransparency = 0.5 }, Anim.Fast) end)
+    end
+    self._cp = { frame = w, state = st, apply = apply, close = closeCP, defSize = w.Size }
 end
 
-function Window:_BuildOutsideClickWatcher()
-    UserInputService.InputBegan:Connect(function(inp)
-        if inp.UserInputType ~= Enum.UserInputType.MouseButton1
-        and inp.UserInputType ~= Enum.UserInputType.Touch then return end
-        if #self.OpenPopups == 0 then return end
-        local mpos = UserInputService:GetMouseLocation()
-        local survivors = {}
-        for _, p in ipairs(self.OpenPopups) do
-            local f = p.frame
-            local inside = false
-            if f and f.Parent and f.Visible then
-                local ap, sz = f.AbsolutePosition, f.AbsoluteSize
-                if mpos.X >= ap.X and mpos.X <= ap.X + sz.X
-                and mpos.Y >= ap.Y and mpos.Y <= ap.Y + sz.Y then inside = true end
-            end
-            -- also treat the owner control as "inside" so re-clicking it doesn't double-close
-            if p.owner and p.owner.Parent then
-                local ap, sz = p.owner.AbsolutePosition, p.owner.AbsoluteSize
-                if mpos.X >= ap.X and mpos.X <= ap.X + sz.X
-                and mpos.Y >= ap.Y and mpos.Y <= ap.Y + sz.Y then inside = true end
-            end
-            if inside then
-                table.insert(survivors, p)
-            else
-                if p.close then pcall(p.close) end
+function Window:_openColorPicker(color, alpha, onChange, anchor)
+    local cp = self._cp; if not cp then return end
+    local h,s,v = Color3.toHSV(color)
+    cp.state.h, cp.state.s, cp.state.v, cp.state.a = h, s, v, alpha or 0
+    cp.state.onChange = onChange
+    if anchor then
+        local ap = anchor.AbsolutePosition
+        cp.frame.Position = UDim2.fromOffset(ap.X - 210, ap.Y - 20)
+    end
+    cp.frame.Visible = true
+    local goal = cp.defSize
+    cp.frame.Size = UDim2.new(goal.X.Scale, goal.X.Offset, 0, 0)
+    Anim.to(cp.frame, { Size = goal }, Anim.Spring)
+    cp.apply(true)
+    self:CloseAllPopups()
+    table.insert(self.OpenPopups, { frame = cp.frame, owner = anchor, close = cp.close })
+end
+
+--============================ GLOBAL SEARCH ============================--
+function Window:_wireSearch()
+    local bg = self.SearchBg
+    if not bg then return end
+    local box = get(bg, "SearchTextbox"); if box then box.Visible = false end
+    local holder = Instance.new("Frame")
+    holder.Name = "SearchInputHolder"; holder.BackgroundTransparency = 1
+    holder.Position = UDim2.new(0, 34, 0, 0); holder.Size = UDim2.new(1, -44, 1, 0)
+    holder.ZIndex = 12; holder.Parent = bg
+    local input = CustomInput.new(holder, { Placeholder = "search", Font = Fonts.Sans, TextSize = 14,
+        TextColor = Color3.fromRGB(200,200,200), PlaceholderColor = Color3.fromRGB(65,65,65), ZIndex = 12 })
+
+    local panel = Instance.new("Frame")
+    panel.Name = "SearchResults"; panel.BackgroundColor3 = C.Popup; panel.Visible = false
+    panel.AnchorPoint = Vector2.new(0.5, 0); panel.Position = UDim2.new(0.5, 0, 1, 8)
+    panel.Size = UDim2.new(1, 0, 0, 0); panel.ZIndex = 80; panel.ClipsDescendants = true; panel.Parent = bg
+    local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 8); pc.Parent = panel
+    local ps = Instance.new("UIStroke"); ps.Color = C.PopupStroke; ps.Thickness = 1; ps.Parent = panel
+    local list = Instance.new("ScrollingFrame")
+    list.BackgroundTransparency = 1; list.BorderSizePixel = 0; list.Position = UDim2.new(0,6,0,6)
+    list.Size = UDim2.new(1,-12,1,-12); list.ScrollBarThickness = 2; list.CanvasSize = UDim2.new()
+    list.AutomaticCanvasSize = Enum.AutomaticSize.Y; list.ZIndex = 81; list.Parent = panel
+    local ll = Instance.new("UIListLayout"); ll.Padding = UDim.new(0,4); ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.Parent = list
+
+    local function clearList() for _,c in ipairs(list:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end end
+    local function jump(entry)
+        self:SelectTab(entry.tabObj)
+        if entry.sectionObj and not entry.sectionObj.Open then entry.sectionObj:SetOpen(true) end
+        if entry.frame and entry.frame.Parent then
+            local hl = Instance.new("Frame")
+            hl.BackgroundColor3 = C.White; hl.BackgroundTransparency = 1; hl.Size = UDim2.fromScale(1,1)
+            hl.ZIndex = 30; hl.Parent = entry.frame
+            local hc = Instance.new("UICorner"); hc.CornerRadius = UDim.new(0,6); hc.Parent = hl
+            Anim.to(hl, { BackgroundTransparency = 0.9 }, Anim.Fast)
+            task.delay(0.5, function() Anim.to(hl, { BackgroundTransparency = 1 }, Anim.Spring); task.delay(0.4, function() hl:Destroy() end) end)
+        end
+    end
+    local function rebuild(q)
+        clearList(); q = string.lower(q or ""); local shown = 0
+        if q ~= "" then
+            for _, e in ipairs(self.SearchIndex) do
+                if string.find(string.lower(e.name), q, 1, true) or string.find(string.lower(e.section), q, 1, true) then
+                    shown = shown + 1
+                    local b = Instance.new("TextButton")
+                    b.BackgroundColor3 = Color3.fromRGB(22,22,22); b.AutoButtonColor = false; b.Text = ""
+                    b.Size = UDim2.new(1,0,0,40); b.ZIndex = 81; b.Parent = list
+                    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0,6); bc.Parent = b
+                    local n = Instance.new("TextLabel")
+                    n.BackgroundTransparency = 1; n.Text = e.name; n.FontFace = Fonts.Sans; n.TextSize = 15
+                    n.TextColor3 = Color3.fromRGB(215,215,215); n.TextXAlignment = Enum.TextXAlignment.Left
+                    n.Position = UDim2.new(0,10,0,4); n.Size = UDim2.new(1,-12,0,18); n.ZIndex = 82; n.Parent = b
+                    local s = Instance.new("TextLabel")
+                    s.BackgroundTransparency = 1; s.Text = e.section .. "  \u{2022}  " .. e.tab
+                    s.FontFace = Fonts.SerifItalic; s.TextSize = 12; s.TextColor3 = C.Muted
+                    s.TextXAlignment = Enum.TextXAlignment.Left; s.Position = UDim2.new(0,10,0,20)
+                    s.Size = UDim2.new(1,-12,0,16); s.ZIndex = 82; s.Parent = b
+                    b.MouseButton1Click:Connect(function() jump(e) end)
+                end
             end
         end
-        self.OpenPopups = survivors
-    end)
+        if q == "" then
+            Anim.to(panel, { Size = UDim2.new(1,0,0,0) }, Anim.Fast)
+            task.delay(0.18, function() if input:GetText() == "" then panel.Visible = false end end)
+        else
+            panel.Visible = true
+            Anim.to(panel, { Size = UDim2.new(1,0,0, math.min(260, 12 + math.max(1,shown) * 44)) }, Anim.Spring)
+        end
+    end
+    input.onChanged = function(q) rebuild(q) end
 end
 
---============================================================================--
---  INTRO SCREENS  (key -> loading -> reveal)
---============================================================================--
-
--- shared frame that looks like the window; whole thing is draggable
-function Window:_makeScreenBase(name)
-    local s = Create("Frame", {
-        Name = name, BackgroundColor3 = Theme.Window,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.fromOffset(0, 0), ClipsDescendants = true, Parent = self.Gui,
-    })
-    corner(8, s)
-    stroke(Theme.WindowStroke, 1, s)
-    Create("ImageLabel", {
-        Name = "Shadow", BackgroundTransparency = 1, Image = Icons.Shadow,
-        ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 0.39,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.fromScale(1.9, 2.35), ZIndex = 0, Parent = s,
-    })
-    Create("ImageLabel", {
-        Name = "WhiteGlow", BackgroundTransparency = 1, Image = Icons.WhiteGlow,
-        ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.93,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.51, -0.045),
-        Size = UDim2.fromOffset(1068, 1068), ZIndex = 0, Parent = s,
-    })
-    makeDraggable(s, s)
-    return s
+--============================ INTRO SCREENS ============================--
+local FULL = UDim2.fromScale(1, 1)
+function Window:_showScreen(s)
+    s.Visible = true; s.Size = UDim2.fromScale(0, 0)
+    Anim.to(s, { Size = FULL }, Anim.Spring); task.wait(0.35)
+end
+function Window:_hideScreen(s)
+    Anim.to(s, { Size = UDim2.fromScale(0, 0) }, Anim.Spring); task.wait(0.35); s.Visible = false
 end
 
-local SCREEN_SIZE = UDim2.fromOffset(700, 430)
-
-function Window:_openScreen(frame)
-    frame.Size = UDim2.fromOffset(0, 0)
-    frame.Visible = true
-    Anim.to(frame, { Size = SCREEN_SIZE }, Anim.Spring)
+function Window:_runIntro()
+    local main = self.Main
+    main.Visible = true
+    -- hide screens initially
+    for _, s in ipairs(self.Screens:GetChildren()) do if s:IsA("GuiObject") then s.Visible = false end end
+    main.Size = UDim2.fromOffset(0, 0)
+    Anim.to(main, { Size = UDim2.fromOffset(987, 608) }, Anim.Spring)
     task.wait(0.35)
-end
-function Window:_closeScreen(frame)
-    Anim.to(frame, { Size = UDim2.fromOffset(0, 0) }, Anim.Spring)
-    task.wait(0.35)
-    frame:Destroy()
-end
-
-function Window:_RunIntro()
     local cfg = self._cfg
-    local keyCfg = cfg.Key or {}
-    if keyCfg.Enabled then
-        self:_BuildKeyScreen(keyCfg)   -- yields until a valid key is entered
-    end
-    local loadCfg = cfg.Loading
-    if loadCfg == nil or loadCfg.Enabled ~= false then
-        self:_BuildLoadingScreen(loadCfg or {})   -- yields until finished
-    end
-    self:_RevealWindow()
+    if cfg.Key and cfg.Key.Enabled then self:_keyScreen(cfg.Key) end
+    if cfg.Loading == nil or cfg.Loading.Enabled ~= false then self:_loadingScreen(cfg.Loading or {}) end
+    self:_reveal()
 end
 
---------------------------------------------------------------------- KEY SCREEN
-function Window:_BuildKeyScreen(keyCfg)
-    local screen = self:_makeScreenBase("EnterKeyScreen")
+function Window:_keyScreen(keyCfg)
+    local s = get(self.Screens, "EnterKeyScreen")
+    if not s then return end
+    makeDraggable(s, self.Main)
+    local wt = get(s, "WelcomeText"); if wt and keyCfg.Title then wt.Text = keyCfg.Title end
+    local wd = get(s, "WelcomeDesc"); if wd and keyCfg.Subtitle then wd.Text = keyCfg.Subtitle end
 
-    Create("ImageLabel", {
-        Name = "Icon", BackgroundTransparency = 1, Image = Icons.KeyIcon,
-        ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.24,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.26),
-        Size = UDim2.fromOffset(72, 72), Parent = screen,
-    })
-    Create("TextLabel", {
-        Name = "WelcomeText", BackgroundTransparency = 1,
-        Text = keyCfg.Title or ("Welcome to " .. (self._cfg.Name or "amphibia") .. "."),
-        FontFace = Fonts.Serif, TextSize = 32, TextColor3 = Color3.fromRGB(213, 213, 213),
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.44),
-        Size = UDim2.new(1, 0, 0, 60), Parent = screen,
-    })
-    Create("TextLabel", {
-        Name = "WelcomeDesc", BackgroundTransparency = 1,
-        Text = keyCfg.Subtitle or "Enter your key to get started.",
-        FontFace = Fonts.SerifItalic, TextSize = 18, TextColor3 = Theme.Muted,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.53),
-        Size = UDim2.new(1, 0, 0, 40), Parent = screen,
-    })
+    local inputBg = get(s, "KeyInputBG")
+    local textLbl = get(inputBg, "Text"); if textLbl then textLbl.Visible = false end
+    local ibStroke = inputBg:FindFirstChildOfClass("UIStroke")
+    local glow = get(s, "KeyInputGlow")
+    local activate = get(inputBg, "ActivateButton")
 
-    -- glow behind input
-    local glow = Create("ImageLabel", {
-        Name = "KeyInputGlow", BackgroundTransparency = 1, Image = Icons.KeyGlow,
-        ImageColor3 = Color3.fromRGB(95, 95, 95), ImageTransparency = 1,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.635),
-        Size = UDim2.fromOffset(483, 272), Parent = screen,
+    local holder = Instance.new("Frame")
+    holder.BackgroundTransparency = 1; holder.Position = UDim2.new(0, 14, 0, 0)
+    holder.Size = UDim2.new(1, -40, 1, 0); holder.ZIndex = 5; holder.Parent = inputBg
+    local input = CustomInput.new(holder, { Placeholder = "Enter key here", Font = Fonts.Mono,
+        TextSize = 14, TextColor = Color3.fromRGB(210,210,210), ZIndex = 5,
+        OnFocus = function()
+            if ibStroke then Anim.to(ibStroke, { Color = Color3.fromRGB(100,100,100) }, Anim.Fast) end
+            if glow then Anim.to(glow, { ImageTransparency = 0.7 }, Anim.Fast) end
+        end,
+        OnFocusLost = function()
+            if ibStroke then Anim.to(ibStroke, { Color = Color3.fromRGB(55,55,55) }, Anim.Fast) end
+            if glow then Anim.to(glow, { ImageTransparency = 1 }, Anim.Fast) end
+        end,
     })
 
-    local inputBg = Create("Frame", {
-        Name = "KeyInputBG", BackgroundColor3 = Color3.fromRGB(29, 29, 29),
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.63),
-        Size = UDim2.fromOffset(319, 40), ZIndex = 3, Parent = screen,
-    })
-    local ibCorner = corner(8, inputBg)
-    local ibStroke = stroke(Color3.fromRGB(55, 55, 55), 1, inputBg)
-
-    pad(inputBg, 14, 34, 0, 0)
-    local input = CustomInput.new(inputBg, {
-        Placeholder = "Enter key here", Font = Fonts.Mono, TextSize = 14,
-        TextColor = Color3.fromRGB(210, 210, 210),
-    })
-
-    local activate = Create("ImageButton", {
-        Name = "ActivateButton", BackgroundTransparency = 1, Image = Icons.KeyArrow,
-        ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.8, Rotation = 90,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -18, 0.5, 0),
-        Size = UDim2.fromOffset(20, 18), ZIndex = 4, Parent = inputBg,
-    })
-    activate.MouseEnter:Connect(function() Anim.to(activate, { ImageTransparency = 0.3 }, Anim.Fast) end)
-    activate.MouseLeave:Connect(function() Anim.to(activate, { ImageTransparency = 0.8 }, Anim.Fast) end)
-
-    -- focus visuals
-    input.Capture.Focused:Connect(function()
-        Anim.to(ibStroke, { Color = Color3.fromRGB(100, 100, 100) }, Anim.Fast)
-        Anim.to(glow, { ImageTransparency = 0.7 }, Anim.Fast)
-    end)
-    input.Capture.FocusLost:Connect(function()
-        Anim.to(ibStroke, { Color = Color3.fromRGB(55, 55, 55) }, Anim.Fast)
-        Anim.to(glow, { ImageTransparency = 1 }, Anim.Fast)
-    end)
-
-    -- error label
-    local errLbl = Create("TextLabel", {
-        Name = "ErrorText", BackgroundTransparency = 1, Text = "",
-        FontFace = Fonts.SerifItalic, TextSize = 15, TextColor3 = Theme.Error,
-        TextTransparency = 1,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.72),
-        Size = UDim2.new(1, 0, 0, 24), Parent = screen,
-    })
-
-    -- socials -> print name (user finishes later)
-    local socials = { { Icons.Discord, "Discord" }, { Icons.Site, "Site" }, { Icons.Youtube, "Youtube" } }
-    for i, s in ipairs(socials) do
-        local b = Create("ImageButton", {
-            Name = "Copy" .. s[2], BackgroundTransparency = 1, Image = s[1],
-            ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.8,
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.fromScale(0.4 + (i - 1) * 0.1, 0.9),
-            Size = UDim2.fromOffset(30, 30), Parent = screen,
-        })
-        b.MouseEnter:Connect(function() Anim.to(b, { ImageTransparency = 0.55 }, Anim.Fast) end)
-        b.MouseLeave:Connect(function() Anim.to(b, { ImageTransparency = 0.8 }, Anim.Fast) end)
-        b.MouseButton1Click:Connect(function() print("[amphibia] social clicked: " .. s[2]) end)
+    if activate then
+        activate.MouseEnter:Connect(function() Anim.to(activate, { ImageTransparency = 0.3 }, Anim.Fast) end)
+        activate.MouseLeave:Connect(function() Anim.to(activate, { ImageTransparency = 0.8 }, Anim.Fast) end)
     end
 
-    -- validation --------------------------------------------------------
-    local validKeys = keyCfg.Keys or { keyCfg.Key or "devaccesskey1337" }
+    -- socials -> print
+    for _, c in ipairs(s:GetChildren()) do
+        if c:IsA("ImageButton") and c.Name:sub(1, 4) == "Copy" then
+            local nm = c.Name:sub(5)
+            c.MouseEnter:Connect(function() Anim.to(c, { ImageTransparency = 0.55 }, Anim.Fast) end)
+            c.MouseLeave:Connect(function() Anim.to(c, { ImageTransparency = 0.8 }, Anim.Fast) end)
+            c.MouseButton1Click:Connect(function() print("[amphibia] social clicked: " .. nm) end)
+        end
+    end
+
+    local err = Instance.new("TextLabel")
+    err.Name = "ErrorText"; err.BackgroundTransparency = 1; err.Text = ""
+    err.FontFace = Fonts.SerifItalic; err.TextSize = 15; err.TextColor3 = C.Error; err.TextTransparency = 1
+    err.AnchorPoint = Vector2.new(0.5, 0.5); err.Position = UDim2.fromScale(0.5, 0.72)
+    err.Size = UDim2.new(1, 0, 0, 24); err.ZIndex = 5; err.Parent = s
+
+    local valid = keyCfg.Keys or { keyCfg.Key or "devaccesskey1337" }
+    local function isValid(k) for _, v in ipairs(valid) do if k == v then return true end end return false end
     local passed = false
-    local function isValid(k)
-        for _, v in ipairs(validKeys) do if k == v then return true end end
-        return false
-    end
-    local function showError(msg)
-        errLbl.Text = msg or "Invalid key — that key doesn't exist or has expired."
-        errLbl.TextTransparency = 1
-        Anim.to(errLbl, { TextTransparency = 0 }, Anim.Spring)
-        Anim.to(ibStroke, { Color = Theme.Error }, Anim.Fast)
-        -- shake
+    local function showError()
+        err.Text = keyCfg.ErrorText or "Invalid key \u{2014} that key doesn't exist or has expired."
+        err.TextTransparency = 1; Anim.to(err, { TextTransparency = 0 }, Anim.Spring)
+        if ibStroke then Anim.to(ibStroke, { Color = C.Error }, Anim.Fast) end
         local base = inputBg.Position
         task.spawn(function()
             for _, dx in ipairs({ 10, -8, 6, -4, 2, 0 }) do
-                Anim.to(inputBg, { Position = base + UDim2.fromOffset(dx, 0) }, Anim.Linear)
-                task.wait(0.04)
+                Anim.to(inputBg, { Position = base + UDim2.fromOffset(dx, 0) }, Anim.Linear); task.wait(0.04)
             end
             inputBg.Position = base
         end)
         task.delay(2.4, function()
-            Anim.to(errLbl, { TextTransparency = 1 }, Anim.Spring)
-            Anim.to(ibStroke, { Color = Color3.fromRGB(55, 55, 55) }, Anim.Fast)
+            Anim.to(err, { TextTransparency = 1 }, Anim.Spring)
+            if ibStroke then Anim.to(ibStroke, { Color = Color3.fromRGB(55,55,55) }, Anim.Fast) end
         end)
     end
     local function submit()
         if passed then return end
-        local k = input:GetText()
-        if isValid(k) then
+        if isValid(input:GetText()) then
             passed = true
-            Anim.to(ibStroke, { Color = Color3.fromRGB(120, 200, 140) }, Anim.Fast)
-            if keyCfg.OnSuccess then task.spawn(keyCfg.OnSuccess, k) end
-        else
-            showError(keyCfg.ErrorText)
-        end
+            if ibStroke then Anim.to(ibStroke, { Color = Color3.fromRGB(120,200,140) }, Anim.Fast) end
+            if keyCfg.OnSuccess then task.spawn(keyCfg.OnSuccess, input:GetText()) end
+        else showError() end
     end
-    activate.MouseButton1Click:Connect(submit)
+    if activate then activate.MouseButton1Click:Connect(submit) end
     input.onEnter = submit
 
-    self:_openScreen(screen)
+    self:_showScreen(s)
     repeat task.wait() until passed
-    self:_closeScreen(screen)
-    return true
+    self:_hideScreen(s)
 end
 
------------------------------------------------------------------- LOADING SCREEN
-function Window:_BuildLoadingScreen(loadCfg)
-    local screen = self:_makeScreenBase("LoadingScreen")
+function Window:_loadingScreen(loadCfg)
+    local s = get(self.Screens, "LoadingScreen")
+    if not s then return end
+    makeDraggable(s, self.Main)
     local dur = loadCfg.Time or 6
+    local title = get(s, "LoadingTitle"); if title and loadCfg.Title then title.Text = loadCfg.Title end
+    local desc = get(s, "LoadingDesc"); if desc and loadCfg.Subtitle then desc.Text = loadCfg.Subtitle end
+    local timer = get(s, "Timer")
+    local line = get(s, "LoadingLine")
+    local fill = line and get(line, "Fill")
+    if fill then fill.Size = UDim2.new(0, 0, 1, 0) end
 
-    Create("TextLabel", {
-        Name = "LoadingTitle", BackgroundTransparency = 1,
-        Text = loadCfg.Title or "Just a moment\u{2026}",
-        FontFace = Fonts.Serif, TextSize = 32, TextColor3 = Color3.fromRGB(213, 213, 213),
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42),
-        Size = UDim2.new(1, 0, 0, 60), Parent = screen,
-    })
-    local line = Create("Frame", {
-        Name = "LoadingLine", BackgroundColor3 = Color3.fromRGB(25, 25, 25),
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.54),
-        Size = UDim2.fromOffset(224, 9), Parent = screen,
-    })
-    corner(999, line)
-    local fill = Create("Frame", {
-        Name = "Fill", BackgroundColor3 = Color3.fromRGB(225, 225, 225),
-        Size = UDim2.new(0, 0, 1, 0), Parent = line,
-    })
-    corner(999, fill)
-    Create("TextLabel", {
-        Name = "LoadingDesc", BackgroundTransparency = 1,
-        Text = loadCfg.Subtitle or "Setting things up \u{2014} this won't take long.",
-        FontFace = Fonts.SerifItalic, TextSize = 16, TextColor3 = Theme.Muted,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.6),
-        Size = UDim2.new(1, 0, 0, 40), Parent = screen,
-    })
-    local timer = Create("TextLabel", {
-        Name = "Timer", BackgroundTransparency = 1, Text = "~" .. dur .. "s",
-        FontFace = Fonts.SerifItalic, TextSize = 15, TextColor3 = Color3.fromRGB(70, 70, 70),
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.66),
-        Size = UDim2.new(1, 0, 0, 30), Parent = screen,
-    })
-
-    self:_openScreen(screen)
-    Anim.to(fill, { Size = UDim2.new(1, 0, 1, 0) },
-        TweenInfo.new(dur, Enum.EasingStyle.Quart, Enum.EasingDirection.Out))
+    self:_showScreen(s)
+    if fill then Anim.to(fill, { Size = UDim2.new(1,0,1,0) },
+        TweenInfo.new(dur, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)) end
     task.spawn(function()
-        for t = dur, 0, -1 do
-            timer.Text = "~" .. t .. "s"
-            task.wait(1)
-            if not screen.Parent then return end
-        end
-        timer.Text = "Loaded!"
+        for t = dur, 0, -1 do if not s.Parent then return end
+            if timer then timer.Text = "~" .. t .. "s" end; task.wait(1) end
+        if timer then timer.Text = "Loaded!" end
     end)
     task.wait(dur + 0.3)
-    self:_closeScreen(screen)
+    self:_hideScreen(s)
 end
 
---------------------------------------------------------------- REVEAL MAIN
-function Window:_RevealWindow()
-    local main = self.Main
-    main.Visible = true
-    main.Size = UDim2.fromOffset(0, 0)
-    Anim.to(main, { Size = UDim2.fromOffset(987, 608) }, Anim.Spring)
-
-    -- make sure a tab is selected & its page visible
+function Window:_reveal()
     local first = self.Tabs[1]
-    if first then
-        self.ActiveTab = nil
-        self:SelectTab(first)
-    end
-
-    task.wait(0.18)
-    -- staggered pop-in of the active tab's sections via UIScale
+    if first then self.ActiveTab = nil; self:SelectTab(first) end
+    task.wait(0.15)
     if self.ActiveTab then
         for i, sec in ipairs(self.ActiveTab.SectionList) do
             if sec.Frame then
-                local sc = Create("UIScale", { Scale = 0.9, Parent = sec.Frame })
-                sec.Frame.Position = sec.Frame.Position
-                task.delay(0.04 * (i - 1), function()
+                local sc = Instance.new("UIScale"); sc.Scale = 0.92; sc.Parent = sec.Frame
+                task.delay(0.05 * (i - 1), function()
                     Anim.to(sc, { Scale = 1 }, Anim.Snappy)
-                    task.delay(0.4, function() sc:Destroy() end)
+                    task.delay(0.45, function() sc:Destroy() end)
                 end)
             end
         end
@@ -1058,128 +8530,84 @@ function Window:_RevealWindow()
     if self._cfg.OnLoaded then task.spawn(self._cfg.OnLoaded) end
 end
 
---============================================================================--
---  TABS & CATEGORIES
---============================================================================--
-local Tab = {}
-Tab.__index = Tab
-local Section = {}
-Section.__index = Section
+--============================ NOTIFY / DESTROY ============================--
+function Window:Notify(opts)
+    opts = opts or {}
+    local t = Instance.new("Frame")
+    t.BackgroundColor3 = C.Section; t.AnchorPoint = Vector2.new(1, 1)
+    t.Position = UDim2.new(1, -20, 1, 80); t.Size = UDim2.fromOffset(280, 64); t.ZIndex = 200; t.Parent = self.Gui
+    local tc = Instance.new("UICorner"); tc.CornerRadius = UDim.new(0, 8); tc.Parent = t
+    local ts = Instance.new("UIStroke"); ts.Color = C.PopupStroke; ts.Thickness = 0.5; ts.Parent = t
+    local ti = Instance.new("TextLabel")
+    ti.BackgroundTransparency = 1; ti.Text = opts.Title or "Notification"; ti.FontFace = Fonts.SerifBold
+    ti.TextSize = 17; ti.TextColor3 = Color3.fromRGB(216,216,216); ti.TextXAlignment = Enum.TextXAlignment.Left
+    ti.Position = UDim2.new(0,14,0,10); ti.Size = UDim2.new(1,-20,0,20); ti.ZIndex = 201; ti.Parent = t
+    local co = Instance.new("TextLabel")
+    co.BackgroundTransparency = 1; co.Text = opts.Content or ""; co.FontFace = Fonts.Sans; co.TextSize = 14
+    co.TextColor3 = C.Muted; co.TextXAlignment = Enum.TextXAlignment.Left; co.TextWrapped = true
+    co.Position = UDim2.new(0,14,0,32); co.Size = UDim2.new(1,-24,0,24); co.ZIndex = 201; co.Parent = t
+    Anim.to(t, { Position = UDim2.new(1,-20,1,-80) }, Anim.Spring)
+    task.delay(opts.Duration or 3.5, function()
+        Anim.to(t, { Position = UDim2.new(1,-20,1,80) }, Anim.Spring)
+        task.delay(0.4, function() t:Destroy() end)
+    end)
+end
+function Window:Destroy() if self.Gui then self.Gui:Destroy() end end
 
+--============================================================================--
+--  TABS
+--============================================================================--
 function Window:_ensureCategory(group)
     group = group or "Main"
     if self.Categories[group] then return self.Categories[group] end
-    local cat = Create("Frame", {
-        Name = group .. "Category", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-        Parent = self.TabsHolder,
-    })
-    listLayout(cat, Enum.FillDirection.Vertical, 6)
-    Create("TextLabel", {
-        Name = "CategoryText", BackgroundTransparency = 1, Text = group,
-        FontFace = Fonts.SerifItalic, TextSize = 17, TextColor3 = Color3.new(1, 1, 1),
-        TextTransparency = 0.7, TextXAlignment = Enum.TextXAlignment.Left,
-        Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 0, Parent = cat,
-    })
-    local holder = Create("Frame", {
-        Name = "TabsHolder", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-        LayoutOrder = 1, Parent = cat,
-    })
-    listLayout(holder, Enum.FillDirection.Vertical, 2)
-    pad(holder, 6, 0, 4, 0)
-    self.Categories[group] = holder
-    return holder
+    local cat = self.T.category:Clone()
+    cat.Name = group .. "Category"
+    local ct = get(cat, "CategoryText"); if ct then ct.Text = group end
+    local th = get(cat, "TabsHolder")
+    clearElements(th)
+    cat.Parent = self.Holder
+    self.Categories[group] = th
+    return th
 end
 
 function Window:CreateTab(opts)
     opts = opts or {}
     local group = opts.Group or "Main"
-    local holder = self:_ensureCategory(group)
+    local th = self:_ensureCategory(group)
 
-    local btn = Create("TextButton", {
-        Name = (opts.Name or "Tab") .. "TabButton", BackgroundColor3 = Color3.fromRGB(40, 40, 40),
-        BackgroundTransparency = 1, AutoButtonColor = false,
-        Text = opts.Name or "Tab", FontFace = Fonts.Sans, TextSize = 15,
-        TextColor3 = Theme.TabIdle, TextXAlignment = Enum.TextXAlignment.Left,
-        Size = UDim2.new(1, 0, 0, 26), Parent = holder,
-    })
-    corner(6, btn)
-    pad(btn, 10, 6, 0, 0)
-    local glow = addShadow(btn, Color3.new(1, 1, 1), 1, 1.2)
+    local btn = self.T.tabButton:Clone()
+    btn.Name = (opts.Name or "Tab") .. "TabButton"
+    btn.Text = opts.Name or "Tab"
+    btn.Parent = th
+    local glow = btn:FindFirstChild("UIShadow")
+    if glow then glow.ImageTransparency = 1 end
 
-    -- page ---------------------------------------------------------------
-    local page = Create("ScrollingFrame", {
-        Name = "Tab_" .. (opts.Name or "Tab"), BackgroundTransparency = 1, BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 1, 0), Position = UDim2.fromScale(0, 0),
-        ScrollBarThickness = 2, ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60),
-        CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        Visible = false, Parent = self.Pages,
-    })
-    pad(page, 16, 6, 14, 14)
-    local pageLayout = listLayout(page, Enum.FillDirection.Vertical, 12)
-
-    -- tab info header
-    local infoHolder = Create("Frame", {
-        Name = "TabInfoFrameHolder", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 0, Parent = page,
-    })
-    listLayout(infoHolder, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-    Create("TextLabel", {
-        Name = "TabName", BackgroundTransparency = 1, Text = opts.Name or "Tab",
-        FontFace = Fonts.SerifBold, TextSize = 25, TextColor3 = Theme.SectionName,
-        TextXAlignment = Enum.TextXAlignment.Left, AutomaticSize = Enum.AutomaticSize.X,
-        Size = UDim2.new(0, 0, 1, 0), LayoutOrder = 0, Parent = infoHolder,
-    })
-    Create("ImageLabel", {
-        Name = "Divider", BackgroundTransparency = 1, Image = Icons.Divider,
-        ImageColor3 = Color3.fromRGB(49, 49, 49), Size = UDim2.fromOffset(9, 9),
-        LayoutOrder = 1, Parent = infoHolder,
-    })
-    Create("TextLabel", {
-        Name = "TabGroupName", BackgroundTransparency = 1, Text = group,
-        FontFace = Fonts.SerifItalic, TextSize = 19, TextColor3 = Color3.fromRGB(100, 100, 100),
-        TextXAlignment = Enum.TextXAlignment.Left, AutomaticSize = Enum.AutomaticSize.X,
-        Size = UDim2.new(0, 0, 1, 0), LayoutOrder = 2, Parent = infoHolder,
-    })
-
-    -- two-column body
-    local columns = Create("Frame", {
-        Name = "Columns", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-        LayoutOrder = 1, Parent = page,
-    })
-    listLayout(columns, Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
-    local function mkColumn(name, order)
-        local c = Create("Frame", {
-            Name = name, BackgroundTransparency = 1,
-            Size = UDim2.new(0.5, -7, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-            LayoutOrder = order, Parent = columns,
-        })
-        listLayout(c, Enum.FillDirection.Vertical, 14)
-        return c
+    local page = self.T.page:Clone()
+    page.Name = "Tab_" .. (opts.Name or "Tab")
+    local scroll = get(page, "ScrollingFrame")
+    local right = get(scroll, "RightColumn")
+    local left  = get(scroll, "LeftColumn")
+    clearElements(right); clearElements(left)
+    local info = get(scroll, "TabInfoFrameHolder")
+    if info then
+        local tn = get(info, "TabName"); if tn then tn.Text = opts.Name or "Tab" end
+        local tg = get(info, "TabGroupName"); if tg then tg.Text = group end
     end
-    local leftCol  = mkColumn("LeftColumn", 0)
-    local rightCol = mkColumn("RightColumn", 1)
+    page.Visible = false
+    page.Parent = self.Pages
 
     local tab = setmetatable({}, Tab)
-    tab.Window      = self
-    tab.Name        = opts.Name or "Tab"
-    tab.Group       = group
-    tab.Button      = btn
-    tab.Glow        = glow
-    tab.Page        = page
-    tab.Left        = leftCol
-    tab.Right       = rightCol
-    tab.SectionList = {}
-    tab._sideCount  = { Left = 0, Right = 0 }
+    tab.Window = self; tab.Name = opts.Name or "Tab"; tab.Group = group
+    tab.Button = btn; tab.Glow = glow; tab.Page = page
+    tab.Left = left; tab.Right = right; tab.SectionList = {}
+    tab._sideCount = { Left = 0, Right = 0 }
     table.insert(self.Tabs, tab)
 
     btn.MouseEnter:Connect(function()
-        if self.ActiveTab ~= tab then Anim.to(btn, { TextColor3 = Color3.fromRGB(225, 225, 225) }, Anim.Fast) end
+        if self.ActiveTab ~= tab then Anim.to(btn, { TextColor3 = Color3.fromRGB(225,225,225) }, Anim.Fast) end
     end)
     btn.MouseLeave:Connect(function()
-        if self.ActiveTab ~= tab then Anim.to(btn, { TextColor3 = Theme.TabIdle }, Anim.Fast) end
+        if self.ActiveTab ~= tab then Anim.to(btn, { TextColor3 = C.TabIdle }, Anim.Fast) end
     end)
     btn.MouseButton1Click:Connect(function() self:SelectTab(tab) end)
 
@@ -1192,18 +8620,15 @@ function Window:SelectTab(tab)
     for _, t in ipairs(self.Tabs) do
         local active = (t == tab)
         t.Page.Visible = active
-        Anim.to(t.Button, {
-            TextColor3 = active and Theme.TabActive or Theme.TabIdle,
-            BackgroundTransparency = active and 0.9 or 1,
-        }, Anim.Spring)
-        Anim.to(t.Glow, { ImageTransparency = active and 0.55 or 1 }, Anim.Spring)
+        Anim.to(t.Button, { TextColor3 = active and C.White or C.TabIdle }, Anim.Spring)
+        if t.Glow then Anim.to(t.Glow, { ImageTransparency = active and 0.5 or 1 }, Anim.Spring) end
     end
     self.ActiveTab = tab
     self:CloseAllPopups()
 end
 
 --============================================================================--
---  SECTION  (collapsible)
+--  SECTION
 --============================================================================--
 function Tab:CreateSection(opts)
     opts = opts or {}
@@ -1212,60 +8637,26 @@ function Tab:CreateSection(opts)
     self._sideCount[side] = self._sideCount[side] + 1
     local parent = (side == "Right") and self.Right or self.Left
 
-    local frame = Create("Frame", {
-        Name = (opts.Name or "Section") .. "Section", BackgroundColor3 = Theme.Section,
-        Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = parent,
-    })
-    corner(8, frame)
-    stroke(Theme.SectionStroke, 0.5, frame)
-    listLayout(frame, Enum.FillDirection.Vertical, 0)
-    pad(frame, 0, 0, 0, 10)
-
-    -- header
-    local head = Create("Frame", {
-        Name = "SectionNameHolderFrame", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 50), LayoutOrder = 0, Parent = frame,
-    })
-    Create("TextLabel", {
-        Name = "SectionName", BackgroundTransparency = 1, Text = opts.Name or "Section",
-        FontFace = Fonts.SerifBold, TextSize = 24, TextColor3 = Theme.SectionName,
-        TextXAlignment = Enum.TextXAlignment.Left, AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0.05, 0, 0.5, 0), Size = UDim2.new(0.85, 0, 0.9, 0), Parent = head,
-    })
-    local icon = Create("ImageLabel", {
-        Name = "Icon", BackgroundTransparency = 1, Image = Icons.Chevron,
-        ImageColor3 = Color3.fromRGB(120, 120, 120), Rotation = 180,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.92, 0, 0.5, 0),
-        Size = UDim2.fromOffset(15, 15), Parent = head,
-    })
-    local sbtn = Create("ImageButton", {
-        Name = "SectionButton", BackgroundTransparency = 1, ImageTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0), ZIndex = 5, Parent = head,
-    })
-
-    -- body
-    local body = Create("Frame", {
-        Name = "ButtonsHolderFrame", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-        ClipsDescendants = true, LayoutOrder = 1, Parent = frame,
-    })
-    local bodyList = listLayout(body, Enum.FillDirection.Vertical, 4)
-    pad(body, 14, 14, 0, 6)
+    local frame = win.T.section:Clone()
+    frame.Name = (opts.Name or "Section") .. "Section"
+    local head = get(frame, "SectionNameHolderFrame")
+    local nameLbl = get(head, "SectionName"); if nameLbl then nameLbl.Text = opts.Name or "Section" end
+    local icon = get(head, "Icon")
+    local sbtn = get(head, "SectionButton")
+    local body = get(frame, "ButtonsHolderFrame")
+    if body then clearElements(body); body.ClipsDescendants = true end
+    frame.Parent = parent
 
     local section = setmetatable({}, Section)
-    section.Window   = win
-    section.Tab      = self
-    section.Frame    = frame
-    section.Body     = body
-    section.Icon     = icon
-    section.Name     = opts.Name or "Section"
-    section.Open     = true
-    section.Elements = {}
+    section.Window = win; section.Tab = self; section.Frame = frame
+    section.Body = body; section.Icon = icon; section.Name = opts.Name or "Section"
+    section.Open = true; section.Elements = {}
     table.insert(self.SectionList, section)
 
-    local function setOpen(state)
-        section.Open = state
-        Anim.to(icon, { Rotation = state and 180 or 90 }, Anim.Spring)
+    function section:SetOpen(state)
+        self.Open = state
+        if icon then Anim.to(icon, { Rotation = state and 180 or 90 }, Anim.Spring) end
+        if not body then return end
         if state then
             body.Visible = true
             body.AutomaticSize = Enum.AutomaticSize.Y
@@ -1275,123 +8666,56 @@ function Tab:CreateSection(opts)
             local h = body.AbsoluteSize.Y
             body.Size = UDim2.new(1, 0, 0, h)
             local t = Anim.to(body, { Size = UDim2.new(1, 0, 0, 0) }, Anim.Spring)
-            t.Completed:Connect(function() body.Visible = false end)
+            t.Completed:Connect(function() if not self.Open then body.Visible = false end end)
         end
     end
-    sbtn.MouseButton1Click:Connect(function() setOpen(not section.Open) end)
-    section.SetOpen = setOpen
-
-    if opts.Open == false then task.defer(function() setOpen(false) end) end
+    if sbtn then sbtn.MouseButton1Click:Connect(function() section:SetOpen(not section.Open) end) end
+    if opts.Open == false then task.defer(function() section:SetOpen(false) end) end
     return section
+end
+
+function Section:_register(name, frame, api)
+    table.insert(self.Window.SearchIndex, {
+        name = name, section = self.Name, tab = self.Tab.Name,
+        frame = frame, tabObj = self.Tab, sectionObj = self, api = api })
+end
+function Section:_load(flag, default)
+    if flag and self.Window.ConfigEnabled then return self.Window.Config:Get(flag, default) end
+    return default
+end
+function Section:_store(flag, value)
+    if flag and self.Window.ConfigEnabled then self.Window.Config:Set(flag, value) end
 end
 
 --============================================================================--
 --  COMPONENT HELPERS
 --============================================================================--
-function Section:_register(name, elementFrame, api)
-    table.insert(self.Window.SearchIndex, {
-        name = name, section = self.Name, tab = self.Tab.Name,
-        frame = elementFrame, tabObj = self.Tab, sectionObj = self, api = api,
-    })
-end
-function Section:_load(flag, default)
-    if flag and self.Window.ConfigEnabled then
-        return self.Window.Config:Get(flag, default)
-    end
-    return default
-end
-function Section:_store(flag, value)
-    if flag and self.Window.ConfigEnabled then
-        self.Window.Config:Set(flag, value)
-    end
-end
-
-local function baseRow(section, name, height)
-    local row = Create("Frame", {
-        Name = (name or "Element"), BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, height or 50), Parent = section.Body,
-    })
-    local lbl = Create("TextLabel", {
-        Name = "Name", BackgroundTransparency = 1, Text = name or "",
-        FontFace = Fonts.Sans, TextSize = 16, TextColor3 = Theme.ElementName,
-        TextXAlignment = Enum.TextXAlignment.Left, AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0.02, 0, 0.5, 0), Size = UDim2.new(0.55, 0, 0, 27), Parent = row,
-    })
-    stroke(Theme.ElementName, 0.2, lbl)
-    return row, lbl
-end
-
--- format a number for display
 local function fmtNumber(v, decimals, suffix)
     local s
-    if decimals and decimals > 0 then
-        s = string.format("%." .. decimals .. "f", v)
-    else
-        s = tostring(math.floor(v + 0.5))
-    end
+    if decimals and decimals > 0 then s = string.format("%." .. decimals .. "f", v)
+    else s = tostring(math.floor(v + 0.5)) end
     return s .. (suffix or "")
 end
-local function round(v, decimals)
-    local m = 10 ^ (decimals or 0)
-    return math.floor(v * m + 0.5) / m
-end
+local function roundv(v, d) local m = 10 ^ (d or 0); return math.floor(v * m + 0.5) / m end
 
---============================================================================--
---  LABEL
---============================================================================--
-function Section:CreateLabel(opts)
-    opts = opts or {}
-    local row, lbl = baseRow(self, opts.Name or opts.Text or "Label", opts.Height or 30)
-    lbl.Size = UDim2.new(0.96, 0, 1, 0)
-    lbl.TextColor3 = opts.Color or Theme.Muted
-    lbl.FontFace = opts.Font or Fonts.Sans
-    local api = { Instance = row }
-    function api:Set(t) lbl.Text = t end
-    self:_register(opts.Name or opts.Text or "Label", row, api)
-    return api
-end
-
---============================================================================--
---  BUTTON
---============================================================================--
-function Section:CreateButton(opts)
-    opts = opts or {}
-    local row = Create("Frame", {
-        Name = (opts.Name or "Button"), BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 40), Parent = self.Body,
+-- overlay an inline numeric editor on a label; commits on enter/focus lost
+local function inlineNumberEdit(label, curText, align, apply)
+    label.TextTransparency = 1
+    local ed = CustomInput.new(label.Parent, {
+        Size = label.Size, Position = label.Position, Align = align, Numeric = true,
+        Font = label.FontFace, TextSize = label.TextSize, TextColor = label.TextColor3,
+        Default = curText, ZIndex = 10,
     })
-    local btn = Create("ImageButton", {
-        Name = "ButtonButton", BackgroundColor3 = Theme.Inset, ImageTransparency = 1,
-        AutoButtonColor = false, AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0.97, 0, 0.72, 0), Parent = row,
-    })
-    corner(6, btn)
-    local st = stroke(Color3.fromRGB(50, 50, 50), 1, btn)
-    local lbl = Create("TextLabel", {
-        Name = "Name", BackgroundTransparency = 1, Text = opts.Name or "Button",
-        FontFace = Fonts.Sans, TextSize = 16, TextColor3 = Theme.ElementName,
-        Size = UDim2.new(1, 0, 1, 0), Parent = btn,
-    })
-    stroke(Theme.ElementName, 0.2, lbl)
-
-    btn.MouseEnter:Connect(function()
-        Anim.to(btn, { BackgroundColor3 = Color3.fromRGB(22, 22, 24) }, Anim.Fast)
-        Anim.to(st, { Color = Color3.fromRGB(80, 80, 80) }, Anim.Fast)
-    end)
-    btn.MouseLeave:Connect(function()
-        Anim.to(btn, { BackgroundColor3 = Theme.Inset }, Anim.Fast)
-        Anim.to(st, { Color = Color3.fromRGB(50, 50, 50) }, Anim.Fast)
-    end)
-    btn.MouseButton1Down:Connect(function() Anim.to(btn, { Size = UDim2.new(0.94, 0, 0.68, 0) }, Anim.Fast) end)
-    btn.MouseButton1Up:Connect(function() Anim.to(btn, { Size = UDim2.new(0.97, 0, 0.72, 0) }, Anim.Snappy) end)
-    btn.MouseButton1Click:Connect(function()
-        if opts.Callback then task.spawn(opts.Callback) end
-    end)
-
-    local api = { Instance = row }
-    function api:SetText(t) lbl.Text = t end
-    self:_register(opts.Name or "Button", row, api)
-    return api
+    ed.Frame.AnchorPoint = label.AnchorPoint
+    ed:Focus()
+    local function finish()
+        local n = tonumber(ed:GetText())
+        label.TextTransparency = 0
+        if ed.Frame then ed.Frame:Destroy() end
+        if n then apply(n) end
+    end
+    ed.onEnter = function() finish() end
+    ed.Capture.FocusLost:Connect(function() task.defer(finish) end)
 end
 
 --============================================================================--
@@ -1400,46 +8724,29 @@ end
 function Section:CreateToggle(opts)
     opts = opts or {}
     local state = self:_load(opts.Flag, opts.Default == true)
-    local row, lbl = baseRow(self, opts.Name or "Toggle", 50)
-
-    local tf = Create("Frame", {
-        Name = "ToggleFrame", BackgroundColor3 = state and Theme.ToggleOn or Theme.ToggleOff,
-        AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0.98, 0, 0.5, 0),
-        Size = UDim2.fromOffset(45, 25), Parent = row,
-    })
-    corner(999, tf)
-    local tfStroke = stroke(state and Theme.ToggleOnStroke or Theme.ToggleOffStroke, 0.5, tf)
-    local dot = Create("Frame", {
-        Name = "Dot", BackgroundColor3 = state and Color3.new(1, 1, 1) or Theme.ToggleOffDot,
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(state and 0.7 or 0.3, 0, 0.5, 0), Size = UDim2.fromOffset(19, 19), Parent = tf,
-    })
-    corner(999, dot)
-    local dotShadow = addShadow(dot, Color3.new(1, 1, 1), state and 0.17 or 1, 2)
-    local valLbl = Create("TextLabel", {
-        Name = "ToggleValue", BackgroundTransparency = 1, Text = state and "On" or "Off",
-        FontFace = Fonts.SerifItalic, TextSize = 16, TextColor3 = Color3.fromRGB(102, 102, 102),
-        TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(0.8, 0, 0.5, 0), Size = UDim2.new(0, 100, 1, 0), Parent = row,
-    })
-    local hit = Create("ImageButton", {
-        BackgroundTransparency = 1, ImageTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Parent = row,
-    })
+    local row = self.Window.T.toggle:Clone()
+    row.Name = opts.Name or "Toggle"
+    local nameLbl = get(row, "Name"); if nameLbl then nameLbl.Text = opts.Name or "Toggle" end
+    local tf = get(row, "ToggleFrame")
+    local tfStroke = tf and tf:FindFirstChildOfClass("UIStroke")
+    local dot = tf and get(tf, "Dot")
+    local dotShadow = dot and dot:FindFirstChild("UIShadow")
+    local valLbl = get(row, "ToggleValue")
+    row.Parent = self.Body
 
     local function apply(v, fire)
         state = v
-        Anim.to(tf, { BackgroundColor3 = v and Theme.ToggleOn or Theme.ToggleOff }, Anim.Spring)
-        Anim.to(tfStroke, { Color = v and Theme.ToggleOnStroke or Theme.ToggleOffStroke }, Anim.Spring)
-        Anim.to(dot, {
-            Position = UDim2.new(v and 0.7 or 0.3, 0, 0.5, 0),
-            BackgroundColor3 = v and Color3.new(1, 1, 1) or Theme.ToggleOffDot,
-        }, Anim.Snappy)
-        Anim.to(dotShadow, { ImageTransparency = v and 0.17 or 1 }, Anim.Spring)
-        valLbl.Text = v and "On" or "Off"
+        if tf then Anim.to(tf, { BackgroundColor3 = v and C.ToggleOn or C.ToggleOff }, Anim.Spring) end
+        if tfStroke then Anim.to(tfStroke, { Color = v and C.ToggleOnStroke or C.ToggleOffStroke }, Anim.Spring) end
+        if dot then Anim.to(dot, { Position = UDim2.new(v and 0.7 or 0.3, 0, 0.5, 0),
+            BackgroundColor3 = v and C.White or C.ToggleOffDot }, Anim.Snappy) end
+        if dotShadow then Anim.to(dotShadow, { ImageTransparency = v and 0.17 or 1 }, Anim.Spring) end
+        if valLbl then valLbl.Text = v and "On" or "Off" end
         self:_store(opts.Flag, v)
         if fire and opts.Callback then task.spawn(opts.Callback, v) end
     end
-    hit.MouseButton1Click:Connect(function() apply(not state, true) end)
+    row.MouseButton1Click:Connect(function() apply(not state, true) end)
+    apply(state, false)
     if state and opts.Callback then task.spawn(opts.Callback, true) end
 
     local api = { Instance = row }
@@ -1450,117 +8757,99 @@ function Section:CreateToggle(opts)
 end
 
 --============================================================================--
+--  BUTTON
+--============================================================================--
+function Section:CreateButton(opts)
+    opts = opts or {}
+    local row = self.Window.T.button:Clone()
+    row.Name = opts.Name or "Button"
+    local bb = get(row, "ButtonButton")
+    local nameLbl = bb and get(bb, "Name"); if nameLbl then nameLbl.Text = opts.Name or "Button" end
+    local st = bb and bb:FindFirstChildOfClass("UIStroke")
+    row.Parent = self.Body
+
+    if bb then
+        local baseSize = bb.Size
+        bb.MouseEnter:Connect(function()
+            Anim.to(bb, { BackgroundColor3 = Color3.fromRGB(22,22,24) }, Anim.Fast)
+            if st then Anim.to(st, { Color = Color3.fromRGB(80,80,80) }, Anim.Fast) end
+        end)
+        bb.MouseLeave:Connect(function()
+            Anim.to(bb, { BackgroundColor3 = Color3.fromRGB(13,13,14) }, Anim.Fast)
+            if st then Anim.to(st, { Color = Color3.fromRGB(50,50,50) }, Anim.Fast) end
+        end)
+        bb.MouseButton1Down:Connect(function() Anim.to(bb, { Size = UDim2.new(baseSize.X.Scale-0.03, baseSize.X.Offset, baseSize.Y.Scale-0.05, baseSize.Y.Offset) }, Anim.Fast) end)
+        bb.MouseButton1Up:Connect(function() Anim.to(bb, { Size = baseSize }, Anim.Snappy) end)
+        bb.MouseButton1Click:Connect(function() if opts.Callback then task.spawn(opts.Callback) end end)
+    end
+
+    local api = { Instance = row }
+    function api:SetText(t) if nameLbl then nameLbl.Text = t end end
+    self:_register(opts.Name or "Button", row, api)
+    return api
+end
+
+--============================================================================--
 --  SLIDER
 --============================================================================--
 function Section:CreateSlider(opts)
     opts = opts or {}
     local min, max = opts.Min or 0, opts.Max or 100
     local decimals = opts.Decimals or 0
-    local suffix   = opts.Suffix or ""
-    local step     = opts.Step
-    local value    = self:_load(opts.Flag, opts.Default or min)
-    value = math.clamp(value, min, max)
+    local suffix = opts.Suffix or ""
+    local step = opts.Step
+    local value = math.clamp(self:_load(opts.Flag, opts.Default or min), min, max)
 
-    local row, lbl = baseRow(self, opts.Name or "Slider", 50)
-    lbl.Position = UDim2.new(0.01, 0, 0.28, 0)
-    lbl.Size = UDim2.new(0.6, 0, 0, 27)
+    local row = self.Window.T.slider:Clone()
+    row.Name = opts.Name or "Slider"
+    local nameLbl = get(row, "Name"); if nameLbl then nameLbl.Text = opts.Name or "Slider" end
+    local track = get(row, "SliderBg")
+    local fill = track and get(track, "Fill")
+    local knob = track and get(track, "Knob")
+    local valLbl = get(row, "Value")
+    row.Parent = self.Body
 
-    local track = Create("Frame", {
-        Name = "SliderBg", BackgroundColor3 = Theme.SliderTrack,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.72, 0),
-        Size = UDim2.new(0.95, 0, 0, 2), Parent = row,
-    })
-    corner(999, track)
-    local fill = Create("Frame", {
-        Name = "Fill", BackgroundColor3 = Theme.Accent, AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(0, 0, 1, 0), Parent = track,
-    })
-    corner(999, fill)
-    addShadow(fill, Color3.new(1, 1, 1), 0.57, 1.4)
-    local knob = Create("Frame", {
-        Name = "Knob", BackgroundColor3 = Theme.Accent, AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.fromOffset(15, 15), ZIndex = 3, Parent = track,
-    })
-    corner(999, knob)
-    addShadow(knob, Color3.new(1, 1, 1), 0.27, 2)
-
-    local valLbl = Create("TextLabel", {
-        Name = "Value", BackgroundTransparency = 1, Text = fmtNumber(value, decimals, suffix),
-        FontFace = Fonts.SerifBold, TextSize = 20, TextColor3 = Theme.Value,
-        TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(0.99, 0, 0.28, 0), Size = UDim2.new(0, 104, 0, 27), Parent = row,
-    })
-    stroke(Theme.ElementName, 0.2, valLbl)
-    local editBtn = Create("TextButton", {
-        BackgroundTransparency = 1, Text = "", AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(0.99, 0, 0.28, 0), Size = UDim2.new(0, 104, 0, 27), ZIndex = 4, Parent = row,
-    })
-
-    local function frac() return (value - min) / (max - min) end
+    local function fracv() return (value - min) / (max - min) end
     local function refresh(fire)
-        local f = frac()
-        Anim.to(fill, { Size = UDim2.new(f, 0, 1, 0) }, Anim.Fast)
-        Anim.to(knob, { Position = UDim2.new(f, 0, 0.5, 0) }, Anim.Fast)
-        valLbl.Text = fmtNumber(value, decimals, suffix)
+        local f = fracv()
+        if fill then Anim.to(fill, { Size = UDim2.new(f, 0, 1, 0) }, Anim.Fast) end
+        if knob then Anim.to(knob, { Position = UDim2.new(f, 0, 0.5, 0) }, Anim.Fast) end
+        if valLbl then valLbl.Text = fmtNumber(value, decimals, suffix) end
         self:_store(opts.Flag, value)
         if fire and opts.Callback then task.spawn(opts.Callback, value) end
     end
     local function setValue(v, fire)
         v = math.clamp(v, min, max)
         if step then v = min + math.floor((v - min) / step + 0.5) * step end
-        v = round(v, decimals)
-        value = v
-        refresh(fire)
+        value = roundv(v, decimals); refresh(fire)
     end
     task.defer(function() refresh(false) end)
 
-    -- dragging
     local dragging = false
     local function fromMouse(x)
+        if not track then return end
         local rel = (x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X)
         setValue(min + math.clamp(rel, 0, 1) * (max - min), true)
     end
-    local function begin(input)
-        dragging = true
-        Anim.to(knob, { Size = UDim2.fromOffset(18, 18) }, Anim.Snappy)
-        fromMouse(input.Position.X)
-    end
-    track.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then begin(i) end
-    end)
-    knob.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then begin(i) end
-    end)
+    local function beginDrag(i) dragging = true; if knob then Anim.to(knob, { Size = UDim2.fromOffset(18,18) }, Anim.Snappy) end fromMouse(i.Position.X) end
+    if track then track.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then beginDrag(i) end end) end
+    if knob then knob.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then beginDrag(i) end end) end
     UserInputService.InputChanged:Connect(function(i)
-        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-            fromMouse(i.Position.X)
-        end
-    end)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then fromMouse(i.Position.X) end end)
     UserInputService.InputEnded:Connect(function(i)
         if dragging and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
-            dragging = false
-            Anim.to(knob, { Size = UDim2.fromOffset(15, 15) }, Anim.Snappy)
-        end
-    end)
+            dragging = false; if knob then Anim.to(knob, { Size = UDim2.fromOffset(15,15) }, Anim.Snappy) end end end)
 
-    -- click value to type it
-    editBtn.MouseButton1Click:Connect(function()
-        valLbl.TextTransparency = 1
-        local editor = CustomInput.new(row, {
-            Size = UDim2.new(0, 104, 0, 27), Position = UDim2.new(0.99, -104, 0.28, -13),
-            Align = Enum.HorizontalAlignment.Right, Numeric = true,
-            Font = Fonts.SerifBold, TextSize = 20, TextColor = Theme.Value,
-            Default = fmtNumber(value, decimals, ""),
-        })
-        editor.Frame.ZIndex = 6
-        editor:Focus()
-        editor.Capture.FocusLost:Connect(function()
-            local n = tonumber(editor:GetText())
-            if n then setValue(n, true) end
-            valLbl.TextTransparency = 0
-            editor.Frame:Destroy()
+    if valLbl then
+        local eb = Instance.new("TextButton")
+        eb.BackgroundTransparency = 1; eb.Text = ""; eb.Size = valLbl.Size; eb.Position = valLbl.Position
+        eb.AnchorPoint = valLbl.AnchorPoint; eb.ZIndex = 6; eb.Parent = row
+        eb.MouseButton1Click:Connect(function()
+            inlineNumberEdit(valLbl, fmtNumber(value, decimals, ""), Enum.HorizontalAlignment.Right, function(n) setValue(n, true) end)
         end)
-    end)
+    end
 
     local api = { Instance = row }
     function api:Set(v) setValue(v, true) end
@@ -1574,76 +8863,39 @@ end
 --============================================================================--
 function Section:CreateNumberPicker(opts)
     opts = opts or {}
-    local min = opts.Min or 0
-    local max = opts.Max or 100
+    local min, max = opts.Min or 0, opts.Max or 100
     local step = opts.Step or 1
     local decimals = opts.Decimals or 0
-    local value = self:_load(opts.Flag, opts.Default or min)
-    value = math.clamp(value, min, max)
+    local value = math.clamp(self:_load(opts.Flag, opts.Default or min), min, max)
 
-    local row, lbl = baseRow(self, opts.Name or "Number Picker", 50)
-
-    local holder = Create("Frame", {
-        Name = "NumberPickerHolder", BackgroundColor3 = Theme.Inset,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.83, 0, 0.5, 0),
-        Size = UDim2.fromOffset(106, 32), Parent = row,
-    })
-    corner(8, holder)
-    local minus = Create("ImageButton", {
-        Name = "Minus", BackgroundTransparency = 1, Image = Icons.Minus,
-        ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.4,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.14, 0, 0.5, 0),
-        Size = UDim2.fromOffset(20, 20), Parent = holder,
-    })
-    local plus = Create("ImageButton", {
-        Name = "Plus", BackgroundTransparency = 1, Image = Icons.Plus,
-        ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.4,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.87, 0, 0.5, 0),
-        Size = UDim2.fromOffset(20, 20), Parent = holder,
-    })
-    local valLbl = Create("TextLabel", {
-        Name = "NumberValue", BackgroundTransparency = 1, Text = fmtNumber(value, decimals, ""),
-        FontFace = Fonts.Serif, TextSize = 20, TextColor3 = Color3.new(1, 1, 1),
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.new(0, 50, 0.85, 0), Parent = holder,
-    })
-    local editBtn = Create("TextButton", {
-        BackgroundTransparency = 1, Text = "", AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 50, 1, 0), ZIndex = 4, Parent = holder,
-    })
+    local row = self.Window.T.number:Clone()
+    row.Name = opts.Name or "Number Picker"
+    local nameLbl = get(row, "Name"); if nameLbl then nameLbl.Text = opts.Name or "Number Picker" end
+    local holder = get(row, "NumberPickerHolder")
+    local valHolder = holder and get(holder, "NumberValueHolder")
+    local valLbl = valHolder and get(valHolder, "NumberValue")
+    local minus = holder and get(holder, "Minus")
+    local plus = holder and get(holder, "Plus")
+    row.Parent = self.Body
 
     local function setValue(v, fire)
-        v = math.clamp(round(v, decimals), min, max)
-        value = v
-        valLbl.Text = fmtNumber(v, decimals, "")
-        -- little bump animation
-        valLbl.TextTransparency = 0.4
-        Anim.to(valLbl, { TextTransparency = 0 }, Anim.Fast)
-        self:_store(opts.Flag, v)
-        if fire and opts.Callback then task.spawn(opts.Callback, v) end
+        value = math.clamp(roundv(v, decimals), min, max)
+        if valLbl then valLbl.Text = fmtNumber(value, decimals, ""); valLbl.TextTransparency = 0.4; Anim.to(valLbl, { TextTransparency = 0 }, Anim.Fast) end
+        self:_store(opts.Flag, value)
+        if fire and opts.Callback then task.spawn(opts.Callback, value) end
     end
-    local function bump(btn) Anim.to(btn, { ImageTransparency = 0 }, Anim.Fast); task.delay(0.12, function() Anim.to(btn, { ImageTransparency = 0.4 }, Anim.Fast) end) end
-    minus.MouseButton1Click:Connect(function() bump(minus); setValue(value - step, true) end)
-    plus.MouseButton1Click:Connect(function() bump(plus); setValue(value + step, true) end)
+    local function bump(b) if b then Anim.to(b, { ImageTransparency = 0 }, Anim.Fast); task.delay(0.12, function() Anim.to(b, { ImageTransparency = 0.4 }, Anim.Fast) end) end end
+    if minus then minus.MouseButton1Click:Connect(function() bump(minus); setValue(value - step, true) end) end
+    if plus then plus.MouseButton1Click:Connect(function() bump(plus); setValue(value + step, true) end) end
 
-    editBtn.MouseButton1Click:Connect(function()
-        valLbl.TextTransparency = 1
-        local editor = CustomInput.new(holder, {
-            Size = UDim2.new(0, 50, 1, 0), Position = UDim2.new(0.5, -25, 0, 0),
-            Align = Enum.HorizontalAlignment.Center, Numeric = true,
-            Font = Fonts.Serif, TextSize = 20, TextColor = Color3.new(1, 1, 1),
-            Default = fmtNumber(value, decimals, ""),
-        })
-        editor.Frame.ZIndex = 6
-        editor:Focus()
-        editor.Capture.FocusLost:Connect(function()
-            local n = tonumber(editor:GetText())
-            if n then setValue(n, true) else valLbl.TextTransparency = 0 end
-            valLbl.TextTransparency = 0
-            editor.Frame:Destroy()
+    if valLbl then
+        local eb = Instance.new("TextButton")
+        eb.BackgroundTransparency = 1; eb.Text = ""; eb.Size = UDim2.fromScale(1,1); eb.ZIndex = 6; eb.Parent = valHolder
+        eb.MouseButton1Click:Connect(function()
+            inlineNumberEdit(valLbl, fmtNumber(value, decimals, ""), Enum.HorizontalAlignment.Center, function(n) setValue(n, true) end)
         end)
-    end)
-
+    end
+    if valLbl then valLbl.Text = fmtNumber(value, decimals, "") end
     task.defer(function() if opts.Callback then task.spawn(opts.Callback, value) end end)
 
     local api = { Instance = row }
@@ -1654,305 +8906,44 @@ function Section:CreateNumberPicker(opts)
 end
 
 --============================================================================--
---  COLOR PICKER WINDOW  (shared, draggable, outside-click close)
---============================================================================--
-local function sliderFraction(frame, x)
-    return math.clamp((x - frame.AbsolutePosition.X) / math.max(1, frame.AbsoluteSize.X), 0, 1)
-end
-local function toHex(c)
-    return string.format("%02X%02X%02X",
-        math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
-end
-local function fromHex(hex)
-    hex = hex:gsub("#", "")
-    if #hex ~= 6 then return nil end
-    local r = tonumber(hex:sub(1, 2), 16)
-    local g = tonumber(hex:sub(3, 4), 16)
-    local b = tonumber(hex:sub(5, 6), 16)
-    if not (r and g and b) then return nil end
-    return Color3.fromRGB(r, g, b)
-end
-
-function Window:_BuildColorPickerWindow()
-    local w = Create("Frame", {
-        Name = "ColorPicker", BackgroundColor3 = Theme.Popup, Visible = false,
-        Position = UDim2.fromScale(0.78, 0.5), Size = UDim2.fromOffset(195, 349),
-        ZIndex = 60, Parent = self.Gui,
-    })
-    corner(8, w)
-    stroke(Theme.PopupStroke, 1, w)
-    addShadow(w, Color3.new(0, 0, 0), 0.35, 1.5)
-
-    -- title
-    local title = Create("Frame", {
-        Name = "Title", BackgroundColor3 = Color3.fromRGB(14, 14, 14),
-        AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 8),
-        Size = UDim2.fromOffset(177, 34), ZIndex = 61, Parent = w,
-    })
-    corner(6, title)
-    Create("TextLabel", {
-        Name = "FromText", BackgroundTransparency = 1, Text = "Color Picker",
-        FontFace = Fonts.Sans, TextSize = 16, TextColor3 = Theme.ElementName,
-        TextXAlignment = Enum.TextXAlignment.Left, Position = UDim2.new(0.05, 0, 0, 0),
-        Size = UDim2.new(0.9, 0, 1, 0), ZIndex = 61, Parent = title,
-    })
-    local closeBtn = Create("ImageButton", {
-        Name = "CloseButton", BackgroundTransparency = 1, Image = Icons.PopupClose,
-        ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.5,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.88, 0, 0.5, 0),
-        Size = UDim2.fromOffset(22, 22), ZIndex = 62, Parent = title,
-    })
-    makeDraggable(title, w)
-
-    -- SV square
-    local square = Create("Frame", {
-        Name = "SV", BackgroundColor3 = Color3.fromRGB(255, 0, 0),
-        AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 52),
-        Size = UDim2.fromOffset(178, 150), ZIndex = 61, Parent = w,
-    })
-    corner(6, square)
-    local whiteOv = Create("Frame", {
-        BackgroundColor3 = Color3.new(1, 1, 1), Size = UDim2.new(1, 0, 1, 0), ZIndex = 61, Parent = square,
-    })
-    corner(6, whiteOv)
-    Create("UIGradient", {
-        Color = ColorSequence.new(Color3.new(1, 1, 1)),
-        Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }),
-        Parent = whiteOv,
-    })
-    local blackOv = Create("Frame", {
-        BackgroundColor3 = Color3.new(0, 0, 0), Size = UDim2.new(1, 0, 1, 0), ZIndex = 62, Parent = square,
-    })
-    corner(6, blackOv)
-    Create("UIGradient", {
-        Color = ColorSequence.new(Color3.new(0, 0, 0)),
-        Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }),
-        Rotation = 90, Parent = blackOv,
-    })
-    local svKnob = Create("Frame", {
-        Name = "Knob", BackgroundColor3 = Color3.fromRGB(255, 0, 0), AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(14, 14), ZIndex = 63, Parent = square,
-    })
-    corner(999, svKnob)
-    stroke(Color3.new(1, 1, 1), 1.5, svKnob)
-
-    -- hue slider
-    local hue = Create("Frame", {
-        Name = "Hue", BackgroundColor3 = Color3.new(1, 1, 1), AnchorPoint = Vector2.new(0.5, 0),
-        Position = UDim2.new(0.5, 0, 0, 210), Size = UDim2.fromOffset(178, 16), ZIndex = 61, Parent = w,
-    })
-    corner(999, hue)
-    Create("UIGradient", {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
-            ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
-            ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
-            ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 255, 255)),
-            ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),
-            ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
-            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 0)),
-        }), Parent = hue,
-    })
-    local hueKnob = Create("Frame", {
-        Name = "Knob", BackgroundColor3 = Color3.new(0, 0, 0), AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.fromOffset(3, 15), ZIndex = 62, Parent = hue,
-    })
-    stroke(Color3.new(1, 1, 1), 1, hueKnob, 0.2)
-
-    -- transparency slider
-    local trans = Create("Frame", {
-        Name = "Trans", BackgroundColor3 = Color3.fromRGB(255, 0, 0), AnchorPoint = Vector2.new(0.5, 0),
-        Position = UDim2.new(0.5, 0, 0, 234), Size = UDim2.fromOffset(178, 16), ZIndex = 61, Parent = w,
-    })
-    corner(999, trans)
-    Create("ImageLabel", {
-        Name = "Chess", BackgroundTransparency = 1, Image = Icons.Chess,
-        ImageColor3 = Color3.fromRGB(122, 122, 122), ScaleType = Enum.ScaleType.Tile,
-        TileSize = UDim2.fromOffset(12, 12), Size = UDim2.new(1, 0, 1, 0), ZIndex = 61, Parent = trans,
-    })
-    local transGrad = Create("UIGradient", {
-        Color = ColorSequence.new(Color3.fromRGB(255, 0, 0)),
-        Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }),
-        Parent = trans,
-    })
-    local transKnob = Create("Frame", {
-        Name = "Knob", BackgroundColor3 = Color3.new(0, 0, 0), AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.fromOffset(3, 15), ZIndex = 62, Parent = trans,
-    })
-    stroke(Color3.new(1, 1, 1), 1, transKnob, 0.2)
-
-    -- hex holder
-    local hexHolder = Create("Frame", {
-        Name = "HexHolder", BackgroundColor3 = Color3.fromRGB(22, 22, 22),
-        AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 260),
-        Size = UDim2.fromOffset(177, 38), ZIndex = 61, Parent = w,
-    })
-    corner(8, hexHolder)
-    local hexTag = Create("Frame", {
-        BackgroundColor3 = Theme.Popup, AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0.03, 0, 0.5, 0), Size = UDim2.fromOffset(41, 26), ZIndex = 62, Parent = hexHolder,
-    })
-    corner(6, hexTag)
-    Create("TextLabel", {
-        BackgroundTransparency = 1, Text = "HEX", FontFace = Fonts.Sans, TextSize = 15,
-        TextColor3 = Color3.fromRGB(210, 210, 210), Size = UDim2.new(1, 0, 1, 0), ZIndex = 62, Parent = hexTag,
-    })
-    Create("TextLabel", {
-        Name = "Prefix", BackgroundTransparency = 1, Text = "#", FontFace = Fonts.Sans, TextSize = 16,
-        TextColor3 = Color3.fromRGB(190, 190, 190), AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.4, 0, 0.5, 0), Size = UDim2.fromOffset(12, 20), ZIndex = 62, Parent = hexHolder,
-    })
-    local hexInputHolder = Create("Frame", {
-        BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0.44, 0, 0.5, 0), Size = UDim2.fromOffset(56, 20), ZIndex = 62, Parent = hexHolder,
-    })
-    local transLbl = Create("TextLabel", {
-        Name = "TransLbl", BackgroundTransparency = 1, Text = "0%", FontFace = Fonts.Sans, TextSize = 13,
-        TextColor3 = Color3.fromRGB(190, 190, 190), TextXAlignment = Enum.TextXAlignment.Right,
-        AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0.97, 0, 0.5, 0),
-        Size = UDim2.fromOffset(50, 20), ZIndex = 62, Parent = hexHolder,
-    })
-
-    -- state --------------------------------------------------------------
-    local st = { h = 0, s = 1, v = 1, a = 0, onChange = nil }
-    local hexInput
-    local function apply(fireHex)
-        local base = Color3.fromHSV(st.h, 1, 1)
-        square.BackgroundColor3 = base
-        svKnob.BackgroundColor3 = Color3.fromHSV(st.h, st.s, st.v)
-        svKnob.Position = UDim2.fromScale(st.s, 1 - st.v)
-        hueKnob.Position = UDim2.new(st.h, 0, 0.5, 0)
-        transKnob.Position = UDim2.new(st.a, 0, 0.5, 0)
-        transGrad.Color = ColorSequence.new(Color3.fromHSV(st.h, st.s, st.v))
-        local col = Color3.fromHSV(st.h, st.s, st.v)
-        transLbl.Text = math.floor(st.a * 100 + 0.5) .. "%"
-        if fireHex and hexInput then hexInput:SetText(toHex(col), true) end
-        if st.onChange then task.spawn(st.onChange, col, st.a) end
-    end
-    self._cpApply = apply
-
-    hexInput = CustomInput.new(hexInputHolder, {
-        Font = Fonts.Sans, TextSize = 14, TextColor = Color3.fromRGB(190, 190, 190),
-        Default = "8FA8A0", MaxLen = 6, Align = Enum.HorizontalAlignment.Left,
-    })
-    hexInput.onEnter = function(t)
-        local c = fromHex(t)
-        if c then
-            local h, s, v = Color3.toHSV(c)
-            st.h, st.s, st.v = h, s, v
-            apply(false)
-        end
-    end
-
-    -- interactions
-    local drag = nil
-    local function sliderFraction2X(f, x) return math.clamp((x - f.AbsolutePosition.X) / math.max(1, f.AbsoluteSize.X), 0, 1) end
-    local function sliderFraction2Y(f, y) return math.clamp((y - f.AbsolutePosition.Y) / math.max(1, f.AbsoluteSize.Y), 0, 1) end
-    local function bindSlider(frame, kind)
-        frame.InputBegan:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-                drag = kind
-                if kind == "sv" then
-                    st.s = sliderFraction2X(square, i.Position.X); st.v = 1 - sliderFraction2Y(square, i.Position.Y)
-                elseif kind == "hue" then st.h = sliderFraction(hue, i.Position.X)
-                elseif kind == "trans" then st.a = sliderFraction(trans, i.Position.X) end
-                apply(true)
-            end
-        end)
-    end
-    bindSlider(square, "sv"); bindSlider(hue, "hue"); bindSlider(trans, "trans")
-    UserInputService.InputChanged:Connect(function(i)
-        if not drag then return end
-        if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
-        if drag == "sv" then
-            st.s = sliderFraction2X(square, i.Position.X); st.v = 1 - sliderFraction2Y(square, i.Position.Y)
-        elseif drag == "hue" then st.h = sliderFraction(hue, i.Position.X)
-        elseif drag == "trans" then st.a = sliderFraction(trans, i.Position.X) end
-        apply(true)
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drag = nil end
-    end)
-
-    local function closeCP()
-        Anim.to(w, { Size = UDim2.fromOffset(195, 0) }, Anim.Fast)
-        task.delay(0.18, function() w.Visible = false; w.Size = UDim2.fromOffset(195, 349) end)
-    end
-    closeBtn.MouseButton1Click:Connect(closeCP)
-    closeBtn.MouseEnter:Connect(function() Anim.to(closeBtn, { ImageTransparency = 0.15 }, Anim.Fast) end)
-    closeBtn.MouseLeave:Connect(function() Anim.to(closeBtn, { ImageTransparency = 0.5 }, Anim.Fast) end)
-
-    self._cp = { frame = w, state = st, apply = apply, close = closeCP }
-end
-
--- open the shared color picker for a control
-function Window:_openColorPicker(color, alpha, onChange, anchor)
-    local cp = self._cp
-    local h, s, v = Color3.toHSV(color)
-    cp.state.h, cp.state.s, cp.state.v, cp.state.a = h, s, v, alpha or 0
-    cp.state.onChange = onChange
-    -- position near the control
-    if anchor then
-        local ap = anchor.AbsolutePosition
-        cp.frame.Position = UDim2.fromOffset(ap.X - 205, ap.Y - 10)
-    end
-    cp.frame.Visible = true
-    cp.frame.Size = UDim2.fromOffset(195, 0)
-    Anim.to(cp.frame, { Size = UDim2.fromOffset(195, 349) }, Anim.Spring)
-    cp.apply(true)
-    self:CloseAllPopups()
-    table.insert(self.OpenPopups, { frame = cp.frame, owner = anchor, close = cp.close })
-end
-
---============================================================================--
 --  COLOR PICKER (component)
 --============================================================================--
 function Section:CreateColorPicker(opts)
     opts = opts or {}
-    local color = self:_load(opts.Flag, nil)
-    if type(color) == "table" then color = Color3.new(color[1], color[2], color[3]) end
-    color = color or opts.Default or Color3.fromRGB(143, 168, 160)
+    local saved = self:_load(opts.Flag, nil)
+    local color = opts.Default or Color3.fromRGB(143,168,160)
+    if type(saved) == "table" then color = Color3.new(saved[1], saved[2], saved[3]) end
     local alpha = opts.Alpha or 0
 
-    local row, lbl = baseRow(self, opts.Name or "Color Picker", 50)
-    lbl.Size = UDim2.new(0.4, 0, 1, 0)
+    local row = self.Window.T.color:Clone()
+    row.Name = opts.Name or "Color Picker"
+    local nameLbl = get(row, "Name"); if nameLbl then nameLbl.Text = opts.Name or "Color Picker" end
+    local preview = get(row, "ColorPickerPreview")
+    local hexLbl = get(row, "HexValue")
+    row.Parent = self.Body
+    if preview then preview.BackgroundColor3 = color end
 
-    local preview = Create("ImageButton", {
-        Name = "Preview", BackgroundColor3 = color, ImageTransparency = 1,
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.93, 0, 0.5, 0),
-        Size = UDim2.fromOffset(30, 30), Parent = row,
-    })
-    corner(6, preview)
-    stroke(Color3.fromRGB(60, 60, 60), 0.5, preview)
-    Create("TextLabel", {
-        Name = "HexPrefix", BackgroundTransparency = 1, Text = "#", FontFace = Fonts.Serif,
-        TextSize = 22, TextColor3 = Color3.fromRGB(222, 222, 222), AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.63, 0, 0.5, 0), Size = UDim2.fromOffset(18, 40), Parent = row,
-    })
-    local hexHolder = Create("Frame", {
-        BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0.68, 0, 0.5, 0), Size = UDim2.fromOffset(70, 24), Parent = row,
-    })
-    local hexInput = CustomInput.new(hexHolder, {
-        Font = Fonts.SerifBold, TextSize = 20, TextColor = Color3.fromRGB(222, 222, 222),
-        Default = toHex(color), MaxLen = 6, Align = Enum.HorizontalAlignment.Left,
-    })
+    local hexInput
+    if hexLbl then
+        hexLbl.TextTransparency = 1
+        local h = Instance.new("Frame")
+        h.BackgroundTransparency = 1; h.Size = UDim2.fromScale(1,1); h.ZIndex = 3; h.Parent = hexLbl
+        hexInput = CustomInput.new(h, { Font = hexLbl.FontFace, TextSize = hexLbl.TextSize,
+            TextColor = hexLbl.TextColor3, Default = toHex(color), MaxLen = 6,
+            Align = Enum.HorizontalAlignment.Center, ZIndex = 3 })
+    end
 
-    local function set(c, a, fire, fromHexBox)
-        color = c
-        if a ~= nil then alpha = a end
-        Anim.to(preview, { BackgroundColor3 = c }, Anim.Fast)
-        if not fromHexBox then hexInput:SetText(toHex(c), true) end
+    local function set(c, a, fire, fromBox)
+        color = c; if a ~= nil then alpha = a end
+        if preview then Anim.to(preview, { BackgroundColor3 = c }, Anim.Fast) end
+        if hexInput and not fromBox then hexInput:SetText(toHex(c), true) end
         self:_store(opts.Flag, { c.R, c.G, c.B })
         if fire and opts.Callback then task.spawn(opts.Callback, c, alpha) end
     end
-    hexInput.onEnter = function(t)
-        local c = fromHex(t)
-        if c then set(c, nil, true, true) end
-    end
-    preview.MouseButton1Click:Connect(function()
+    if hexInput then hexInput.onEnter = function(t) local c = fromHex(t); if c then set(c, nil, true, true) end end end
+    if preview then preview.MouseButton1Click:Connect(function()
         self.Window:_openColorPicker(color, alpha, function(c, a) set(c, a, true) end, preview)
-    end)
+    end) end
     task.defer(function() if opts.Callback then task.spawn(opts.Callback, color, alpha) end end)
 
     local api = { Instance = row }
@@ -1963,53 +8954,45 @@ function Section:CreateColorPicker(opts)
 end
 
 --============================================================================--
---  SELECTOR  (segmented single-select)
+--  SELECTOR
 --============================================================================--
 function Section:CreateSelector(opts)
     opts = opts or {}
     local options = opts.Options or {}
     local current = self:_load(opts.Flag, opts.Default or options[1])
 
-    local row, lbl = baseRow(self, opts.Name or "Selector", 50)
-    lbl.Size = UDim2.new(0.4, 0, 1, 0)
-
-    local holder = Create("Frame", {
-        Name = "SelectionsHolder", BackgroundColor3 = Theme.InsetDark,
-        AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0.97, 0, 0.5, 0),
-        Size = UDim2.new(0, 0, 0, 30), AutomaticSize = Enum.AutomaticSize.X, Parent = row,
-    })
-    corner(6, holder)
-    listLayout(holder, Enum.FillDirection.Horizontal, 0)
-    pad(holder, 1, 1, 1, 1)
+    local row = self.Window.T.selector:Clone()
+    row.Name = opts.Name or "Selector"
+    local nameLbl = get(row, "Name"); if nameLbl then nameLbl.Text = opts.Name or "Selector" end
+    local holder = get(row, "SelectionsHolder")
+    local btnTemplate = holder and get(holder, "Selection2"):Clone()
+    if holder then clearElements(holder) end
+    row.Parent = self.Body
 
     local buttons = {}
     local function select(name, fire)
         current = name
-        for n, b in pairs(buttons) do
+        for n, e in pairs(buttons) do
             local active = (n == name)
-            Anim.to(b.btn, { BackgroundColor3 = active and Theme.SelActive or Theme.InsetDark }, Anim.Fast)
-            Anim.to(b.lbl, { TextColor3 = active and Theme.SelTextActive or Theme.SelTextIdle }, Anim.Fast)
-            Anim.to(b.stroke, { Transparency = active and 0 or 1 }, Anim.Fast)
+            Anim.to(e.btn, { BackgroundColor3 = active and C.SelActive or C.SelInactive }, Anim.Fast)
+            Anim.to(e.lbl, { TextColor3 = active and C.SelTextActive or C.SelTextIdle }, Anim.Fast)
+            if e.stroke then Anim.to(e.stroke, { Transparency = active and 0 or 1 }, Anim.Fast) end
         end
         self:_store(opts.Flag, name)
         if fire and opts.Callback then task.spawn(opts.Callback, name) end
     end
 
-    for i, opt in ipairs(options) do
-        local b = Create("ImageButton", {
-            Name = opt, BackgroundColor3 = Theme.InsetDark, ImageTransparency = 1, AutoButtonColor = false,
-            Size = UDim2.new(0, 0, 1, -2), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i, Parent = holder,
-        })
-        corner(5, b)
-        local st = stroke(Theme.SelActiveStroke, 1, b, 1)
-        local tl = Create("TextLabel", {
-            Name = "Name", BackgroundTransparency = 1, Text = opt, FontFace = Fonts.Sans, TextSize = 14,
-            TextColor3 = Theme.SelTextIdle, AutomaticSize = Enum.AutomaticSize.X,
-            Size = UDim2.new(0, 0, 1, 0), Parent = b,
-        })
-        pad(tl, 12, 12, 0, 0)
-        buttons[opt] = { btn = b, lbl = tl, stroke = st }
-        b.MouseButton1Click:Connect(function() select(opt, true) end)
+    if holder and btnTemplate then
+        for i, opt in ipairs(options) do
+            local b = btnTemplate:Clone()
+            b.Name = opt; b.AutomaticSize = Enum.AutomaticSize.X; b.LayoutOrder = i
+            local lbl = get(b, "Name")
+            if lbl then lbl.Text = opt; lbl.AutomaticSize = Enum.AutomaticSize.X; lbl.Size = UDim2.new(0,0,1,0) end
+            local st = b:FindFirstChildOfClass("UIStroke")
+            buttons[opt] = { btn = b, lbl = lbl, stroke = st }
+            b.Parent = holder
+            b.MouseButton1Click:Connect(function() select(opt, true) end)
+        end
     end
     if current then task.defer(function() select(current, false) end) end
 
@@ -2021,333 +9004,144 @@ function Section:CreateSelector(opts)
 end
 
 --============================================================================--
---  DROPDOWN  (searchable, single or multi, outside-click close)
+--  DROPDOWN
 --============================================================================--
 function Section:CreateDropdown(opts)
     opts = opts or {}
     local options = opts.Options or {}
-    local multi   = opts.Multi == true
-    local selected = {}     -- set of selected option -> true
+    local multi = opts.Multi == true
+    local selected = {}
     do
         local saved = self:_load(opts.Flag, opts.Default)
-        if type(saved) == "table" then
-            for _, v in ipairs(saved) do selected[v] = true end
+        if type(saved) == "table" then for _, v in ipairs(saved) do selected[v] = true end
         elseif saved ~= nil then selected[saved] = true end
     end
 
-    local row, lbl = baseRow(self, opts.Name or "Dropdown", 50)
-    lbl.Size = UDim2.new(0.35, 0, 1, 0)
+    local row = self.Window.T.dropdown:Clone()
+    row.Name = opts.Name or "Dropdown"
+    local nameLbl = get(row, "Name"); if nameLbl then nameLbl.Text = opts.Name or "Dropdown" end
+    local box = get(row, "DropdownSelectedFrame")
+    local picked = box and get(box, "Picked")
+    local arrow = box and get(box, "Icon")
+    row.Parent = self.Body
 
-    local box = Create("Frame", {
-        Name = "DropdownSelectedFrame", BackgroundColor3 = Color3.fromRGB(13, 13, 13),
-        AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0.975, 0, 0.5, 0),
-        Size = UDim2.new(0, 150, 0, 26), Parent = row,
-    })
-    corner(6, box)
-    stroke(Color3.fromRGB(40, 40, 40), 0.5, box)
-    local picked = Create("TextLabel", {
-        Name = "Picked", BackgroundTransparency = 1, Text = "...", FontFace = Fonts.Sans,
-        TextSize = 15, TextColor3 = Color3.fromRGB(215, 215, 215), TextTruncate = Enum.TextTruncate.AtEnd,
-        TextXAlignment = Enum.TextXAlignment.Left, AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.new(1, -30, 1, 0), Parent = box,
-    })
-    local arrow = Create("ImageLabel", {
-        Name = "Icon", BackgroundTransparency = 1, Image = Icons.DropArrow,
-        ImageColor3 = Color3.new(1, 1, 1), ImageTransparency = 0.6, AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(15, 15), Parent = box,
-    })
-    local clickBtn = Create("TextButton", {
-        BackgroundTransparency = 1, Text = "", Size = UDim2.new(1, 0, 1, 0), ZIndex = 4, Parent = box,
-    })
-
-    local function pickedText()
-        local list = {}
-        for _, o in ipairs(options) do if selected[o] then table.insert(list, o) end end
-        if #list == 0 then return "..." end
-        return table.concat(list, ", ")
+    local function selectedList()
+        local l = {} for _, o in ipairs(options) do if selected[o] then table.insert(l, o) end end return l
     end
     local function refresh(fire)
-        picked.Text = pickedText()
-        if opts.Flag then
-            local list = {}
-            for _, o in ipairs(options) do if selected[o] then table.insert(list, o) end end
-            self:_store(opts.Flag, multi and list or list[1])
-        end
-        if fire and opts.Callback then
-            local list = {}
-            for _, o in ipairs(options) do if selected[o] then table.insert(list, o) end end
-            task.spawn(opts.Callback, multi and list or list[1])
-        end
+        local l = selectedList()
+        if picked then picked.Text = (#l == 0 and "..." or table.concat(l, ", ")) end
+        if opts.Flag then self:_store(opts.Flag, multi and l or l[1]) end
+        if fire and opts.Callback then task.spawn(opts.Callback, multi and l or l[1]) end
     end
 
-    -- panel (parented to gui so it floats above the window) -------------
-    local panel = Create("Frame", {
-        Name = "DropdownPanel", BackgroundColor3 = Theme.Popup, Visible = false,
-        Size = UDim2.fromOffset(180, 0), ZIndex = 70, ClipsDescendants = true, Parent = self.Window.Gui,
-    })
-    corner(8, panel)
-    stroke(Theme.PopupStroke, 1, panel)
-    addShadow(panel, Color3.new(0, 0, 0), 0.4, 1.4)
-
-    local searchHolder = Create("Frame", {
-        BackgroundColor3 = Color3.fromRGB(24, 24, 24), Position = UDim2.new(0, 8, 0, 8),
-        Size = UDim2.new(1, -16, 0, 26), ZIndex = 71, Parent = panel,
-    })
-    corner(6, searchHolder)
-    pad(searchHolder, 8, 8, 0, 0)
-    local searchInput = CustomInput.new(searchHolder, {
-        Placeholder = "Search...", Font = Fonts.Sans, TextSize = 13,
-        TextColor = Color3.fromRGB(200, 200, 200),
-    })
-    searchInput.Frame.ZIndex = 72
-
-    local listFrame = Create("ScrollingFrame", {
-        BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, 6, 0, 40),
-        Size = UDim2.new(1, -12, 1, -46), ScrollBarThickness = 2,
-        ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60),
-        CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ZIndex = 71, Parent = panel,
-    })
-    listLayout(listFrame, Enum.FillDirection.Vertical, 3)
+    -- popup panel
+    local panel = Instance.new("Frame")
+    panel.Name = "DropdownPanel"; panel.BackgroundColor3 = C.Popup; panel.Visible = false
+    panel.Size = UDim2.fromOffset(180, 0); panel.ZIndex = 120; panel.ClipsDescendants = true; panel.Parent = self.Window.Gui
+    local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 8); pc.Parent = panel
+    local pstr = Instance.new("UIStroke"); pstr.Color = C.PopupStroke; pstr.Thickness = 1; pstr.Parent = panel
+    local searchHolder = Instance.new("Frame")
+    searchHolder.BackgroundColor3 = Color3.fromRGB(24,24,24); searchHolder.Position = UDim2.new(0,8,0,8)
+    searchHolder.Size = UDim2.new(1,-16,0,26); searchHolder.ZIndex = 121; searchHolder.Parent = panel
+    local shc = Instance.new("UICorner"); shc.CornerRadius = UDim.new(0,6); shc.Parent = searchHolder
+    local shp = Instance.new("UIPadding"); shp.PaddingLeft = UDim.new(0,8); shp.PaddingRight = UDim.new(0,8); shp.Parent = searchHolder
+    local searchInput = CustomInput.new(searchHolder, { Placeholder = "Search...", Font = Fonts.Sans, TextSize = 13,
+        TextColor = Color3.fromRGB(200,200,200), ZIndex = 121 })
+    local listFrame = Instance.new("ScrollingFrame")
+    listFrame.BackgroundTransparency = 1; listFrame.BorderSizePixel = 0; listFrame.Position = UDim2.new(0,6,0,40)
+    listFrame.Size = UDim2.new(1,-12,1,-46); listFrame.ScrollBarThickness = 2; listFrame.CanvasSize = UDim2.new()
+    listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y; listFrame.ZIndex = 121; listFrame.Parent = panel
+    local lll = Instance.new("UIListLayout"); lll.Padding = UDim.new(0,3); lll.SortOrder = Enum.SortOrder.LayoutOrder; lll.Parent = listFrame
 
     local optButtons = {}
-    local closePanel   -- forward declaration
+    local closePanel
     local function repaint()
         for _, o in ipairs(options) do
-            local b = optButtons[o]
-            if b then
-                local active = selected[o] == true
-                Anim.to(b.btn, { BackgroundColor3 = active and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(20, 20, 20) }, Anim.Fast)
-                Anim.to(b.lbl, { TextColor3 = active and Color3.fromRGB(220, 220, 220) or Color3.fromRGB(140, 140, 140) }, Anim.Fast)
-            end
+            local e = optButtons[o]
+            if e then local a = selected[o] == true
+                Anim.to(e.btn, { BackgroundColor3 = a and Color3.fromRGB(32,32,32) or Color3.fromRGB(20,20,20) }, Anim.Fast)
+                Anim.to(e.lbl, { TextColor3 = a and Color3.fromRGB(220,220,220) or Color3.fromRGB(140,140,140) }, Anim.Fast) end
         end
     end
-
-    local function makeOptBtn(o)
-        local b = Create("TextButton", {
-            Name = o, BackgroundColor3 = Color3.fromRGB(20, 20, 20), AutoButtonColor = false,
-            Text = "", Size = UDim2.new(1, 0, 0, 28), ZIndex = 71, Parent = listFrame,
-        })
-        corner(6, b)
-        local tl = Create("TextLabel", {
-            Name = "lbl", BackgroundTransparency = 1, Text = o, FontFace = Fonts.Sans, TextSize = 14,
-            TextColor3 = Color3.fromRGB(140, 140, 140), TextXAlignment = Enum.TextXAlignment.Left,
-            Position = UDim2.new(0, 10, 0, 0), Size = UDim2.new(1, -12, 1, 0), ZIndex = 72, Parent = b,
-        })
+    for i, o in ipairs(options) do
+        local b = Instance.new("TextButton")
+        b.Name = o; b.BackgroundColor3 = Color3.fromRGB(20,20,20); b.AutoButtonColor = false; b.Text = ""
+        b.Size = UDim2.new(1,0,0,28); b.LayoutOrder = i; b.ZIndex = 121; b.Parent = listFrame
+        local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0,6); bc.Parent = b
+        local tl = Instance.new("TextLabel")
+        tl.BackgroundTransparency = 1; tl.Text = o; tl.FontFace = Fonts.Sans; tl.TextSize = 14
+        tl.TextColor3 = Color3.fromRGB(140,140,140); tl.TextXAlignment = Enum.TextXAlignment.Left
+        tl.Position = UDim2.new(0,10,0,0); tl.Size = UDim2.new(1,-12,1,0); tl.ZIndex = 122; tl.Parent = b
         optButtons[o] = { btn = b, lbl = tl }
         b.MouseButton1Click:Connect(function()
-            if multi then
-                selected[o] = not selected[o] or nil
-            else
-                for k in pairs(selected) do selected[k] = nil end
-                selected[o] = true
-            end
-            refresh(true); repaint()
-            if not multi then closePanel() end
+            if multi then selected[o] = (not selected[o]) or nil
+            else for k in pairs(selected) do selected[k] = nil end selected[o] = true end
+            refresh(true); repaint(); if not multi then closePanel() end
         end)
     end
-    for _, o in ipairs(options) do makeOptBtn(o) end
     repaint()
-
-    -- filter list on search
     searchInput.onChanged = function(q)
         q = string.lower(q or "")
-        for _, o in ipairs(options) do
-            local b = optButtons[o]
-            if b then b.btn.Visible = (q == "" or string.find(string.lower(o), q, 1, true) ~= nil) end
-        end
+        for _, o in ipairs(options) do local e = optButtons[o]
+            if e then e.btn.Visible = (q == "" or string.find(string.lower(o), q, 1, true) ~= nil) end end
     end
 
     local isOpen = false
-    function closePanel()
+    closePanel = function()
         if not isOpen then return end
         isOpen = false
-        Anim.to(arrow, { Rotation = 0 }, Anim.Spring)
-        Anim.to(panel, { Size = UDim2.new(0, panel.Size.X.Offset, 0, 0) }, Anim.Fast)
+        if arrow then Anim.to(arrow, { Rotation = 0 }, Anim.Spring) end
+        Anim.to(panel, { Size = UDim2.fromOffset(180, 0) }, Anim.Fast)
         task.delay(0.18, function() if not isOpen then panel.Visible = false end end)
     end
     local function openPanel()
-        if isOpen then return end
-        isOpen = true
-        self.Window:CloseAllPopups()
+        if isOpen or not box then return end
+        isOpen = true; self.Window:CloseAllPopups()
         local ap, sz = box.AbsolutePosition, box.AbsoluteSize
         panel.Position = UDim2.fromOffset(ap.X + sz.X - 180, ap.Y + sz.Y + 6)
-        panel.Visible = true
-        panel.Size = UDim2.fromOffset(180, 0)
+        panel.Visible = true; panel.Size = UDim2.fromOffset(180, 0)
         Anim.to(panel, { Size = UDim2.fromOffset(180, math.min(220, 46 + #options * 31)) }, Anim.Spring)
-        Anim.to(arrow, { Rotation = 180 }, Anim.Spring)
+        if arrow then Anim.to(arrow, { Rotation = 180 }, Anim.Spring) end
         table.insert(self.Window.OpenPopups, { frame = panel, owner = box, close = closePanel })
     end
-    clickBtn.MouseButton1Click:Connect(function()
-        if isOpen then closePanel() else openPanel() end
-    end)
-
+    if box then
+        local hit = Instance.new("TextButton")
+        hit.BackgroundTransparency = 1; hit.Text = ""; hit.Size = UDim2.fromScale(1,1); hit.ZIndex = 5; hit.Parent = box
+        hit.MouseButton1Click:Connect(function() if isOpen then closePanel() else openPanel() end end)
+    end
     refresh(false)
-    task.defer(function() refresh(false) end)
 
     local api = { Instance = row }
     function api:Set(v)
         for k in pairs(selected) do selected[k] = nil end
-        if type(v) == "table" then for _, x in ipairs(v) do selected[x] = true end
-        elseif v ~= nil then selected[v] = true end
+        if type(v) == "table" then for _, x in ipairs(v) do selected[x] = true end elseif v ~= nil then selected[v] = true end
         refresh(true); repaint()
     end
-    function api:Get()
-        local list = {}
-        for _, o in ipairs(options) do if selected[o] then table.insert(list, o) end end
-        return multi and list or list[1]
-    end
+    function api:Get() local l = selectedList() return multi and l or l[1] end
     self:_register(opts.Name or "Dropdown", row, api)
     return api
 end
 
 --============================================================================--
---  GLOBAL SEARCH  (expands under the search box)
+--  LABEL
 --============================================================================--
-function Window:_BuildSearch()
-    local holder = Create("Frame", {
-        BackgroundTransparency = 1, Position = UDim2.new(0, 34, 0, 0),
-        Size = UDim2.new(1, -70, 1, 0), Parent = self.SearchBg,
-    })
-    local input = CustomInput.new(holder, {
-        Placeholder = "search", Font = Fonts.Sans, TextSize = 14,
-        TextColor = Color3.fromRGB(200, 200, 200), PlaceholderColor = Theme.Placeholder,
-    })
-
-    -- results panel under the search bar
-    local panel = Create("Frame", {
-        Name = "SearchResults", BackgroundColor3 = Theme.Popup, Visible = false,
-        AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 8),
-        Size = UDim2.new(1, 0, 0, 0), ZIndex = 80, ClipsDescendants = true, Parent = self.SearchBg,
-    })
-    corner(8, panel)
-    stroke(Theme.PopupStroke, 1, panel)
-    addShadow(panel, Color3.new(0, 0, 0), 0.4, 1.3)
-    local list = Create("ScrollingFrame", {
-        BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, 6, 0, 6),
-        Size = UDim2.new(1, -12, 1, -12), ScrollBarThickness = 2,
-        ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60),
-        CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ZIndex = 81, Parent = panel,
-    })
-    listLayout(list, Enum.FillDirection.Vertical, 4)
-
-    local function clearList()
-        for _, c in ipairs(list:GetChildren()) do
-            if c:IsA("TextButton") then c:Destroy() end
-        end
-    end
-    local function jumpTo(entry)
-        self:SelectTab(entry.tabObj)
-        if entry.sectionObj and not entry.sectionObj.Open then entry.sectionObj.SetOpen(true) end
-        task.wait(0.05)
-        -- scroll & flash
-        local page = entry.tabObj.Page
-        if entry.frame and entry.frame.Parent then
-            local hl = Create("Frame", {
-                BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 1, 0), ZIndex = 20, Parent = entry.frame,
-            })
-            corner(6, hl)
-            Anim.to(hl, { BackgroundTransparency = 0.9 }, Anim.Fast)
-            task.delay(0.5, function()
-                Anim.to(hl, { BackgroundTransparency = 1 }, Anim.Spring)
-                task.delay(0.4, function() hl:Destroy() end)
-            end)
-        end
-    end
-    local function rebuild(q)
-        clearList()
-        q = string.lower(q or "")
-        local shown = 0
-        for _, entry in ipairs(self.SearchIndex) do
-            if q ~= "" and (string.find(string.lower(entry.name), q, 1, true)
-                or string.find(string.lower(entry.section), q, 1, true)) then
-                shown = shown + 1
-                local b = Create("TextButton", {
-                    BackgroundColor3 = Color3.fromRGB(22, 22, 22), AutoButtonColor = false, Text = "",
-                    Size = UDim2.new(1, 0, 0, 40), ZIndex = 81, Parent = list,
-                })
-                corner(6, b)
-                Create("TextLabel", {
-                    BackgroundTransparency = 1, Text = entry.name, FontFace = Fonts.Sans, TextSize = 15,
-                    TextColor3 = Color3.fromRGB(215, 215, 215), TextXAlignment = Enum.TextXAlignment.Left,
-                    Position = UDim2.new(0, 10, 0, 4), Size = UDim2.new(1, -12, 0, 18), ZIndex = 82, Parent = b,
-                })
-                Create("TextLabel", {
-                    BackgroundTransparency = 1, Text = entry.section .. "  \u{2022}  " .. entry.tab,
-                    FontFace = Fonts.SerifItalic, TextSize = 12, TextColor3 = Color3.fromRGB(120, 120, 120),
-                    TextXAlignment = Enum.TextXAlignment.Left, Position = UDim2.new(0, 10, 0, 20),
-                    Size = UDim2.new(1, -12, 0, 16), ZIndex = 82, Parent = b,
-                })
-                b.MouseButton1Click:Connect(function() jumpTo(entry) end)
-            end
-        end
-        if q == "" or shown == 0 then
-            panel.Visible = (q ~= "")
-            Anim.to(panel, { Size = UDim2.new(1, 0, 0, q == "" and 0 or 44) }, Anim.Fast)
-            if q ~= "" and shown == 0 then
-                local b = Create("TextButton", {
-                    BackgroundTransparency = 1, Text = "no results", FontFace = Fonts.SerifItalic,
-                    TextSize = 14, TextColor3 = Color3.fromRGB(110, 110, 110),
-                    Size = UDim2.new(1, 0, 0, 32), ZIndex = 81, Parent = list,
-                })
-            end
-            if q == "" then task.delay(0.16, function() if input:GetText() == "" then panel.Visible = false end end) end
-        else
-            panel.Visible = true
-            Anim.to(panel, { Size = UDim2.new(1, 0, 0, math.min(260, 12 + shown * 44)) }, Anim.Spring)
-        end
-    end
-    input.onChanged = function(q) rebuild(q) end
-
-    -- clicking a search result set is handled above; close on outside handled globally
-    input.Capture.FocusLost:Connect(function()
-        task.delay(0.15, function()
-            if input:GetText() == "" then
-                Anim.to(panel, { Size = UDim2.new(1, 0, 0, 0) }, Anim.Fast)
-                task.delay(0.16, function() panel.Visible = false end)
-            end
-        end)
-    end)
-end
-
---============================================================================--
---  PUBLIC HELPERS + RETURN
---============================================================================--
-function Window:Notify(opts)
-    -- lightweight toast in the amphibia style
+function Section:CreateLabel(opts)
     opts = opts or {}
-    local toast = Create("Frame", {
-        BackgroundColor3 = Theme.Section, AnchorPoint = Vector2.new(1, 1),
-        Position = UDim2.new(1, -20, 1, 60), Size = UDim2.fromOffset(280, 64), ZIndex = 90, Parent = self.Gui,
-    })
-    corner(8, toast)
-    stroke(Theme.SectionStroke, 0.5, toast)
-    addShadow(toast, Color3.new(0, 0, 0), 0.4, 1.3)
-    Create("TextLabel", {
-        BackgroundTransparency = 1, Text = opts.Title or "Notification", FontFace = Fonts.SerifBold,
-        TextSize = 17, TextColor3 = Theme.SectionName, TextXAlignment = Enum.TextXAlignment.Left,
-        Position = UDim2.new(0, 14, 0, 10), Size = UDim2.new(1, -20, 0, 20), ZIndex = 91, Parent = toast,
-    })
-    Create("TextLabel", {
-        BackgroundTransparency = 1, Text = opts.Content or "", FontFace = Fonts.Sans, TextSize = 14,
-        TextColor3 = Theme.Muted, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
-        Position = UDim2.new(0, 14, 0, 32), Size = UDim2.new(1, -24, 0, 24), ZIndex = 91, Parent = toast,
-    })
-    Anim.to(toast, { Position = UDim2.new(1, -20, 1, -80) }, Anim.Spring)
-    task.delay(opts.Duration or 3.5, function()
-        Anim.to(toast, { Position = UDim2.new(1, -20, 1, 80) }, Anim.Spring)
-        task.delay(0.4, function() toast:Destroy() end)
-    end)
+    local row = Instance.new("Frame")
+    row.Name = "Label"; row.BackgroundTransparency = 1; row.Size = UDim2.new(1, 0, 0, 26); row.Parent = self.Body
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1; lbl.Text = opts.Name or opts.Text or "Label"
+    lbl.FontFace = opts.Font or Fonts.Sans; lbl.TextSize = opts.TextSize or 15
+    lbl.TextColor3 = opts.Color or C.Muted; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Position = UDim2.new(0, 4, 0, 0); lbl.Size = UDim2.new(1, -8, 1, 0); lbl.Parent = row
+    local api = { Instance = row }
+    function api:Set(t) lbl.Text = t end
+    self:_register(opts.Name or opts.Text or "Label", row, api)
+    return api
 end
 
-function Window:Destroy()
-    if self.Gui then self.Gui:Destroy() end
-end
-
-Amphibia.Fonts  = Fonts
-Amphibia.Theme  = Theme
-Amphibia.Icons  = Icons
+Amphibia.Fonts = Fonts
+Amphibia.Anim  = Anim
 
 return Amphibia
