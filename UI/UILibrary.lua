@@ -1447,7 +1447,7 @@ local GuiData =
 									}},
 									{"ImageLabel",{AnchorPoint=v2(0.5,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Image="rbxassetid://82022839420755",ImageColor3=c3(120,120,120),Name="Icon",Position=u2(0.91,0,0.5,0),Rotation=180,Size=u2(0,15,0,15),SliceScale=1,TileSize=u2(1,0,1,0)},{
 									}},
-									{"TextLabel",{AnchorPoint=v2(0,0.5),AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187368093",700,"Normal"),Name="SectionName",Position=u2(0.05,0,0.45,0),Size=u2(0,0,0.9,0),Text="Dropdowns",TextColor3=c3(216,216,216),TextSize=24,TextXAlignment=2,TextYAlignment=1},{
+									{"TextLabel",{AnchorPoint=v2(0,0),AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187368093",700,"Normal"),Name="SectionName",Position=u2(0.05,0,0.12,0),Size=u2(0,0,0.9,0),Text="Dropdowns",TextColor3=c3(216,216,216),TextSize=24,TextXAlignment=2,TextYAlignment=1},{
 									}},
 								}},
 								{"Frame",{AutomaticSize=2,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Name="ButtonsHolderFrame",Position=u2(0,0,0,0),Size=u2(1,0,0,10)},{
