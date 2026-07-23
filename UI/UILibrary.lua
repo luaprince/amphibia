@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Build 0.8 — full release build.
+	Build 0.81 — full release build.
 
 	Quick start:
 
@@ -23,7 +23,7 @@
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.8",
+			Version = "v0.81",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
@@ -6366,7 +6366,7 @@ local ConfigSystem = {
 	Rows = {},
 }
 
-do
+;(function()
 
 local function collectFlags(): { [string]: any }
 	local flags = {}
@@ -7216,7 +7216,7 @@ function WindowClass:SaveConfiguration()
 end
 
 ConfigSystem.LoadAutosave = loadAutosave
-end
+end)()
 
 ------------------------------------------------------------------------------------------------------------------------
 --  CreateWindow — the front door
