@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Build 0.1 — full release build.
+	Build 0.8 — full release build.
 
 	Quick start:
 
