@@ -13,7 +13,7 @@
 		                                                               ░                        
 
 	Amphibia User Interface Library
-	by Less
+	-by Less
 
 	Build 0.1 — full release build.
 
