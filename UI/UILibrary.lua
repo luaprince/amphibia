@@ -4873,6 +4873,20 @@ do
 		knobStroke.Color = Color3.new(1, 1, 1)
 		knobStroke.Parent = square.Knob
 	end
+
+	ColorPickerWindow.ZIndex = 41
+
+	for _, zone in ipairs({ square, ColorPickerWindow.ColorSlider, ColorPickerWindow.TransparencySlider }) do
+		local hit = Instance.new("TextButton")
+		hit.Name = "HitZone"
+		hit.BackgroundTransparency = 1
+		hit.AutoButtonColor = false
+		hit.Text = ""
+		hit.Size = UDim2.new(1, 0, 1, 0)
+		hit.ZIndex = 8
+		hit.Parent = zone
+	end
+end
 end
 
 local ColorPickerBusy = false
@@ -5042,7 +5056,8 @@ function SectionClass:CreateColorPicker(options)
 
 		local zoneConnections = {}
 		local function bindZone(zone: GuiObject, target: string)
-			table.insert(zoneConnections, zone.InputBegan:Connect(function(input)
+			local hit = zone:FindFirstChild("HitZone") or zone
+			table.insert(zoneConnections, hit.InputBegan:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 					dragTarget = target
 					applyDrag(Vector2.new(input.Position.X, input.Position.Y))
@@ -5091,7 +5106,11 @@ function SectionClass:CreateColorPicker(options)
 		end)
 
 		fadeIn(window, 0.18)
-		popWindow(window)
+		local floatScale = window:FindFirstChild("FloatScale")
+		if floatScale then
+			floatScale.Scale = MainScale.Scale * 0.9
+			tween(floatScale, "Back", { Scale = MainScale.Scale })
+		end
 	end
 
 	local function openPicker()
@@ -6280,7 +6299,7 @@ local function revealInterface(window)
 end
 ------------------------------------------------------------------------------------------------------------------------
 --  Configuration system
-------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------
 
 local Base64 do
 	local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -6345,6 +6364,8 @@ local ConfigSystem = {
 	SearchQuery = "",
 	Rows = {},
 }
+
+do
 
 local function collectFlags(): { [string]: any }
 	local flags = {}
@@ -7193,6 +7214,9 @@ function WindowClass:SaveConfiguration()
 	ConfigHooks.Autosave()
 end
 
+ConfigSystem.LoadAutosave = loadAutosave
+end
+
 ------------------------------------------------------------------------------------------------------------------------
 --  CreateWindow — the front door
 ------------------------------------------------------------------------------------------------------------------------
@@ -7271,7 +7295,7 @@ function AmphibiaLibrary:CreateWindow(settings)
 			runLoading(settings.LoadingTitle, settings.LoadingDescription, settings.LoadingTime or 2.6)
 
 			-- apply persisted state right before the reveal so the interface wakes up configured
-			loadAutosave()
+			ConfigSystem.LoadAutosave()
 			ConfigSystem.AutosaveEnabled = true
 
 			revealInterface(window)
