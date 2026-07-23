@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Build 0.81 — full release build.
+	Build 0.82 — full release build.
 
 	Quick start:
 
@@ -23,7 +23,7 @@
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.81",
+			Version = "v0.82",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
@@ -3128,9 +3128,11 @@ local KeybindsUI = {
 KeybindsListTransparentFrame.Visible = false
 
 local KeybindsListStroke = KeybindsListFrame:FindFirstChildOfClass("UIStroke")
+local KeybindsListShadow = KeybindsListFrame:FindFirstChildOfClass("UIShadow")
 local KeybindsAuthored = {
 	Bg = KeybindsListFrame.BackgroundTransparency,
 	Stroke = KeybindsListStroke and KeybindsListStroke.Transparency or 0,
+	Shadow = KeybindsListShadow and KeybindsListShadow.Transparency or 0,
 }
 do
 	local templateChip = Templates.Bind:FindFirstChild("ButtonKey")
@@ -3145,9 +3147,12 @@ local KEYBINDS_MODE_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.Easing
 local function applyKeybindsModeStyle(instant: boolean?)
 	local transparent = KeybindsUI.Mode == "Transparent"
 	local info = instant and TweenInfo.new(0) or KEYBINDS_MODE_INFO
-	tween(KeybindsListFrame, info, { BackgroundTransparency = transparent and 1 or KeybindsAuthored.Bg })
+	tween(KeybindsListFrame, info, { BackgroundTransparency = transparent and 0.8 or KeybindsAuthored.Bg })
 	if KeybindsListStroke then
 		tween(KeybindsListStroke, info, { Transparency = transparent and 1 or KeybindsAuthored.Stroke })
+	end
+	if KeybindsListShadow then
+		tween(KeybindsListShadow, info, { Transparency = transparent and 0.7 or KeybindsAuthored.Shadow })
 	end
 	for _, row in ipairs(KeybindsListFrame.BindsListHolder:GetChildren()) do
 		if row:IsA("GuiObject") then
@@ -3171,6 +3176,7 @@ local function setKeybindsListShown(shown: boolean, instant: boolean?)
 		if not instant then
 			KeybindsListFrame.BackgroundTransparency = 1
 			if KeybindsListStroke then KeybindsListStroke.Transparency = 1 end
+			if KeybindsListShadow then KeybindsListShadow.Transparency = 1 end
 			popWindow(KeybindsListFrame)
 		end
 		applyKeybindsModeStyle(instant)
@@ -3183,6 +3189,7 @@ local function setKeybindsListShown(shown: boolean, instant: boolean?)
 	else
 		tween(KeybindsListFrame, info, { BackgroundTransparency = 1 })
 		if KeybindsListStroke then tween(KeybindsListStroke, info, { Transparency = 1 }) end
+		if KeybindsListShadow then tween(KeybindsListShadow, info, { Transparency = 1 }) end
 		for _, descendant in ipairs(KeybindsListFrame:GetDescendants()) do
 			if descendant:IsA("TextLabel") then
 				tween(descendant, info, { TextTransparency = 1 })
