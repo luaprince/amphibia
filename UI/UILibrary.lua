@@ -13,7 +13,7 @@
 		                                                               ░                        
 
 	Amphibia User Interface Library
-	-by Less
+	by Less
 
 	Build 0.1 — full release build.
 
@@ -23,7 +23,7 @@
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.1",
+			Version = "v0.8",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
@@ -651,7 +651,9 @@ end
 --  editing (so IME / paste / arrows keep working), while we own the presentation completely.
 ------------------------------------------------------------------------------------------------------------------------
 
-local SmoothInput = {}
+local SmoothInput
+;(function()
+SmoothInput = {}
 SmoothInput.__index = SmoothInput
 
 local CHAR_IN = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -1176,7 +1178,7 @@ function SmoothInput:Destroy()
 	end
 	self.Root:Destroy()
 end
-
+end)()
 ------------------------------------------------------------------------------------------------------------------------
 --  Dragging helper
 ------------------------------------------------------------------------------------------------------------------------
@@ -2520,7 +2522,7 @@ end
 
 local Templates = {}
 
-do
+;(function()
 	local scroller = PageTemplateSource:WaitForChild("ScrollingFrame")
 	local leftColumn = scroller:WaitForChild("LeftColumn")
 	local rightColumn = scroller:WaitForChild("RightColumn")
@@ -2694,7 +2696,7 @@ do
 	ConfigPage.Visible = false
 	ColorPickerWindow.Visible = false
 	ConfigDropdownMenu.Visible = false
-end
+end)()
 
 ------------------------------------------------------------------------------------------------------------------------
 --  Group fade helper (screens & sections)
