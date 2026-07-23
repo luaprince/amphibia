@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Build 0.82 — full release build.
+	Build 0.83 — full release build.
 
 	Quick start:
 
@@ -23,7 +23,7 @@
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.82",
+			Version = "v0.83",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
@@ -2702,7 +2702,7 @@ end)()
 --  Group fade helper (screens & sections)
 ------------------------------------------------------------------------------------------------------------------------
 
-local FadeCache = setmetatable({}, { __mode = "k" })
+-- local FadeCache = setmetatable({}, { __mode = "k" })
 
 local FADE_PROPS = {
 	Frame = { "BackgroundTransparency" },
@@ -2716,19 +2716,26 @@ local FADE_PROPS = {
 	UIShadow = { "Transparency" },
 }
 
+local FADE_ATTR = "_amphFade_"
+
 local function fadeTargets(root: Instance)
 	local targets = {}
 	local function collect(inst)
 		local props = FADE_PROPS[inst.ClassName]
 		if props then
-			local cache = FadeCache[inst]
-			if not cache then
-				cache = {}
-				for _, prop in ipairs(props) do
+			local cache = {}
+			for _, prop in ipairs(props) do
+				local stored = inst:GetAttribute(FADE_ATTR .. prop)
+				if stored == nil then
 					local ok, value = pcall(function() return inst[prop] end)
-					if ok then cache[prop] = value end
+					if ok then
+						stored = value
+						pcall(function() inst:SetAttribute(FADE_ATTR .. prop, value) end)
+					end
 				end
-				FadeCache[inst] = cache
+				if stored ~= nil then
+					cache[prop] = stored
+				end
 			end
 			targets[inst] = cache
 		end
@@ -2739,7 +2746,6 @@ local function fadeTargets(root: Instance)
 	collect(root)
 	return targets
 end
-
 local function fadeOut(root: GuiObject, duration: number?, keepVisible: boolean?)
 	duration = duration or 0.28
 	local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
