@@ -1,11 +1,15 @@
 --[[
 
-	 █████╗ ███╗   ███╗██████╗ ██╗  ██╗██╗██████╗ ██╗ █████╗
-	██╔══██╗████╗ ████║██╔══██╗██║  ██║██║██╔══██╗██║██╔══██╗
-	███████║██╔████╔██║██████╔╝███████║██║██████╔╝██║███████║
-	██╔══██║██║╚██╔╝██║██╔═══╝ ██╔══██║██║██╔══██╗██║██╔══██║
-	██║  ██║██║ ╚═╝ ██║██║     ██║  ██║██║██████╔╝██║██║  ██║
-	╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝  ╚═╝╚═╝╚═════╝ ╚═╝╚═╝  ╚═╝
+		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
+		▒████▄       ▓██▒▀█▀ ██▒   ▓██░  ██▒   ▓██░ ██▒   ▓██▒   ▓█████▄    ▓██▒   ▒████▄       
+		▒██  ▀█▄     ▓██    ▓██░   ▓██░ ██▓▒   ▒██▀▀██░   ▒██▒   ▒██▒ ▄██   ▒██▒   ▒██  ▀█▄     
+		░██▄▄▄▄██    ▒██    ▒██    ▒██▄█▓▒ ▒   ░▓█ ░██    ░██░   ▒██░█▀     ░██░   ░██▄▄▄▄██    
+		 ▓█   ▓██▒   ▒██▒   ░██▒   ▒██▒ ░  ░   ░▓█▒░██▓   ░██░   ░▓█  ▀█▓   ░██░    ▓█   ▓██▒   
+		 ▒▒   ▓▒█░   ░ ▒░   ░  ░   ▒▓▒░ ░  ░    ▒ ░░▒░▒   ░▓     ░▒▓███▀▒   ░▓      ▒▒   ▓▒█░   
+		  ▒   ▒▒ ░   ░  ░      ░   ░▒ ░         ▒ ░▒░ ░    ▒ ░   ▒░▒   ░     ▒ ░     ▒   ▒▒ ░   
+		  ░   ▒      ░      ░      ░░           ░  ░░ ░    ▒ ░    ░    ░     ▒ ░     ░   ▒      
+		      ░  ░          ░                   ░  ░  ░    ░      ░          ░           ░  ░   
+		                                                               ░                        
 
 	Amphibia User Interface Library
 	by Less
@@ -159,6 +163,7 @@ local settingsTable = {
 	General = {
 		amphibiaOpen = { Type = "bind", Value = "K", Name = "Amphibia Keybind" },
 		theme = { Type = "input", Value = "Default", Name = "Theme" },
+		lastConfig = { Type = "input", Value = "", Name = "Last loaded config" },
 	},
 	System = {
 		usageAnalytics = { Type = "toggle", Value = true, Name = "Anonymised Analytics" },
@@ -2587,29 +2592,65 @@ do
 	pageTemplate.Visible = false
 	Templates.Page = pageTemplate
 
-	-- dropdown row: the authored selected-frame auto-sizes without bounds, so cap it
+	-- dropdown row: the authored chip auto-sized in every direction and inflated once overlay
+	-- buttons were added — rebuild it deterministically (fixed height, measured width)
 	do
 		local selectedFrame = Templates.Dropdown.DropdownSelectedFrame
-		local frameConstraint = Instance.new("UISizeConstraint")
-		frameConstraint.MinSize = Vector2.new(60, 23)
-		frameConstraint.MaxSize = Vector2.new(230, 40)
-		frameConstraint.Parent = selectedFrame
+		pcall(function() selectedFrame.AutomaticSize = Enum.AutomaticSize.None end)
+		local chipLayout = selectedFrame:FindFirstChildOfClass("UIListLayout")
+		if chipLayout then chipLayout:Destroy() end
+		local chipPadding = selectedFrame:FindFirstChildOfClass("UIPadding")
+		if chipPadding then chipPadding:Destroy() end
+		selectedFrame.Size = UDim2.new(0, 110, 0, 25)
+
+		local icon = selectedFrame.Icon
+		icon.AnchorPoint = Vector2.new(1, 0.5)
+		icon.Position = UDim2.new(1, -7, 0.5, 0)
+		icon.Size = UDim2.new(0, 15, 0, 15)
+
 		local picked = selectedFrame.Picked
+		pcall(function() picked.AutomaticSize = Enum.AutomaticSize.None end)
+		picked.AnchorPoint = Vector2.new(0, 0.5)
+		picked.Position = UDim2.new(0, 10, 0.5, 0)
+		picked.Size = UDim2.new(1, -36, 1, 0)
+		picked.TextXAlignment = Enum.TextXAlignment.Right
 		pcall(function() picked.TextTruncate = Enum.TextTruncate.AtEnd end)
-		local pickedConstraint = Instance.new("UISizeConstraint")
-		pickedConstraint.MinSize = Vector2.new(0, 0)
-		pickedConstraint.MaxSize = Vector2.new(180, 40)
-		pickedConstraint.Parent = picked
+
+		local pickedMeasure = picked:Clone()
+		pickedMeasure.Name = "PickedMeasure"
+		pickedMeasure.TextTransparency = 1
+		pickedMeasure.Position = UDim2.new(0, 0, 0, -200)
+		pickedMeasure.Size = UDim2.new(0, 4, 0, 25)
+		pcall(function() pickedMeasure.TextTruncate = Enum.TextTruncate.None end)
+		pickedMeasure.Parent = selectedFrame
 	end
 
 	-- config context menu: the design left mismatched button sizes and a pre-hovered Load —
-	-- normalize everything to one clean list
+	-- normalize to the authored 153px width with identical entries
 	do
 		pcall(function() ConfigDropdownMenu.AutomaticSize = Enum.AutomaticSize.Y end)
-		ConfigDropdownMenu.Size = UDim2.new(0, 172, 0, 10)
+		ConfigDropdownMenu.Size = UDim2.new(0, 153, 0, 10)
+		local menuLayout = ConfigDropdownMenu:FindFirstChildOfClass("UIListLayout")
+		if not menuLayout then
+			menuLayout = Instance.new("UIListLayout")
+			menuLayout.Parent = ConfigDropdownMenu
+		end
+		menuLayout.FillDirection = Enum.FillDirection.Vertical
+		menuLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		menuLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		menuLayout.Padding = UDim.new(0, 2)
+		local menuPadding = ConfigDropdownMenu:FindFirstChildOfClass("UIPadding")
+		if not menuPadding then
+			menuPadding = Instance.new("UIPadding")
+			menuPadding.Parent = ConfigDropdownMenu
+		end
+		menuPadding.PaddingLeft = UDim.new(0, 5)
+		menuPadding.PaddingRight = UDim.new(0, 5)
+		menuPadding.PaddingTop = UDim.new(0, 6)
+		menuPadding.PaddingBottom = UDim.new(0, 6)
 		for _, child in ipairs(ConfigDropdownMenu:GetChildren()) do
 			if child:IsA("ImageButton") then
-				child.Size = UDim2.new(1, 0, 0, 26)
+				child.Size = UDim2.new(1, 0, 0, 25)
 				child.BackgroundTransparency = 1
 			elseif child:IsA("Frame") then
 				child.Size = UDim2.new(1, 0, 0, 1)
@@ -3120,6 +3161,19 @@ function KeybindsUI.Register(entry)
 	if KeybindsUI.Mode ~= "Hidden" then
 		KeybindsUI.Refresh()
 	end
+	return entry
+end
+
+function KeybindsUI.Unregister(entry)
+	for index, existing in ipairs(KeybindsUI.Entries) do
+		if existing == entry then
+			table.remove(KeybindsUI.Entries, index)
+			break
+		end
+	end
+	if KeybindsUI.Mode ~= "Hidden" then
+		KeybindsUI.Refresh()
+	end
 end
 
 function KeybindsUI.SetMode(mode: string)
@@ -3462,6 +3516,212 @@ local ConfigHooks = {
 	OnElementRegistered = function(_) end,
 }
 
+------------------------------------------------------------------------------------------------------------------------
+--  Key capture (shared by keybind elements and the right-click bind system)
+------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------
+--  Bind system — right-click any element to attach custom keybinds to it
+------------------------------------------------------------------------------------------------------------------------
+
+local BindSystem = {
+	Binds = {},
+	NextId = 1,
+	OpenMenu = nil, -- assigned by the UI module
+	Changed = function() end,
+	CaptureActive = false,
+	ModesByType = {
+		Toggle = { "Toggle", "Hold" },
+		Button = { "Press" },
+		Slider = { "Set value" },
+		NumberPicker = { "Set value" },
+		Input = { "Set value" },
+		Selector = { "Set value" },
+		Dropdown = { "Set value" },
+	},
+}
+
+-- Calls back with the resolved bind name; "None" clears; nil = cancelled with Escape.
+local function captureBindKey(onDone) -- BINDHELPER
+	if BindSystem.CaptureActive then
+		return false
+	end
+	BindSystem.CaptureActive = true
+	local captureConnection
+	captureConnection = UserInputService.InputBegan:Connect(function(input)
+		local resolvedName, cancelled = nil, false
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			if input.KeyCode == Enum.KeyCode.Escape then
+				cancelled = true
+			elseif input.KeyCode == Enum.KeyCode.Backspace then
+				resolvedName = "None"
+			else
+				resolvedName = input.KeyCode.Name
+			end
+		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+			resolvedName = "MouseButton2"
+		elseif input.UserInputType == Enum.UserInputType.MouseButton3 then
+			resolvedName = "MouseButton3"
+		end
+		if resolvedName or cancelled then
+			captureConnection:Disconnect()
+			task.delay(0.05, function()
+				BindSystem.CaptureActive = false
+			end)
+			onDone(resolvedName)
+		end
+	end)
+	return true
+end
+
+local function inputMatchesBind(input, bindName): boolean
+	if not bindName or bindName == "None" then
+		return false
+	end
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		return input.KeyCode.Name == bindName
+	elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+		return bindName == "MouseButton2"
+	elseif input.UserInputType == Enum.UserInputType.MouseButton3 then
+		return bindName == "MouseButton3"
+	end
+	return false
+end
+
+function BindSystem.IsBindable(element): boolean
+	return BindSystem.ModesByType[element.Type] ~= nil
+end
+
+function BindSystem.ForElement(element)
+	local out = {}
+	for _, bind in ipairs(BindSystem.Binds) do
+		if bind.Element == element then
+			table.insert(out, bind)
+		end
+	end
+	return out
+end
+
+function BindSystem.Execute(bind, pressed: boolean)
+	local element = bind.Element
+	if not element then return end
+	local elementType = element.Type
+	if elementType == "Toggle" then
+		if bind.Mode == "Hold" then
+			element:Set(pressed)
+		elseif pressed then
+			element:Set(not element.CurrentValue)
+		end
+		return
+	end
+	if not pressed then return end
+	if elementType == "Button" then
+		if element.Press then element.Press() end
+	elseif elementType == "Slider" or elementType == "NumberPicker" then
+		local numeric = tonumber(bind.Value)
+		if numeric then element:Set(numeric) end
+	elseif elementType == "Input" then
+		element:Set(tostring(bind.Value or ""))
+	elseif elementType == "Selector" or elementType == "Dropdown" then
+		if bind.Value ~= nil and bind.Value ~= "" then
+			element:Set(tostring(bind.Value))
+		end
+	end
+end
+
+function BindSystem.Add(bind)
+	bind.Id = BindSystem.NextId
+	BindSystem.NextId += 1
+	table.insert(BindSystem.Binds, bind)
+	bind.UIEntry = KeybindsUI.Register({
+		Name = bind.Name,
+		GetBind = function() return bind.Key end,
+		StartRebind = function(refreshFn)
+			captureBindKey(function(newKey)
+				if newKey then
+					bind.Key = newKey
+					if refreshFn then refreshFn(newKey) end
+					BindSystem.Changed()
+					ConfigHooks.Autosave()
+				end
+			end)
+		end,
+	})
+	BindSystem.Changed()
+	ConfigHooks.Autosave()
+	return bind
+end
+
+function BindSystem.Remove(bind)
+	for index, existing in ipairs(BindSystem.Binds) do
+		if existing == bind then
+			table.remove(BindSystem.Binds, index)
+			break
+		end
+	end
+	if bind.UIEntry then
+		KeybindsUI.Unregister(bind.UIEntry)
+	end
+	BindSystem.Changed()
+	ConfigHooks.Autosave()
+end
+
+function BindSystem.Serialize()
+	local out = {}
+	for _, bind in ipairs(BindSystem.Binds) do
+		local flag = bind.Element and bind.Element.Flag
+		if flag then
+			table.insert(out, { f = flag, n = bind.Name, k = bind.Key, m = bind.Mode, v = bind.Value })
+		end
+	end
+	return out
+end
+
+function BindSystem.LoadSerialized(list)
+	if type(list) ~= "table" then return end
+	-- replace all flag-backed binds with the incoming set
+	for index = #BindSystem.Binds, 1, -1 do
+		local bind = BindSystem.Binds[index]
+		if bind.Element and bind.Element.Flag then
+			if bind.UIEntry then KeybindsUI.Unregister(bind.UIEntry) end
+			table.remove(BindSystem.Binds, index)
+		end
+	end
+	for _, saved in ipairs(list) do
+		local element = saved.f and AmphibiaLibrary.Elements[saved.f]
+		if element and BindSystem.IsBindable(element) then
+			BindSystem.Add({
+				Element = element,
+				Name = tostring(saved.n or element.Name or "Bind"),
+				Key = tostring(saved.k or "None"),
+				Mode = tostring(saved.m or (BindSystem.ModesByType[element.Type] or {})[1] or "Press"),
+				Value = saved.v,
+			})
+		end
+	end
+	BindSystem.Changed()
+end
+
+connect(UserInputService.InputBegan, function(input, gameProcessed)
+	if gameProcessed or BindSystem.CaptureActive then return end
+	for _, bind in ipairs(BindSystem.Binds) do
+		if inputMatchesBind(input, bind.Key) then
+			task.spawn(BindSystem.Execute, bind, true)
+		end
+	end
+end)
+
+connect(UserInputService.InputEnded, function(input, gameProcessed)
+	if gameProcessed then return end
+	for _, bind in ipairs(BindSystem.Binds) do
+		if bind.Mode == "Hold" and inputMatchesBind(input, bind.Key) then
+			task.spawn(BindSystem.Execute, bind, false)
+		end
+	end
+end)
+
+AmphibiaLibrary.BindSystem = BindSystem
+
 local ActiveWindow = nil
 
 local function registerFlag(element, value)
@@ -3588,6 +3848,14 @@ function SectionClass:_mount(element, row, options)
 	end
 	themeRegisterDeep(row)
 	themeApplyDeep(row)
+	if BindSystem.IsBindable(element) then
+		row.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton2 and BindSystem.OpenMenu and not BindSystem.CaptureActive then
+				local mouse = UserInputService:GetMouseLocation()
+				BindSystem.OpenMenu(element, Vector2.new(mouse.X, mouse.Y))
+			end
+		end)
+	end
 	row.Parent = self.Holder
 	ConfigHooks.OnElementRegistered(element)
 	return element
@@ -3786,6 +4054,12 @@ function SectionClass:CreateButton(options)
 		element.SearchText = string.lower(newName)
 	end
 
+	function element.Press()
+		pressScale.Scale = 0.965
+		tween(pressScale, "Back", { Scale = 1 })
+		safeCallback(options.Callback)
+	end
+
 	return self:_mount(element, row, options)
 end
 
@@ -3845,12 +4119,16 @@ function SectionClass:CreateNumberPicker(options)
 
 	local function bindRepeat(button: GuiButton, direction: number)
 		local holding = false
+		local pressToken = 0
 		button.MouseButton1Down:Connect(function()
 			holding = true
+			pressToken += 1
+			local token = pressToken
 			tween(button.Icon, "Fast", { Size = UDim2.new(0, 17, 0, 17) })
 			element:Set(element.CurrentValue + increment * direction)
-			task.delay(0.38, function()
-				while holding do
+			task.delay(0.42, function()
+				-- only this exact press may turn into a hold-repeat; quick re-clicks won't
+				while holding and token == pressToken do
 					element:Set(element.CurrentValue + increment * direction)
 					task.wait(0.065)
 				end
@@ -3858,6 +4136,7 @@ function SectionClass:CreateNumberPicker(options)
 		end)
 		local function release()
 			holding = false
+			pressToken += 1
 			tween(button.Icon, "Back", { Size = UDim2.new(0, 20, 0, 20) })
 		end
 		button.MouseButton1Up:Connect(release)
@@ -3954,8 +4233,6 @@ function SectionClass:CreateSelector(options)
 	label.Text = options.Name or "Selector"
 	local holder = row.SelectionsHolder
 
-	-- the options are laid out manually from measured text widths, so a selection pill
-	-- can glide beneath them (a UIListLayout would fight the indicator)
 	local oldLayout = holder:FindFirstChildOfClass("UIListLayout")
 	if oldLayout then oldLayout:Destroy() end
 	local oldPadding = holder:FindFirstChildOfClass("UIPadding")
@@ -3963,21 +4240,7 @@ function SectionClass:CreateSelector(options)
 	pcall(function() holder.AutomaticSize = Enum.AutomaticSize.None end)
 
 	local templateLabel = nameLabel(Templates.SelectorOption)
-	local optionFont = templateLabel.FontFace
 	local optionTextSize = templateLabel.TextSize
-
-	local measure = Instance.new("TextLabel")
-	measure.Name = "Measure"
-	measure.BackgroundTransparency = 1
-	measure.TextTransparency = 1
-	measure.FontFace = optionFont
-	measure.TextSize = optionTextSize
-	measure.Position = UDim2.new(0, 0, 0, -200)
-	measure.Parent = holder
-	local function textWidth(text: string): number
-		measure.Text = text
-		return measure.TextBounds.X
-	end
 
 	local indicator = Instance.new("Frame")
 	indicator.Name = "Indicator"
@@ -4005,9 +4268,51 @@ function SectionClass:CreateSelector(options)
 	local COLOR_IDLE = Color3.fromRGB(106, 106, 106)
 	local COLOR_HOVER = Color3.fromRGB(158, 158, 158)
 
-	local optionEntries = {}
 	local PAD_X, GAP, EDGE = 9, 2, 4
-	local cursorX = EDGE
+	local entriesInOrder = {}
+	local optionEntries = {}
+
+	local function estimateWidth(text: string): number
+		local length = utf8.len(text) or #text
+		return math.max(26, math.ceil(length * optionTextSize * 0.56) + PAD_X * 2)
+	end
+
+	local function entryWidth(entry): number
+		local ok, bounds = pcall(function() return entry.Label.TextBounds end)
+		if ok and bounds and bounds.X and bounds.X > 1 then
+			return math.max(26, math.ceil(bounds.X) + PAD_X * 2)
+		end
+		return entry.EstimatedWidth
+	end
+
+	-- lays everything out from current text bounds; safe to call repeatedly
+	local function relayout()
+		local x = EDGE
+		for _, entry in ipairs(entriesInOrder) do
+			entry.X = x
+			entry.Width = entryWidth(entry)
+			entry.Button.Position = UDim2.new(0, entry.X, 0.5, 0)
+			entry.Button.Size = UDim2.new(0, entry.Width, 0, 24)
+			x += entry.Width + GAP
+		end
+		holder.Size = UDim2.new(0, x - GAP + EDGE, 0, 30)
+		local active = optionEntries[element.CurrentOption]
+		if active then
+			indicator.Visible = true
+			indicator.Position = UDim2.new(0, active.X, 0.5, 0)
+			indicator.Size = UDim2.new(0, active.Width, 0, 24)
+		end
+	end
+
+	local relayoutScheduled = false
+	local function scheduleRelayout()
+		if relayoutScheduled then return end
+		relayoutScheduled = true
+		task.defer(function()
+			relayoutScheduled = false
+			relayout()
+		end)
+	end
 
 	local function renderSelection(instant: boolean?)
 		local info = instant and TweenInfo.new(0) or EASE.Out
@@ -4043,15 +4348,12 @@ function SectionClass:CreateSelector(options)
 	end
 
 	for index, optionName in ipairs(optionList) do
-		local width = math.max(24, math.ceil(textWidth(optionName)) + PAD_X * 2)
 		local button = Templates.SelectorOption:Clone()
 		button.Name = "Option_" .. optionName
 		button.LayoutOrder = index
 		button.BackgroundTransparency = 1
 		pcall(function() button.AutomaticSize = Enum.AutomaticSize.None end)
 		button.AnchorPoint = Vector2.new(0, 0.5)
-		button.Position = UDim2.new(0, cursorX, 0.5, 0)
-		button.Size = UDim2.new(0, width, 0, 24)
 		button.ZIndex = 3
 		local buttonPadding = button:FindFirstChildOfClass("UIPadding")
 		if buttonPadding then buttonPadding:Destroy() end
@@ -4081,11 +4383,17 @@ function SectionClass:CreateSelector(options)
 		end)
 		button.Parent = holder
 
-		optionEntries[optionName] = { Button = button, Label = optionLabel, X = cursorX, Width = width }
-		cursorX += width + GAP
+		local entry = { Button = button, Label = optionLabel, X = 0, Width = 0, EstimatedWidth = estimateWidth(optionName) }
+		table.insert(entriesInOrder, entry)
+		optionEntries[optionName] = entry
+		-- real glyph widths only exist once the engine measures the label — re-flow when they land
+		pcall(function()
+			optionLabel:GetPropertyChangedSignal("TextBounds"):Connect(scheduleRelayout)
+		end)
 	end
-	holder.Size = UDim2.new(0, cursorX - GAP + EDGE, 0, 30)
 
+	relayout()
+	task.delay(0.1, relayout)
 	renderSelection(true)
 	registerFlag(element, element.CurrentOption)
 	onThemeRefresh(function() renderSelection(true) end)
@@ -4127,8 +4435,6 @@ end
 
 --========================================================= Keybind ==================================================--
 
-local CaptureBindActive = false
-
 function SectionClass:CreateKeybind(options)
 	options = options or {}
 	local element = { Type = "Keybind", CurrentKeybind = options.CurrentKeybind or "None" }
@@ -4144,10 +4450,17 @@ function SectionClass:CreateKeybind(options)
 	label.Parent = row
 
 	local chip = Templates.Bind.ButtonKey:Clone()
+	pcall(function() chip.AutomaticSize = Enum.AutomaticSize.None end)
 	chip.AnchorPoint = Vector2.new(1, 0.5)
 	chip.Position = UDim2.new(0.98, 0, 0.5, 0)
+	chip.Size = UDim2.new(0, 44, 0, 24)
 	chip.Parent = row
 	local chipLabel = chip.Bind
+	pcall(function() chipLabel.AutomaticSize = Enum.AutomaticSize.None end)
+	chipLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	chipLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+	chipLabel.Size = UDim2.new(1, -8, 1, 0)
+	chipLabel.TextXAlignment = Enum.TextXAlignment.Center
 	local chipStroke = chip:FindFirstChildOfClass("UIStroke")
 
 	local chipButton = Instance.new("TextButton")
@@ -4162,8 +4475,21 @@ function SectionClass:CreateKeybind(options)
 	local capturing = false
 	local externalRefresh = nil
 
+	local function resizeChip()
+		local ok, bounds = pcall(function() return chipLabel.TextBounds end)
+		local textWidth = (ok and bounds and bounds.X and bounds.X > 1) and bounds.X
+			or ((utf8.len(chipLabel.Text) or #chipLabel.Text) * chipLabel.TextSize * 0.6)
+		chip.Size = UDim2.new(0, math.max(34, math.ceil(textWidth) + 18), 0, 24)
+	end
+	pcall(function()
+		chipLabel:GetPropertyChangedSignal("TextBounds"):Connect(function()
+			task.defer(resizeChip)
+		end)
+	end)
+
 	local function renderChip()
 		chipLabel.Text = capturing and "..." or keyDisplayName(element.CurrentKeybind)
+		resizeChip()
 		if externalRefresh then externalRefresh(element.CurrentKeybind) end
 	end
 
@@ -4185,55 +4511,42 @@ function SectionClass:CreateKeybind(options)
 	end
 
 	local function beginCapture(refreshFn)
-		if capturing or CaptureBindActive then return end
-		capturing = true
-		CaptureBindActive = true
+		if capturing then return end
 		externalRefresh = refreshFn or externalRefresh
-		renderChip()
-		if chipStroke then tween(chipStroke, "Fast", { Color = TC(Color3.fromRGB(150, 150, 150)) }) end
-		local captureConnection
-		captureConnection = UserInputService.InputBegan:Connect(function(input)
-			local resolvedName = nil
-			if input.UserInputType == Enum.UserInputType.Keyboard then
-				if input.KeyCode == Enum.KeyCode.Escape then
-					resolvedName = element.CurrentKeybind
-				elseif input.KeyCode == Enum.KeyCode.Backspace then
-					resolvedName = "None"
-				else
-					resolvedName = input.KeyCode.Name
-				end
-			elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-				resolvedName = "MouseButton2"
-			elseif input.UserInputType == Enum.UserInputType.MouseButton3 then
-				resolvedName = "MouseButton3"
-			end
+		local started = captureBindKey(function(resolvedName)
+			capturing = false
+			if chipStroke then tween(chipStroke, "Out", { Color = TC(Color3.fromRGB(50, 50, 50)) }) end
 			if resolvedName then
-				captureConnection:Disconnect()
-				capturing = false
-				CaptureBindActive = false
-				if chipStroke then tween(chipStroke, "Out", { Color = TC(Color3.fromRGB(50, 50, 50)) }) end
 				setBind(resolvedName)
+			else
+				renderChip() -- escape: restore current
 			end
 		end)
+		if started then
+			capturing = true
+			renderChip()
+			if chipStroke then tween(chipStroke, "Fast", { Color = TC(Color3.fromRGB(150, 150, 150)) }) end
+		end
 	end
 
 	chipButton.MouseButton1Click:Connect(function()
 		beginCapture(nil)
 	end)
-
-	-- global press listener
-	connect(UserInputService.InputBegan, function(input, gameProcessed)
-		if gameProcessed or capturing or CaptureBindActive then return end
-		if element.CurrentKeybind == "None" then return end
-		local match = false
-		if input.UserInputType == Enum.UserInputType.Keyboard then
-			match = input.KeyCode.Name == element.CurrentKeybind
-		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-			match = element.CurrentKeybind == "MouseButton2"
-		elseif input.UserInputType == Enum.UserInputType.MouseButton3 then
-			match = element.CurrentKeybind == "MouseButton3"
+	chipButton.MouseEnter:Connect(function()
+		if not capturing and chipStroke then
+			tween(chipStroke, "Fast", { Color = TC(Color3.fromRGB(95, 95, 95)) })
 		end
-		if match then
+	end)
+	chipButton.MouseLeave:Connect(function()
+		if not capturing and chipStroke then
+			tween(chipStroke, "Out", { Color = TC(Color3.fromRGB(50, 50, 50)) })
+		end
+	end)
+
+	-- pressing the bound key fires the callback
+	connect(UserInputService.InputBegan, function(input, gameProcessed)
+		if gameProcessed or capturing or BindSystem.CaptureActive then return end
+		if inputMatchesBind(input, element.CurrentKeybind) then
 			safeCallback(options.Callback, element.CurrentKeybind)
 		end
 	end)
@@ -4247,8 +4560,7 @@ function SectionClass:CreateKeybind(options)
 	renderChip()
 	registerFlag(element, element.CurrentKeybind)
 	return self:_mount(element, row, options)
-end
-------------------------------------------------------------------------------------------------------------------------
+end------------------------------------------------------------------------------------------------------------------------
 --  Floating overlay windows (dropdown lists, colour picker)
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -4348,8 +4660,38 @@ function SectionClass:CreateDropdown(options)
 		return element.CurrentOption or "None"
 	end
 
+	local pickedMeasure = selectedFrame:FindFirstChild("PickedMeasure")
+
+	local function resizeChip()
+		local textWidth = nil
+		if pickedMeasure then
+			local ok, bounds = pcall(function() return pickedMeasure.TextBounds end)
+			if ok and bounds and bounds.X and bounds.X > 1 then
+				textWidth = bounds.X
+			end
+		end
+		if not textWidth then
+			local text = pickedLabel.Text
+			textWidth = (utf8.len(text) or #text) * pickedLabel.TextSize * 0.56
+		end
+		selectedFrame.Size = UDim2.new(0, math.clamp(math.ceil(textWidth) + 44, 74, 230), 0, 25)
+	end
+
+	if pickedMeasure then
+		pcall(function()
+			pickedMeasure:GetPropertyChangedSignal("TextBounds"):Connect(function()
+				task.defer(resizeChip)
+			end)
+		end)
+	end
+
 	local function renderPicked()
-		pickedLabel.Text = selectionText()
+		local text = selectionText()
+		pickedLabel.Text = text
+		if pickedMeasure then
+			pickedMeasure.Text = text
+		end
+		resizeChip()
 	end
 
 	local function currentValue()
@@ -4426,9 +4768,6 @@ function SectionClass:CreateDropdown(options)
 					element.CurrentOption = optionName
 					renderItems()
 					commit()
-					task.delay(0.1, function()
-						if openState.close then openState.close() end
-					end)
 				end
 			end)
 			item.Parent = window
@@ -4614,10 +4953,7 @@ function SectionClass:CreateColorPicker(options)
 		end
 	end
 
-	local function openPicker()
-		if ColorPickerBusy then return end
-		ColorPickerBusy = true
-
+	local function openPickerInner()
 		local window = ColorPickerWindow
 		local square = window.ColorPicker
 		local squareKnob = square.Knob
@@ -4626,8 +4962,10 @@ function SectionClass:CreateColorPicker(options)
 		local alphaSlider = window.TransparencySlider
 		local alphaKnob = alphaSlider.Knob
 		local hexHolder = window.HexUnputHolder
-		local hexLabel = hexHolder.Hex
-		local alphaLabel = hexHolder.Transparency
+		local hexLabel = hexHolder:FindFirstChild("Hex")
+		-- "Transparency" is a real GuiObject property, so dot-access would return the number,
+		-- not the label — this exact collision froze the picker before
+		local alphaLabel = hexHolder:FindFirstChild("Transparency")
 
 		local h, s, v = element.Color:ToHSV()
 		local alpha = element.Transparency
@@ -4644,7 +4982,9 @@ function SectionClass:CreateColorPicker(options)
 			hueKnob.Position = UDim2.new(math.clamp(h, 0.01, 0.99), 0, 0.5, 0)
 			alphaSlider.BackgroundColor3 = color
 			alphaKnob.Position = UDim2.new(math.clamp(alpha, 0.01, 0.99), 0, 0.5, 0)
-			alphaLabel.Text = ("%d%%"):format(math.floor(alpha * 100 + 0.5))
+			if alphaLabel then
+				alphaLabel.Text = ("%d%%"):format(math.floor(alpha * 100 + 0.5))
+			end
 			if hexInput and not skipHex then
 				syncingHex = true
 				hexInput:SetText(toHex(color), true)
@@ -4660,7 +5000,7 @@ function SectionClass:CreateColorPicker(options)
 		end
 
 		-- hex input (SmoothInput over the label)
-		hexLabel.Visible = false
+		if hexLabel then hexLabel.Visible = false end
 		hexInput = SmoothInput.new({
 			Parent = hexHolder,
 			Font = FONT_BODY,
@@ -4673,6 +5013,19 @@ function SectionClass:CreateColorPicker(options)
 			PaddingRight = 60,
 			ZIndex = 44,
 		})
+		-- clicking anywhere in the hex box focuses the input
+		local hexFocusButton = Instance.new("TextButton")
+		hexFocusButton.Name = "HexFocus"
+		hexFocusButton.BackgroundTransparency = 1
+		hexFocusButton.Text = ""
+		hexFocusButton.Position = UDim2.new(0, 58, 0, 0)
+		hexFocusButton.Size = UDim2.new(1, -58, 1, 0)
+		hexFocusButton.ZIndex = 46
+		hexFocusButton.Parent = hexHolder
+		hexFocusButton.MouseButton1Click:Connect(function()
+			if hexInput then hexInput:Focus() end
+		end)
+
 		hexInput.Options.OnChanged = function(text)
 			if syncingHex then return end
 			if #text == 6 then
@@ -4742,7 +5095,8 @@ function SectionClass:CreateColorPicker(options)
 			ColorPickerBusy = false
 			for _, connection in ipairs(zoneConnections) do connection:Disconnect() end
 			if hexInput then hexInput:Destroy() end
-			hexLabel.Visible = true
+			hexFocusButton:Destroy()
+			if hexLabel then hexLabel.Visible = true end
 			fadeOut(window, 0.15, true)
 			task.delay(0.155, function()
 				window.Visible = false
@@ -4753,6 +5107,17 @@ function SectionClass:CreateColorPicker(options)
 
 		fadeIn(window, 0.18)
 		popWindow(window)
+	end
+
+	local function openPicker()
+		if ColorPickerBusy then return end
+		ColorPickerBusy = true
+		local ok, err = pcall(openPickerInner)
+		if not ok then
+			ColorPickerBusy = false
+			warn("[ Amphibia Interface ] Color picker failed to open: " .. tostring(err))
+			reportInterfaceIssue("Interface error")
+		end
 	end
 
 	preview.MouseButton1Click:Connect(openPicker)
@@ -4916,85 +5281,104 @@ end
 
 local SearchInput -- assigned below, after the palette plumbing
 
-local SearchDim = Instance.new("TextButton")
-SearchDim.Name = "SearchDim"
-SearchDim.Text = ""
-SearchDim.AutoButtonColor = false
-SearchDim.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-SearchDim.BackgroundTransparency = 1
-SearchDim.Position = UDim2.new(0, 0, 0, 58)
-SearchDim.Size = UDim2.new(1, 0, 1, -92)
-SearchDim.Visible = false
-SearchDim.ZIndex = 30
-SearchDim.Parent = Main
+local SearchUI = {}
+SearchUI.Dim = Instance.new("TextButton")
+SearchUI.Dim.Name = "SearchDim"
+SearchUI.Dim.Text = ""
+SearchUI.Dim.AutoButtonColor = false
+SearchUI.Dim.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+SearchUI.Dim.BackgroundTransparency = 1
+SearchUI.Dim.Position = UDim2.new(0, 0, 0, 0)
+SearchUI.Dim.Size = UDim2.new(1, 0, 1, 0)
+SearchUI.Dim.Visible = false
+SearchUI.Dim.ZIndex = 30
+SearchUI.Dim.Parent = Main
 
-local SearchPanel = Instance.new("Frame")
-SearchPanel.Name = "SearchPanel"
-SearchPanel.AnchorPoint = Vector2.new(0.5, 0)
-SearchPanel.Position = UDim2.new(0.5, 0, 0, 64)
-SearchPanel.Size = UDim2.new(0, 440, 0, 120)
-SearchPanel.BackgroundColor3 = Color3.fromRGB(17, 17, 18)
-SearchPanel.Visible = false
-SearchPanel.ZIndex = 31
-SearchPanel.Parent = Main
+-- the header sits above the main dim while searching, so it gets its own dim layer;
+-- only the search bar (raised above it) stays bright
+SearchUI.HeaderDim = Instance.new("Frame")
+SearchUI.HeaderDim.Name = "HeaderDim"
+SearchUI.HeaderDim.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+SearchUI.HeaderDim.BackgroundTransparency = 1
+SearchUI.HeaderDim.Size = UDim2.new(1, 0, 1, 0)
+SearchUI.HeaderDim.Visible = false
+SearchUI.HeaderDim.ZIndex = 5
+SearchUI.HeaderDim.Parent = Header
+
+SearchUI.HeaderZDefault = Header.ZIndex
+SearchUI.SearchBgZDefault = Header.SearchBg.ZIndex
+
+SearchUI.Panel = Instance.new("Frame")
+SearchUI.Panel.Name = "SearchPanel"
+SearchUI.Panel.AnchorPoint = Vector2.new(0.5, 0)
+SearchUI.Panel.Position = UDim2.new(0.5, 0, 0, 66)
+SearchUI.Panel.Size = UDim2.new(0, 460, 0, 120)
+SearchUI.Panel.BackgroundColor3 = Color3.fromRGB(15, 15, 16)
+SearchUI.Panel.Visible = false
+SearchUI.Panel.ZIndex = 31
+SearchUI.Panel.Parent = Main
 do
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent = SearchPanel
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = SearchUI.Panel
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(55, 55, 55)
+	stroke.Color = Color3.fromRGB(48, 48, 48)
 	stroke.Thickness = 1
-	stroke.Parent = SearchPanel
-	themeRegister(SearchPanel)
+	stroke.Parent = SearchUI.Panel
+	themeRegister(SearchUI.Panel)
 	themeRegister(stroke)
 	pcall(function()
 		local shadow = Instance.new("UIShadow")
 		shadow.Color = Color3.fromRGB(0, 0, 0)
-		shadow.Transparency = 0.35
-		shadow.BlurRadius = UDim.new(0, 14)
-		shadow.Parent = SearchPanel
+		shadow.Transparency = 0.3
+		shadow.BlurRadius = UDim.new(0, 18)
+		shadow.Parent = SearchUI.Panel
 	end)
 end
 
-local SearchResults = Instance.new("ScrollingFrame")
-SearchResults.Name = "Results"
-SearchResults.BackgroundTransparency = 1
-SearchResults.Position = UDim2.new(0, 6, 0, 6)
-SearchResults.Size = UDim2.new(1, -12, 1, -12)
-SearchResults.CanvasSize = UDim2.new(0, 0, 0, 0)
-SearchResults.ScrollBarThickness = 3
-SearchResults.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
-SearchResults.ZIndex = 31
-SearchResults.Parent = SearchPanel
-pcall(function() SearchResults.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
+SearchUI.Results = Instance.new("ScrollingFrame")
+SearchUI.Results.Name = "Results"
+SearchUI.Results.BackgroundTransparency = 1
+SearchUI.Results.Position = UDim2.new(0, 7, 0, 7)
+SearchUI.Results.Size = UDim2.new(1, -14, 1, -14)
+SearchUI.Results.CanvasSize = UDim2.new(0, 0, 0, 0)
+SearchUI.Results.ScrollBarThickness = 3
+SearchUI.Results.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 70)
+SearchUI.Results.ZIndex = 31
+SearchUI.Results.Parent = SearchUI.Panel
+pcall(function() SearchUI.Results.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
 do
 	local layout = Instance.new("UIListLayout")
 	layout.FillDirection = Enum.FillDirection.Vertical
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Padding = UDim.new(0, 2)
-	layout.Parent = SearchResults
+	layout.Parent = SearchUI.Results
 end
 
-local SearchEmptyLabel = Instance.new("TextLabel")
-SearchEmptyLabel.Name = "Empty"
-SearchEmptyLabel.BackgroundTransparency = 1
-SearchEmptyLabel.Size = UDim2.new(1, 0, 0, 46)
-SearchEmptyLabel.FontFace = FONT_BODY
-SearchEmptyLabel.TextSize = 14
-SearchEmptyLabel.TextColor3 = Color3.fromRGB(105, 105, 105)
-SearchEmptyLabel.Text = "No matches found."
-SearchEmptyLabel.Visible = false
-SearchEmptyLabel.ZIndex = 31
-SearchEmptyLabel.Parent = SearchPanel
-themeRegister(SearchEmptyLabel)
+SearchUI.Empty = Instance.new("TextLabel")
+SearchUI.Empty.Name = "Empty"
+SearchUI.Empty.BackgroundTransparency = 1
+SearchUI.Empty.Size = UDim2.new(1, 0, 0, 46)
+SearchUI.Empty.FontFace = FONT_BODY
+SearchUI.Empty.TextSize = 14
+SearchUI.Empty.TextColor3 = Color3.fromRGB(100, 100, 100)
+SearchUI.Empty.Text = "No matches found."
+SearchUI.Empty.Visible = false
+SearchUI.Empty.ZIndex = 31
+SearchUI.Empty.Parent = SearchUI.Panel
+themeRegister(SearchUI.Empty)
 
-local function hideSearchPalette()
-	if SearchPanel.Visible then
-		tween(SearchDim, "Fast", { BackgroundTransparency = 1 })
-		task.delay(0.13, function()
-			SearchDim.Visible = false
+SearchUI.Hide = function()
+	if SearchUI.Panel.Visible then
+		tween(SearchUI.Dim, "Fast", { BackgroundTransparency = 1 })
+		tween(SearchUI.HeaderDim, "Fast", { BackgroundTransparency = 1 })
+		task.delay(0.14, function()
+			SearchUI.Dim.Visible = false
+			SearchUI.HeaderDim.Visible = false
+			Header.ZIndex = SearchUI.HeaderZDefault
+			Header.SearchBg.ZIndex = SearchUI.SearchBgZDefault
 		end)
-		fadeOut(SearchPanel, 0.13)
+		fadeOut(SearchUI.Panel, 0.13)
 	end
 end
 
@@ -5034,7 +5418,7 @@ end
 function WindowClass:_navigateToResult(result)
 	SearchInput:SetText("", true)
 	SearchInput:Blur()
-	hideSearchPalette()
+	SearchUI.Hide()
 	self:SelectTab(result.Tab)
 	if result.Section and result.Section.Collapsed then
 		result.Section:SetCollapsed(false)
@@ -5067,7 +5451,7 @@ function WindowClass:_navigateToResult(result)
 	end)
 end
 
-local SEARCH_TYPE_LABELS = {
+SearchUI.TypeLabels = {
 	Tab = "TAB", Section = "SECTION", Toggle = "TOGGLE", Slider = "SLIDER", Button = "BUTTON",
 	NumberPicker = "NUMBER", Input = "INPUT", Selector = "SELECTOR", Dropdown = "DROPDOWN",
 	ColorPicker = "COLOR", Keybind = "KEYBIND", Label = "LABEL",
@@ -5076,62 +5460,67 @@ local SEARCH_TYPE_LABELS = {
 function WindowClass:ApplySearch(query: string)
 	self.SearchQuery = query
 	if query == nil or query == "" then
-		hideSearchPalette()
+		SearchUI.Hide()
 		return
 	end
 
-	for _, child in ipairs(SearchResults:GetChildren()) do
+	for _, child in ipairs(SearchUI.Results:GetChildren()) do
 		if child:IsA("GuiObject") then
 			child:Destroy()
 		end
 	end
 
 	local results = self:_collectSearchResults(query)
-	SearchEmptyLabel.Visible = #results == 0
+	SearchUI.Empty.Visible = #results == 0
 
 	for index, result in ipairs(results) do
 		local rowButton = Instance.new("TextButton")
 		rowButton.Name = "Result_" .. index
 		rowButton.Text = ""
 		rowButton.AutoButtonColor = false
-		rowButton.BackgroundColor3 = Color3.fromRGB(28, 28, 29)
+		rowButton.BackgroundColor3 = Color3.fromRGB(27, 27, 28)
 		rowButton.BackgroundTransparency = 1
-		rowButton.Size = UDim2.new(1, 0, 0, 36)
+		rowButton.Size = UDim2.new(1, 0, 0, 38)
 		rowButton.LayoutOrder = index
 		rowButton.ZIndex = 32
 		local rowCorner = Instance.new("UICorner")
-		rowCorner.CornerRadius = UDim.new(0, 8)
+		rowCorner.CornerRadius = UDim.new(0, 9)
 		rowCorner.Parent = rowButton
 
 		local chip = Instance.new("Frame")
 		chip.Name = "TypeChip"
 		chip.AnchorPoint = Vector2.new(0, 0.5)
-		chip.Position = UDim2.new(0, 8, 0.5, 0)
-		chip.Size = UDim2.new(0, 68, 0, 18)
-		chip.BackgroundColor3 = Color3.fromRGB(33, 33, 34)
+		chip.Position = UDim2.new(0, 10, 0.5, 0)
+		chip.Size = UDim2.new(0, 64, 0, 18)
+		chip.BackgroundColor3 = Color3.fromRGB(24, 24, 25)
 		chip.ZIndex = 33
 		chip.Parent = rowButton
 		local chipCorner = Instance.new("UICorner")
 		chipCorner.CornerRadius = UDim.new(0, 5)
 		chipCorner.Parent = chip
+		local chipStroke = Instance.new("UIStroke")
+		chipStroke.Color = Color3.fromRGB(52, 52, 52)
+		chipStroke.Thickness = 1
+		chipStroke.Parent = chip
 		local chipLabel = Instance.new("TextLabel")
 		chipLabel.BackgroundTransparency = 1
 		chipLabel.Size = UDim2.new(1, 0, 1, 0)
 		chipLabel.FontFace = FONT_BODY
-		chipLabel.TextSize = 10
-		chipLabel.TextColor3 = Color3.fromRGB(145, 145, 145)
-		chipLabel.Text = SEARCH_TYPE_LABELS[result.Type] or string.upper(result.Type)
+		chipLabel.TextSize = 9
+		chipLabel.TextColor3 = Color3.fromRGB(128, 128, 128)
+		chipLabel.Text = SearchUI.TypeLabels[result.Type] or string.upper(result.Type)
 		chipLabel.ZIndex = 33
 		chipLabel.Parent = chip
 
 		local nameText = Instance.new("TextLabel")
+		nameText.Name = "ResultName"
 		nameText.BackgroundTransparency = 1
 		nameText.AnchorPoint = Vector2.new(0, 0.5)
-		nameText.Position = UDim2.new(0, 86, 0.5, 0)
-		nameText.Size = UDim2.new(1, -240, 1, 0)
+		nameText.Position = UDim2.new(0, 88, 0.5, 0)
+		nameText.Size = UDim2.new(1, -250, 1, 0)
 		nameText.FontFace = FONT_BODY
 		nameText.TextSize = 14
-		nameText.TextColor3 = Color3.fromRGB(200, 200, 200)
+		nameText.TextColor3 = Color3.fromRGB(196, 196, 196)
 		nameText.TextXAlignment = Enum.TextXAlignment.Left
 		nameText.Text = result.Name
 		pcall(function() nameText.TextTruncate = Enum.TextTruncate.AtEnd end)
@@ -5141,50 +5530,60 @@ function WindowClass:ApplySearch(query: string)
 		local pathText = Instance.new("TextLabel")
 		pathText.BackgroundTransparency = 1
 		pathText.AnchorPoint = Vector2.new(1, 0.5)
-		pathText.Position = UDim2.new(1, -10, 0.5, 0)
+		pathText.Position = UDim2.new(1, -12, 0.5, 0)
 		pathText.Size = UDim2.new(0, 150, 1, 0)
 		pathText.FontFace = FONT_BODY
 		pathText.TextSize = 12
-		pathText.TextColor3 = Color3.fromRGB(96, 96, 96)
+		pathText.TextColor3 = Color3.fromRGB(88, 88, 88)
 		pathText.TextXAlignment = Enum.TextXAlignment.Right
 		pathText.Text = result.Path or ""
 		pcall(function() pathText.TextTruncate = Enum.TextTruncate.AtEnd end)
 		pathText.ZIndex = 33
 		pathText.Parent = rowButton
 
-		for _, guiObject in ipairs({ rowButton, chip, chipLabel, nameText, pathText }) do
+		for _, guiObject in ipairs({ rowButton, chip, chipStroke, chipLabel, nameText, pathText }) do
 			themeRegister(guiObject)
 			themeApply(guiObject)
 		end
 
+		local hoverInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 		rowButton.MouseEnter:Connect(function()
-			rowButton.BackgroundTransparency = 0
+			tween(rowButton, hoverInfo, { BackgroundTransparency = 0 })
+			tween(nameText, hoverInfo, { Position = UDim2.new(0, 94, 0.5, 0), TextColor3 = TC(Color3.fromRGB(228, 228, 228)) })
+			tween(chipLabel, hoverInfo, { TextColor3 = TC(Color3.fromRGB(160, 160, 160)) })
 		end)
 		rowButton.MouseLeave:Connect(function()
-			rowButton.BackgroundTransparency = 1
+			tween(rowButton, hoverInfo, { BackgroundTransparency = 1 })
+			tween(nameText, hoverInfo, { Position = UDim2.new(0, 88, 0.5, 0), TextColor3 = TC(Color3.fromRGB(196, 196, 196)) })
+			tween(chipLabel, hoverInfo, { TextColor3 = TC(Color3.fromRGB(128, 128, 128)) })
 		end)
 		rowButton.MouseButton1Click:Connect(function()
 			self:_navigateToResult(result)
 		end)
-		rowButton.Parent = SearchResults
+		rowButton.Parent = SearchUI.Results
 	end
 
 	local visibleRows = math.max(1, math.min(#results, 8))
-	SearchPanel.Size = UDim2.new(0, 440, 0, (#results == 0 and 58) or visibleRows * 38 + 12)
+	SearchUI.Panel.Size = UDim2.new(0, 460, 0, (#results == 0 and 58) or visibleRows * 40 + 14)
 
-	if not SearchPanel.Visible then
-		SearchDim.Visible = true
-		SearchDim.BackgroundTransparency = 1
-		tween(SearchDim, "Fast", { BackgroundTransparency = 0.45 })
-		primeFade(SearchPanel)
-		fadeIn(SearchPanel, 0.16)
+	if not SearchUI.Panel.Visible then
+		SearchUI.Dim.Visible = true
+		SearchUI.Dim.BackgroundTransparency = 1
+		SearchUI.HeaderDim.Visible = true
+		SearchUI.HeaderDim.BackgroundTransparency = 1
+		Header.ZIndex = 31
+		Header.SearchBg.ZIndex = 6
+		tween(SearchUI.Dim, "Fast", { BackgroundTransparency = 0.42 })
+		tween(SearchUI.HeaderDim, "Fast", { BackgroundTransparency = 0.42 })
+		primeFade(SearchUI.Panel)
+		fadeIn(SearchUI.Panel, 0.16)
 	end
 end
 
-SearchDim.MouseButton1Click:Connect(function()
+SearchUI.Dim.MouseButton1Click:Connect(function()
 	SearchInput:SetText("", true)
 	SearchInput:Blur()
-	hideSearchPalette()
+	SearchUI.Hide()
 end)
 
 function WindowClass:SetKeybindsListMode(mode: string)
@@ -5298,6 +5697,510 @@ do
 	clickCatcher.MouseButton1Click:Connect(function()
 		SearchInput:Focus()
 	end)
+end
+
+------------------------------------------------------------------------------------------------------------------------
+--  Right-click bind menu — attach custom keybinds to any element
+------------------------------------------------------------------------------------------------------------------------
+
+BindSystem.MakeKeyChip = function(parent, initialText, zindex)
+	local chip = Instance.new("TextButton")
+	chip.Name = "KeyChip"
+	chip.AutoButtonColor = false
+	chip.Text = ""
+	chip.AnchorPoint = Vector2.new(1, 0.5)
+	chip.BackgroundColor3 = Color3.fromRGB(30, 30, 31)
+	chip.Size = UDim2.new(0, 58, 0, 20)
+	chip.ZIndex = zindex
+	chip.Parent = parent
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = chip
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(58, 58, 58)
+	stroke.Thickness = 1
+	stroke.Parent = chip
+	local chipText = Instance.new("TextLabel")
+	chipText.BackgroundTransparency = 1
+	chipText.Size = UDim2.new(1, -6, 1, 0)
+	chipText.Position = UDim2.new(0, 3, 0, 0)
+	chipText.FontFace = FONT_MONO
+	chipText.TextSize = 11
+	chipText.TextColor3 = Color3.fromRGB(172, 172, 172)
+	chipText.Text = initialText
+	pcall(function() chipText.TextTruncate = Enum.TextTruncate.AtEnd end)
+	chipText.ZIndex = zindex
+	chipText.Parent = chip
+	for _, guiObject in ipairs({ chip, stroke, chipText }) do
+		themeRegister(guiObject)
+		themeApply(guiObject)
+	end
+	chip.MouseEnter:Connect(function()
+		tween(stroke, "Fast", { Color = TC(Color3.fromRGB(95, 95, 95)) })
+	end)
+	chip.MouseLeave:Connect(function()
+		tween(stroke, "Out", { Color = TC(Color3.fromRGB(58, 58, 58)) })
+	end)
+	return chip, chipText, stroke
+end
+
+BindSystem.MenuOpen = false
+local BIND_Z = 45
+
+BindSystem.MakeLabel = function(parent, text, size, color)
+	local textLabel = Instance.new("TextLabel")
+	textLabel.BackgroundTransparency = 1
+	textLabel.FontFace = FONT_BODY
+	textLabel.TextSize = size
+	textLabel.TextColor3 = color
+	textLabel.TextXAlignment = Enum.TextXAlignment.Left
+	textLabel.Text = text
+	textLabel.ZIndex = BIND_Z
+	textLabel.Parent = parent
+	themeRegister(textLabel)
+	themeApply(textLabel)
+	return textLabel
+end
+
+BindSystem.MakeInputBox = function(context, order, placeholder, numeric, defaultText)
+	local box = Instance.new("Frame")
+	box.BackgroundColor3 = Color3.fromRGB(12, 12, 13)
+	box.Size = UDim2.new(1, 0, 0, 26)
+	box.LayoutOrder = order
+	box.ZIndex = BIND_Z
+	box.Parent = context.editor
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = box
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(44, 44, 44)
+	stroke.Thickness = 1
+	stroke.Parent = box
+	themeRegister(box)
+	themeRegister(stroke)
+	themeApply(box)
+	themeApply(stroke)
+	local input = SmoothInput.new({
+		Parent = box,
+		Font = FONT_BODY,
+		TextSize = 13,
+		TextColor = Color3.fromRGB(180, 180, 180),
+		PlaceholderText = placeholder,
+		PlaceholderColor = Color3.fromRGB(95, 95, 95),
+		MaxLength = 40,
+		AllowedPattern = numeric and "%d%.%-" or nil,
+		PaddingLeft = 8,
+		PaddingRight = 8,
+		ZIndex = BIND_Z + 1,
+	})
+	input.Options.OnFocus = function()
+		tween(stroke, "Fast", { Color = TC(Color3.fromRGB(85, 85, 85)) })
+	end
+	input.Options.OnBlur = function()
+		tween(stroke, "Out", { Color = TC(Color3.fromRGB(44, 44, 44)) })
+	end
+	local focusCatcher = Instance.new("TextButton")
+	focusCatcher.BackgroundTransparency = 1
+	focusCatcher.Text = ""
+	focusCatcher.Size = UDim2.new(1, 0, 1, 0)
+	focusCatcher.ZIndex = BIND_Z
+	focusCatcher.Parent = box
+	focusCatcher.MouseButton1Click:Connect(function()
+		input:Focus()
+	end)
+	if defaultText and defaultText ~= "" then
+		input:SetText(defaultText, true)
+	end
+	table.insert(context.activeInputs, input)
+	return input
+end
+
+BindSystem.OpenMenu = function(element, position)
+	if BindSystem.MenuOpen then return end
+	BindSystem.MenuOpen = true
+
+	local activeInputs = {}
+	local Z = BIND_Z
+
+	local panel = Instance.new("Frame")
+	panel.Name = "BindMenu"
+	panel.BackgroundColor3 = Color3.fromRGB(16, 16, 17)
+	panel.Size = UDim2.new(0, 252, 0, 10)
+	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.Y end)
+	panel.ZIndex = Z
+	do
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 10)
+		corner.Parent = panel
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Color3.fromRGB(52, 52, 52)
+		stroke.Thickness = 1
+		stroke.Parent = panel
+		pcall(function()
+			local shadow = Instance.new("UIShadow")
+			shadow.Color = Color3.fromRGB(0, 0, 0)
+			shadow.Transparency = 0.35
+			shadow.BlurRadius = UDim.new(0, 16)
+			shadow.Parent = panel
+		end)
+		local padding = Instance.new("UIPadding")
+		padding.PaddingLeft = UDim.new(0, 10)
+		padding.PaddingRight = UDim.new(0, 10)
+		padding.PaddingTop = UDim.new(0, 10)
+		padding.PaddingBottom = UDim.new(0, 10)
+		padding.Parent = panel
+		local layout = Instance.new("UIListLayout")
+		layout.FillDirection = Enum.FillDirection.Vertical
+		layout.SortOrder = Enum.SortOrder.LayoutOrder
+		layout.Padding = UDim.new(0, 6)
+		layout.Parent = panel
+		themeRegister(panel)
+		themeRegister(stroke)
+	end
+
+	-- header ------------------------------------------------------------------------------------------------
+	local headerRow = Instance.new("Frame")
+	headerRow.BackgroundTransparency = 1
+	headerRow.Size = UDim2.new(1, 0, 0, 30)
+	headerRow.LayoutOrder = 1
+	headerRow.ZIndex = Z
+	headerRow.Parent = panel
+	local title = BindSystem.MakeLabel(headerRow, "Keybinds", 15, Color3.fromRGB(205, 205, 205))
+	title.FontFace = FONT_SERIF
+	title.Size = UDim2.new(1, 0, 0, 17)
+	local subtitle = BindSystem.MakeLabel(headerRow, element.Name or element.Type, 11, Color3.fromRGB(108, 108, 108))
+	subtitle.Position = UDim2.new(0, 0, 0, 17)
+	subtitle.Size = UDim2.new(1, 0, 0, 13)
+	pcall(function() subtitle.TextTruncate = Enum.TextTruncate.AtEnd end)
+
+	-- existing binds ----------------------------------------------------------------------------------------
+	local bindsHolder = Instance.new("Frame")
+	bindsHolder.BackgroundTransparency = 1
+	bindsHolder.Size = UDim2.new(1, 0, 0, 0)
+	pcall(function() bindsHolder.AutomaticSize = Enum.AutomaticSize.Y end)
+	bindsHolder.LayoutOrder = 2
+	bindsHolder.ZIndex = Z
+	bindsHolder.Parent = panel
+	local bindsLayout = Instance.new("UIListLayout")
+	bindsLayout.FillDirection = Enum.FillDirection.Vertical
+	bindsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	bindsLayout.Padding = UDim.new(0, 4)
+	bindsLayout.Parent = bindsHolder
+
+	local renderBinds -- forward
+	renderBinds = function()
+		for _, child in ipairs(bindsHolder:GetChildren()) do
+			if child:IsA("GuiObject") then
+				child:Destroy()
+			end
+		end
+		local binds = BindSystem.ForElement(element)
+		if #binds == 0 then
+			local empty = BindSystem.MakeLabel(bindsHolder, "No keybinds yet — add one below.", 11, Color3.fromRGB(92, 92, 92))
+			empty.Size = UDim2.new(1, 0, 0, 16)
+			return
+		end
+		for index, bind in ipairs(binds) do
+			local bindRow = Instance.new("Frame")
+			bindRow.BackgroundTransparency = 1
+			bindRow.Size = UDim2.new(1, 0, 0, 24)
+			bindRow.LayoutOrder = index
+			bindRow.ZIndex = Z
+			bindRow.Parent = bindsHolder
+
+			local bindName = BindSystem.MakeLabel(bindRow, bind.Name, 13, Color3.fromRGB(178, 178, 178))
+			bindName.AnchorPoint = Vector2.new(0, 0.5)
+			bindName.Position = UDim2.new(0, 0, 0.5, 0)
+			bindName.Size = UDim2.new(1, -96, 1, 0)
+			pcall(function() bindName.TextTruncate = Enum.TextTruncate.AtEnd end)
+
+			local chip, chipText = BindSystem.MakeKeyChip(bindRow, keyDisplayName(bind.Key), Z)
+			chip.Position = UDim2.new(1, -26, 0.5, 0)
+			chip.MouseButton1Click:Connect(function()
+				chipText.Text = "..."
+				captureBindKey(function(newKey)
+					if newKey then
+						bind.Key = newKey
+						BindSystem.Changed()
+						ConfigHooks.Autosave()
+					end
+					if chipText.Parent then
+						chipText.Text = keyDisplayName(bind.Key)
+					end
+					KeybindsUI.Refresh()
+				end)
+			end)
+
+			local deleteButton = Instance.new("TextButton")
+			deleteButton.AutoButtonColor = false
+			deleteButton.BackgroundTransparency = 1
+			deleteButton.AnchorPoint = Vector2.new(1, 0.5)
+			deleteButton.Position = UDim2.new(1, 0, 0.5, 0)
+			deleteButton.Size = UDim2.new(0, 20, 0, 20)
+			deleteButton.FontFace = FONT_BODY
+			deleteButton.TextSize = 15
+			deleteButton.TextColor3 = Color3.fromRGB(110, 110, 110)
+			deleteButton.Text = "×"
+			deleteButton.ZIndex = Z
+			deleteButton.Parent = bindRow
+			deleteButton.MouseEnter:Connect(function()
+				tween(deleteButton, "Fast", { TextColor3 = Color3.fromRGB(214, 118, 118) })
+			end)
+			deleteButton.MouseLeave:Connect(function()
+				tween(deleteButton, "Out", { TextColor3 = TC(Color3.fromRGB(110, 110, 110)) })
+			end)
+			deleteButton.MouseButton1Click:Connect(function()
+				BindSystem.Remove(bind)
+				renderBinds()
+			end)
+		end
+	end
+
+	-- "+ new" toggle ----------------------------------------------------------------------------------------
+	local addRow = Instance.new("TextButton")
+	addRow.AutoButtonColor = false
+	addRow.BackgroundTransparency = 1
+	addRow.Size = UDim2.new(1, 0, 0, 22)
+	addRow.FontFace = FONT_BODY
+	addRow.TextSize = 13
+	addRow.TextXAlignment = Enum.TextXAlignment.Left
+	addRow.TextColor3 = Color3.fromRGB(150, 150, 150)
+	addRow.Text = "+  New keybind"
+	addRow.LayoutOrder = 3
+	addRow.ZIndex = Z
+	addRow.Parent = panel
+	themeRegister(addRow)
+	themeApply(addRow)
+	addRow.MouseEnter:Connect(function()
+		tween(addRow, "Fast", { TextColor3 = TC(Color3.fromRGB(215, 215, 215)) })
+	end)
+	addRow.MouseLeave:Connect(function()
+		tween(addRow, "Out", { TextColor3 = TC(Color3.fromRGB(150, 150, 150)) })
+	end)
+
+	-- editor ------------------------------------------------------------------------------------------------
+	local modes = { "Press" }
+	do
+		local byType = {
+			Toggle = { "Toggle", "Hold" }, Button = { "Press" },
+			Slider = { "Set value" }, NumberPicker = { "Set value" }, Input = { "Set value" },
+			Selector = { "Set value" }, Dropdown = { "Set value" },
+		}
+		modes = byType[element.Type] or { "Press" }
+	end
+	local hasValue = element.Type == "Slider" or element.Type == "NumberPicker" or element.Type == "Input"
+		or element.Type == "Selector" or element.Type == "Dropdown"
+	local pendingMode = modes[1]
+	local pendingKey = "None"
+
+	local editor = Instance.new("Frame")
+	editor.BackgroundTransparency = 1
+	editor.Size = UDim2.new(1, 0, 0, 0)
+	pcall(function() editor.AutomaticSize = Enum.AutomaticSize.Y end)
+	editor.Visible = false
+	editor.LayoutOrder = 4
+	editor.ZIndex = Z
+	editor.Parent = panel
+	local editorLayout = Instance.new("UIListLayout")
+	editorLayout.FillDirection = Enum.FillDirection.Vertical
+	editorLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	editorLayout.Padding = UDim.new(0, 6)
+	editorLayout.Parent = editor
+
+	local editorContext = { editor = editor, activeInputs = activeInputs }
+	local nameInput = BindSystem.MakeInputBox(editorContext, 1, "bind name", false, nil)
+
+	local keyRow = Instance.new("Frame")
+	keyRow.BackgroundTransparency = 1
+	keyRow.Size = UDim2.new(1, 0, 0, 24)
+	keyRow.LayoutOrder = 2
+	keyRow.ZIndex = Z
+	keyRow.Parent = editor
+	local keyLabel = BindSystem.MakeLabel(keyRow, "Key", 12, Color3.fromRGB(118, 118, 118))
+	keyLabel.AnchorPoint = Vector2.new(0, 0.5)
+	keyLabel.Position = UDim2.new(0, 0, 0.5, 0)
+	keyLabel.Size = UDim2.new(0, 80, 1, 0)
+	local keyChip, keyChipText = BindSystem.MakeKeyChip(keyRow, "click to bind", Z)
+	keyChip.Position = UDim2.new(1, 0, 0.5, 0)
+	keyChip.Size = UDim2.new(0, 92, 0, 20)
+	keyChip.MouseButton1Click:Connect(function()
+		keyChipText.Text = "..."
+		captureBindKey(function(newKey)
+			if newKey then
+				pendingKey = newKey
+			end
+			if keyChipText.Parent then
+				keyChipText.Text = pendingKey == "None" and "click to bind" or keyDisplayName(pendingKey)
+			end
+		end)
+	end)
+
+	local modeButtons = {}
+	if #modes > 1 then
+		local modeRow = Instance.new("Frame")
+		modeRow.BackgroundTransparency = 1
+		modeRow.Size = UDim2.new(1, 0, 0, 24)
+		modeRow.LayoutOrder = 3
+		modeRow.ZIndex = Z
+		modeRow.Parent = editor
+		local modeLabel = BindSystem.MakeLabel(modeRow, "Mode", 12, Color3.fromRGB(118, 118, 118))
+		modeLabel.AnchorPoint = Vector2.new(0, 0.5)
+		modeLabel.Position = UDim2.new(0, 0, 0.5, 0)
+		modeLabel.Size = UDim2.new(0, 80, 1, 0)
+		local function renderModes()
+			for modeName, modeButton in pairs(modeButtons) do
+				local selected = modeName == pendingMode
+				tween(modeButton, "Fast", { BackgroundTransparency = selected and 0 or 1 })
+				tween(modeButton.ModeText, "Fast", { TextColor3 = TC(selected and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(105, 105, 105)) })
+			end
+		end
+		local xOffset = 0
+		for _, modeName in ipairs(modes) do
+			local modeButton = Instance.new("TextButton")
+			modeButton.AutoButtonColor = false
+			modeButton.Text = ""
+			modeButton.AnchorPoint = Vector2.new(1, 0.5)
+			modeButton.Position = UDim2.new(1, -xOffset, 0.5, 0)
+			modeButton.Size = UDim2.new(0, 52, 0, 20)
+			modeButton.BackgroundColor3 = Color3.fromRGB(38, 38, 39)
+			modeButton.BackgroundTransparency = 1
+			modeButton.ZIndex = Z
+			modeButton.Parent = modeRow
+			local modeCorner = Instance.new("UICorner")
+			modeCorner.CornerRadius = UDim.new(0, 6)
+			modeCorner.Parent = modeButton
+			local modeText = Instance.new("TextLabel")
+			modeText.Name = "ModeText"
+			modeText.BackgroundTransparency = 1
+			modeText.Size = UDim2.new(1, 0, 1, 0)
+			modeText.FontFace = FONT_BODY
+			modeText.TextSize = 11
+			modeText.TextColor3 = Color3.fromRGB(105, 105, 105)
+			modeText.Text = modeName
+			modeText.ZIndex = Z
+			modeText.Parent = modeButton
+			themeRegister(modeButton)
+			themeRegister(modeText)
+			modeButton.MouseButton1Click:Connect(function()
+				pendingMode = modeName
+				renderModes()
+			end)
+			modeButtons[modeName] = modeButton
+			xOffset += 56
+		end
+		renderModes()
+	end
+
+	local valueInput = nil
+	if hasValue then
+		local defaultValue = ""
+		if element.Type == "Slider" or element.Type == "NumberPicker" then
+			defaultValue = tostring(element.CurrentValue or "")
+		elseif element.Type == "Input" then
+			defaultValue = tostring(element.CurrentValue or "")
+		elseif element.Type == "Selector" then
+			defaultValue = tostring(element.CurrentOption or "")
+		elseif element.Type == "Dropdown" then
+			defaultValue = type(element.CurrentOption) == "string" and element.CurrentOption or ""
+		end
+		local numeric = element.Type == "Slider" or element.Type == "NumberPicker"
+		valueInput = BindSystem.MakeInputBox(editorContext, 4, numeric and "value to set" or "value / option to set", numeric, defaultValue)
+	end
+
+	local createButton = Instance.new("TextButton")
+	createButton.AutoButtonColor = false
+	createButton.Text = ""
+	createButton.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
+	createButton.Size = UDim2.new(1, 0, 0, 27)
+	createButton.LayoutOrder = 5
+	createButton.ZIndex = Z
+	createButton.Parent = editor
+	do
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 7)
+		corner.Parent = createButton
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Color3.fromRGB(70, 70, 70)
+		stroke.Thickness = 1
+		stroke.Parent = createButton
+		themeRegister(createButton)
+		themeRegister(stroke)
+		themeApply(createButton)
+		themeApply(stroke)
+	end
+	local createText = Instance.new("TextLabel")
+	createText.BackgroundTransparency = 1
+	createText.Size = UDim2.new(1, 0, 1, 0)
+	createText.FontFace = FONT_BODY
+	createText.TextSize = 13
+	createText.TextColor3 = Color3.fromRGB(205, 205, 205)
+	createText.Text = "Create bind"
+	createText.ZIndex = Z
+	createText.Parent = createButton
+	themeRegister(createText)
+	themeApply(createText)
+	createButton.MouseEnter:Connect(function()
+		tween(createButton, "Fast", { BackgroundColor3 = TC(Color3.fromRGB(46, 46, 47)) })
+	end)
+	createButton.MouseLeave:Connect(function()
+		tween(createButton, "Out", { BackgroundColor3 = TC(Color3.fromRGB(36, 36, 37)) })
+	end)
+
+	local function setEditorOpen(open)
+		editor.Visible = open
+		addRow.Text = open and "−  Cancel" or "+  New keybind"
+	end
+	addRow.MouseButton1Click:Connect(function()
+		setEditorOpen(not editor.Visible)
+	end)
+
+	createButton.MouseButton1Click:Connect(function()
+		if pendingKey == "None" then
+			keyChipText.Text = "set a key!"
+			task.delay(1.1, function()
+				if keyChipText.Parent and pendingKey == "None" then
+					keyChipText.Text = "click to bind"
+				end
+			end)
+			return
+		end
+		local bindName = nameInput.Text
+		if bindName == "" then
+			bindName = element.Name or element.Type
+		end
+		BindSystem.Add({
+			Element = element,
+			Name = bindName,
+			Key = pendingKey,
+			Mode = pendingMode,
+			Value = valueInput and valueInput.Text or nil,
+		})
+		pendingKey = "None"
+		keyChipText.Text = "click to bind"
+		nameInput:SetText("", true)
+		setEditorOpen(false)
+		renderBinds()
+	end)
+
+	renderBinds()
+
+	-- position & open ---------------------------------------------------------------------------------------
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+	local scaleNow = math.max(MainScale.Scale, 0.01)
+	local panelWidth = 252 * scaleNow
+	local x = math.clamp(position.X + 10, 8, math.max(8, viewport.X - panelWidth - 8))
+	local y = math.clamp(position.Y + 6, 8, math.max(8, viewport.Y - 340 * scaleNow))
+
+	openFloating(panel, Vector2.new(x, y), function()
+		BindSystem.MenuOpen = false
+		for _, input in ipairs(activeInputs) do
+			pcall(function() input:Destroy() end)
+		end
+		fadeOut(panel, 0.12)
+	end)
+	popWindow(panel)
+	fadeIn(panel, 0.14)
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -5455,24 +6358,49 @@ local function writeConfig(name: string, data)
 	return false
 end
 
+------------------------------------------------------------------------------------------------------------------------
+--  In-memory config index. The UI renders from here — never straight from disk — so laggy or
+--  asynchronous executor file APIs can't produce ghost rows, missing dates or lost selections.
+--  A background reconcile merges disk state in, with a grace window around our own writes/deletes.
+------------------------------------------------------------------------------------------------------------------------
+
+ConfigSystem.Index = {}            -- name -> { Created = number, Modified = number? }
+ConfigSystem.RecentlyWritten = {}  -- name -> os.clock() of our last write
+ConfigSystem.RecentlyDeleted = {}  -- name -> os.clock() of our last delete
+local FS_GRACE = 2.5
+
+local function indexWrite(name: string, meta)
+	ConfigSystem.Index[name] = {
+		Created = (meta and meta.created) or (ConfigSystem.Index[name] and ConfigSystem.Index[name].Created) or os.time(),
+		Modified = meta and meta.modified,
+	}
+	ConfigSystem.RecentlyWritten[name] = os.clock()
+	ConfigSystem.RecentlyDeleted[name] = nil
+end
+
+local function indexDelete(name: string)
+	ConfigSystem.Index[name] = nil
+	ConfigSystem.RecentlyDeleted[name] = os.clock()
+	ConfigSystem.RecentlyWritten[name] = nil
+end
+
+-- disk write + index update in one place
+local writeConfigRaw = writeConfig
+writeConfig = function(name, data)
+	local ok = writeConfigRaw(name, data)
+	indexWrite(name, data and data.meta)
+	return ok
+end
+
+local function deleteConfigFile(name: string)
+	FS.delete(configPath(name))
+	indexDelete(name)
+end
+
 local function listConfigs(): { { Name: string, Created: number? } }
 	local out = {}
-	local seen = {}
-	for _, path in ipairs(FS.list(ConfigSystem.Dir)) do
-		local fileName = path:match("([^/\\]+)" .. ConfigurationExtension:gsub("%.", "%%.") .. "$")
-		if fileName and not seen[fileName] then
-			seen[fileName] = true
-			local data = readConfig(fileName)
-			local created = data and data.meta and data.meta.created
-			if data and not created then
-				-- older/imported file without a timestamp: stamp it now so "created X ago" always shows
-				created = os.time()
-				data.meta = data.meta or {}
-				data.meta.created = created
-				writeConfig(fileName, data)
-			end
-			table.insert(out, { Name = fileName, Created = created })
-		end
+	for name, meta in pairs(ConfigSystem.Index) do
+		table.insert(out, { Name = name, Created = meta.Created })
 	end
 	table.sort(out, function(a, b)
 		if (a.Created or 0) == (b.Created or 0) then
@@ -5481,6 +6409,70 @@ local function listConfigs(): { { Name: string, Created: number? } }
 		return (a.Created or 0) > (b.Created or 0)
 	end)
 	return out
+end
+
+local refreshConfigs -- forward
+
+local function reconcileConfigsWithDisk()
+	local ok, files = pcall(FS.list, ConfigSystem.Dir)
+	if not ok or type(files) ~= "table" then
+		return
+	end
+	local now = os.clock()
+	local onDisk = {}
+	for _, path in ipairs(files) do
+		local fileName = path:match("([^/\\]+)" .. ConfigurationExtension:gsub("%.", "%%.") .. "$")
+		if fileName then
+			onDisk[fileName] = true
+		end
+	end
+	local changed = false
+	-- new files discovered on disk
+	for name in pairs(onDisk) do
+		local graceDeleted = ConfigSystem.RecentlyDeleted[name] and now - ConfigSystem.RecentlyDeleted[name] < FS_GRACE
+		if not ConfigSystem.Index[name] and not graceDeleted then
+			local data = readConfig(name)
+			if data then
+				local created = data.meta and data.meta.created
+				if not created then
+					created = os.time()
+					data.meta = data.meta or {}
+					data.meta.created = created
+					pcall(writeConfigRaw, name, data) -- best-effort backfill; index keeps it either way
+				end
+				ConfigSystem.Index[name] = { Created = created, Modified = data.meta and data.meta.modified }
+			else
+				ConfigSystem.Index[name] = { Created = os.time() } -- unreadable right now; keep it listed anyway
+			end
+			changed = true
+		end
+	end
+	-- index entries whose file is gone (outside our own write grace window)
+	local knownNames = {}
+	for name in pairs(ConfigSystem.Index) do
+		table.insert(knownNames, name)
+	end
+	for _, name in ipairs(knownNames) do
+		local graceWritten = ConfigSystem.RecentlyWritten[name] and now - ConfigSystem.RecentlyWritten[name] < FS_GRACE
+		if not onDisk[name] and not graceWritten then
+			ConfigSystem.Index[name] = nil
+			changed = true
+		end
+	end
+	-- prune stale grace stamps
+	for name, stamp in pairs(ConfigSystem.RecentlyWritten) do
+		if now - stamp > FS_GRACE * 2 then ConfigSystem.RecentlyWritten[name] = nil end
+	end
+	for name, stamp in pairs(ConfigSystem.RecentlyDeleted) do
+		if now - stamp > FS_GRACE * 2 then ConfigSystem.RecentlyDeleted[name] = nil end
+	end
+	if changed and refreshConfigs then
+		refreshConfigs()
+	end
+end
+
+local function scheduleReconcile()
+	task.delay(0.7, reconcileConfigsWithDisk)
 end
 
 local VALID_CONFIG_NAME = "^[%w%-%_ %.]+$"
@@ -5513,7 +6505,7 @@ ConfigHooks.Autosave = function()
 	autosaveScheduled = true
 	task.delay(0.8, function()
 		autosaveScheduled = false
-		local payload = { meta = { autosave = true, modified = os.time() }, flags = collectFlags() }
+		local payload = { meta = { autosave = true, modified = os.time() }, flags = collectFlags(), binds = BindSystem.Serialize() }
 		local ok, json = pcall(function() return HttpService:JSONEncode(payload) end)
 		if ok then
 			FS.write(ConfigSystem.AutosaveFile, json)
@@ -5544,6 +6536,7 @@ local function loadAutosave()
 	if ok and type(decoded) == "table" and type(decoded.flags) == "table" then
 		ConfigSystem.PendingFlags = decoded.flags
 		applyFlags(decoded.flags)
+		BindSystem.LoadSerialized(decoded.binds)
 	end
 end
 
@@ -5557,17 +6550,6 @@ local ConfigInfo = ConfigTitle and ConfigTitle:FindFirstChild("Info")
 local NoConfigsHolder = ConfigsBg.NoConfigsFrameHolder
 local ConfigSearchFrame = ConfigsBg.SearchFrame
 
-local refreshConfigs -- forward
-local refreshPassScheduled = false
-local function refreshConfigsSoon()
-	refreshConfigs()
-	if refreshPassScheduled then return end
-	refreshPassScheduled = true
-	task.delay(0.35, function()
-		refreshPassScheduled = false
-		refreshConfigs()
-	end)
-end
 
 local function setSelectedConfig(name: string?)
 	ConfigSystem.SelectedConfig = name
@@ -5617,8 +6599,9 @@ function ConfigActions.saveNew()
 			Validate = function(text) return validateConfigName(text) end,
 		})
 		if not name then return end
-		writeConfig(name, { meta = { created = os.time(), modified = os.time() }, flags = collectFlags() })
-		refreshConfigsSoon()
+		writeConfig(name, { meta = { created = os.time(), modified = os.time() }, flags = collectFlags(), binds = BindSystem.Serialize() })
+		refreshConfigs()
+		scheduleReconcile()
 		setSelectedConfig(name)
 		markLoadedConfig(name)
 		AmphibiaLibrary:Notify({ Color = "Green", Content = ("Config '%s' created."):format(name), Duration = 3 })
@@ -5637,7 +6620,10 @@ function ConfigActions.load(name: string?)
 		return
 	end
 	applyFlags(data.flags)
+	BindSystem.LoadSerialized(data.binds)
 	markLoadedConfig(name)
+	settingsTable.General.lastConfig.Value = name
+	saveSettings()
 	AmphibiaLibrary:Notify({ Color = "Green", Content = ("Config '%s' loaded."):format(name), Duration = 3 })
 end
 
@@ -5656,9 +6642,11 @@ function ConfigActions.overwrite(name: string?)
 		if not confirmed then return end
 		local existing = readConfig(name) or { meta = { created = os.time() } }
 		existing.flags = collectFlags()
+		existing.binds = BindSystem.Serialize()
 		existing.meta.modified = os.time()
 		writeConfig(name, existing)
-		refreshConfigsSoon()
+		refreshConfigs()
+		scheduleReconcile()
 		setSelectedConfig(name)
 		AmphibiaLibrary:Notify({ Color = "Green", Content = ("Config '%s' overwritten."):format(name), Duration = 3 })
 	end)
@@ -5683,12 +6671,15 @@ function ConfigActions.rename(name: string?)
 		local data = readConfig(name)
 		if data then
 			writeConfig(newName, data)
-			FS.delete(configPath(name))
+			deleteConfigFile(name)
 			if ConfigSystem.LoadedConfig == name then ConfigSystem.LoadedConfig = newName end
-			refreshConfigsSoon()
+			refreshConfigs()
+			scheduleReconcile()
 			setSelectedConfig(newName)
 			markLoadedConfig(ConfigSystem.LoadedConfig)
 			AmphibiaLibrary:Notify({ Color = "Green", Content = "Config renamed.", Duration = 3 })
+		else
+			AmphibiaLibrary:Notify({ Color = "Red", Content = "That config could not be read — try again in a moment.", Duration = 4 })
 		end
 	end)
 end
@@ -5700,16 +6691,20 @@ function ConfigActions.duplicate(name: string?)
 		return
 	end
 	local data = readConfig(name)
-	if not data then return end
+	if not data then
+		AmphibiaLibrary:Notify({ Color = "Red", Content = "That config could not be read — try again in a moment.", Duration = 4 })
+		return
+	end
 	local copyName = name .. " copy"
 	local counter = 2
-	while FS.isfile(configPath(copyName)) do
+	while ConfigSystem.Index[copyName] or FS.isfile(configPath(copyName)) do
 		copyName = ("%s copy %d"):format(name, counter)
 		counter += 1
 	end
 	data.meta = { created = os.time(), modified = os.time() }
 	writeConfig(copyName, data)
-	refreshConfigsSoon()
+	refreshConfigs()
+	scheduleReconcile()
 	setSelectedConfig(copyName)
 	markLoadedConfig(ConfigSystem.LoadedConfig)
 	AmphibiaLibrary:Notify({ Color = "Green", Content = ("Duplicated as '%s'."):format(copyName), Duration = 3 })
@@ -5717,13 +6712,15 @@ end
 
 function ConfigActions.exportCode(name: string?)
 	name = name or ConfigSystem.SelectedConfig
-	local flags
+	local flags, binds
 	if name then
 		local data = readConfig(name)
 		flags = data and data.flags
+		binds = data and data.binds
 	end
 	flags = flags or collectFlags()
-	local ok, json = pcall(function() return HttpService:JSONEncode({ flags = flags }) end)
+	binds = binds or BindSystem.Serialize()
+	local ok, json = pcall(function() return HttpService:JSONEncode({ flags = flags, binds = binds }) end)
 	if not ok then return end
 	local code = "AMPH1." .. Base64.encode(json)
 	if setClipboard(code) then
@@ -5763,8 +6760,9 @@ function ConfigActions.importCode()
 			Validate = function(text) return validateConfigName(text) end,
 		})
 		if not name then return end
-		writeConfig(name, { meta = { created = os.time(), modified = os.time(), imported = true }, flags = decoded.flags })
-		refreshConfigsSoon()
+		writeConfig(name, { meta = { created = os.time(), modified = os.time(), imported = true }, flags = decoded.flags, binds = decoded.binds })
+		refreshConfigs()
+		scheduleReconcile()
 		setSelectedConfig(name)
 		AmphibiaLibrary:Notify({ Color = "Green", Content = ("Config '%s' imported."):format(name), Duration = 3 })
 	end)
@@ -5785,6 +6783,8 @@ function ConfigActions.resetSettings()
 			end
 		end
 		markLoadedConfig(nil)
+		settingsTable.General.lastConfig.Value = ""
+		saveSettings()
 		AmphibiaLibrary:Notify({ Color = "Yellow", Content = "All settings reset to defaults.", Duration = 4 })
 	end)
 end
@@ -5804,10 +6804,15 @@ function ConfigActions.delete(name: string?)
 			Icon = TrashIconImage,
 		})
 		if not confirmed then return end
-		FS.delete(configPath(name))
+		deleteConfigFile(name)
 		if ConfigSystem.SelectedConfig == name then ConfigSystem.SelectedConfig = nil end
-		if ConfigSystem.LoadedConfig == name then ConfigSystem.LoadedConfig = nil end
-		refreshConfigsSoon()
+		if ConfigSystem.LoadedConfig == name then
+			ConfigSystem.LoadedConfig = nil
+			settingsTable.General.lastConfig.Value = ""
+			saveSettings()
+		end
+		refreshConfigs()
+		scheduleReconcile()
 		AmphibiaLibrary:Notify({ Color = "Green", Content = ("Config '%s' deleted."):format(name), Duration = 3 })
 	end)
 end
@@ -5831,11 +6836,12 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 	}
 
 	local closeMenu
+	local hoverInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	for _, child in ipairs(menu:GetChildren()) do
 		if child:IsA("ImageButton") then
 			-- every entry identical: same size, transparent until hovered (the template shipped
 			-- with mismatched sizes and a pre-hovered Load button)
-			child.Size = UDim2.new(1, 0, 0, 26)
+			child.Size = UDim2.new(1, 0, 0, 25)
 			child.BackgroundTransparency = 1
 			child.ZIndex = 46
 			local action = actionsByButton[child.Name]
@@ -5843,20 +6849,21 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 			local icon = child:FindFirstChild("Icon")
 			local danger = child.Name == "DeleteButton"
 			local idleContent = danger and Color3.fromRGB(196, 122, 122) or TC(Color3.fromRGB(140, 140, 140))
-			local hoverContent = danger and Color3.fromRGB(231, 144, 144) or TC(Color3.fromRGB(190, 190, 190))
+			local hoverContent = danger and Color3.fromRGB(231, 144, 144) or TC(Color3.fromRGB(195, 195, 195))
+			local hoverBg = TC(danger and Color3.fromRGB(58, 42, 42) or Color3.fromRGB(45, 45, 45))
 			if buttonLabel then buttonLabel.TextColor3 = idleContent end
 			if icon then icon.ImageColor3 = idleContent end
-			-- hover state is set instantly (no tweens) so it can't be cancelled by the open animation
+			child.BackgroundColor3 = hoverBg
+			-- one identical smooth hover for every entry (delete just uses its red palette)
 			child.MouseEnter:Connect(function()
-				child.BackgroundColor3 = TC(danger and Color3.fromRGB(52, 42, 42) or Color3.fromRGB(45, 45, 45))
-				child.BackgroundTransparency = 0
-				if buttonLabel then buttonLabel.TextColor3 = hoverContent end
-				if icon then icon.ImageColor3 = hoverContent end
+				tween(child, hoverInfo, { BackgroundTransparency = 0 })
+				if buttonLabel then tween(buttonLabel, hoverInfo, { TextColor3 = hoverContent }) end
+				if icon then tween(icon, hoverInfo, { ImageColor3 = hoverContent }) end
 			end)
 			child.MouseLeave:Connect(function()
-				child.BackgroundTransparency = 1
-				if buttonLabel then buttonLabel.TextColor3 = idleContent end
-				if icon then icon.ImageColor3 = idleContent end
+				tween(child, hoverInfo, { BackgroundTransparency = 1 })
+				if buttonLabel then tween(buttonLabel, hoverInfo, { TextColor3 = idleContent }) end
+				if icon then tween(icon, hoverInfo, { ImageColor3 = idleContent }) end
 			end)
 			if action then
 				child.MouseButton1Click:Connect(function()
@@ -5877,7 +6884,7 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 	local camera = workspace.CurrentCamera
 	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
 	local scaleNow = math.max(MainScale.Scale, 0.01)
-	local menuWidth = 172 * scaleNow
+	local menuWidth = 153 * scaleNow
 	local menuHeight = 250 * scaleNow
 	local x = math.clamp(position.X + 10, 8, math.max(8, viewport.X - menuWidth - 8))
 	local y = math.clamp(position.Y + 6, 8, math.max(8, viewport.Y - menuHeight - 8))
@@ -5886,7 +6893,6 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 		fadeOut(menu, 0.12)
 	end)
 	popWindow(menu)
-	fadeIn(menu, 0.12)
 end
 
 -- list rendering -----------------------------------------------------------------------------------------------------
@@ -6113,7 +7119,10 @@ function WindowClass:CreateConfigTab(options)
 		self:SelectTab(tab)
 	end)
 
-	self.OnConfigTabOpened = refreshConfigs
+	self.OnConfigTabOpened = function()
+		reconcileConfigsWithDisk()
+		refreshConfigs()
+	end
 	table.insert(self.Tabs, tab)
 	if not self.ActiveTab then
 		self:SelectTab(tab, true)
@@ -6174,6 +7183,10 @@ function AmphibiaLibrary:CreateWindow(settings)
 		ensureFolder(ConfigSystem.Dir)
 		local fileName = configurationSaving.FileName or "Default"
 		ConfigSystem.AutosaveFile = folderName .. "/autosave_" .. fileName .. ConfigurationExtension
+		local lastLoaded = getSetting("General", "lastConfig")
+		if type(lastLoaded) == "string" and lastLoaded ~= "" then
+			ConfigSystem.LoadedConfig = lastLoaded
+		end
 	end
 
 	-- startup flow --------------------------------------------------------------------------------------------------
