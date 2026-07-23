@@ -4887,7 +4887,6 @@ do
 		hit.Parent = zone
 	end
 end
-end
 
 local ColorPickerBusy = false
 
