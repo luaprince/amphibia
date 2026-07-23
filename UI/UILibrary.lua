@@ -345,8 +345,6 @@ end
 --  Library table
 ------------------------------------------------------------------------------------------------------------------------
 
-do
-
 local AmphibiaLibrary = {
 	Flags = {},
 	Elements = {}, -- Flag -> element object
@@ -7287,8 +7285,6 @@ AmphibiaLibrary.CreateNotification = AmphibiaLibrary.Notify
 
 if debugX then
 	warn("[ Amphibia DebugX ] Initialisation complete.")
-end
-
 end
 
 return AmphibiaLibrary
