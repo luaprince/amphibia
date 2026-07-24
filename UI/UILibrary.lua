@@ -12,10 +12,10 @@
 		      ░  ░          ░                   ░  ░  ░    ░      ░          ░           ░  ░   
 		                                                               ░                        
 
-	Amphibia User Interface Library
+	Amphibia User Interface Libraryfffff
 	by Less
 
-	Build 0.91 — full release build.
+	Build 0.83 — full release build.
 
 	Quick start:
 
@@ -23,7 +23,7 @@
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.91",
+			Version = "v0.83",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
@@ -2505,7 +2505,7 @@ local GuiData =
 				}},
 				{"Frame",{BackgroundColor3=c3(40,40,40),LayoutOrder=2,Name="Separator",Position=u2(0,0,0,0),Size=u2(1.02,0,0,2)},{
 				}},
-				{"UIPadding",{PaddingBottom=ud(0,5),PaddingLeft=ud(0,5),PaddingRight=ud(0,10),PaddingTop=ud(0,5)},{
+				{"UIPadding",{PaddingBottom=ud(0,3),PaddingLeft=ud(0,3),PaddingRight=ud(0,10),PaddingTop=ud(0,3)},{
 				}},
 				{"ImageButton",{Active=true,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Image="",ImageColor3=c3(255,255,255),ImageTransparency=1,LayoutOrder=9,Name="ResetButton",Position=u2(0,0,0.1,0),Size=u2(0,153,0,30),SliceScale=1,TileSize=u2(1,0,1,0)},{
 					{"UICorner",{CornerRadius=ud(0,8)},{
