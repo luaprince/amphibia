@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Dev info: "A2"
+	Developer info: "A3"
 
 	Quick start:
 
@@ -2590,6 +2590,7 @@ end
 ScreenGui.Parent = getGuiParent()
 
 local Main = ScreenGui:WaitForChild("MainBackground")
+Main.Active = true
 local Header = Main:WaitForChild("HeaderFrame")
 local Info = Main:WaitForChild("InfoFrame")
 local TabsFrame = Main:WaitForChild("TabsFrame")
@@ -2627,6 +2628,7 @@ local InputboxScreen = ScreensFolder:WaitForChild("InputboxScreen")
 local InputboxErrorScreen = ScreensFolder:WaitForChild("InputboxErrorScreen")
 
 local ColorPickerWindow = OtherFolder:WaitForChild("ColorPicker")
+ColorPickerWindow.Active = true
 local KeybindsListFrame = OtherFolder:WaitForChild("KeybindsList")
 local KeybindsListTransparentFrame = OtherFolder:WaitForChild("KeybindsListTransparentMode")
 local DropdownWindowTemplate = OtherFolder:WaitForChild("Dropdown")
@@ -4801,6 +4803,24 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	return close, container
 end
 
+local function openFloatingAtCursor(content: GuiObject, cursor: Vector2, onClose)
+	local viewport = ScreenGui.AbsoluteSize
+	local x = math.max(8, cursor.X)
+	local y = math.max(8, cursor.Y)
+	local close, container = openFloating(content, Vector2.new(x, y), onClose)
+	task.defer(function()
+		if not content.Parent then return end
+		local width = content.AbsoluteSize.X
+		local height = content.AbsoluteSize.Y
+		local correctedX = math.clamp(x, 8, math.max(8, viewport.X - width - 8))
+		local correctedY = math.clamp(y, 8, math.max(8, viewport.Y - height - 8))
+		if correctedX ~= x or correctedY ~= y then
+			content.Position = UDim2.new(0, correctedX, 0, correctedY)
+		end
+	end)
+	return close, container
+end
+
 --========================================================= Dropdown =================================================--
 
 function SectionClass:CreateDropdown(options)
@@ -4916,6 +4936,7 @@ function SectionClass:CreateDropdown(options)
 		local width = math.clamp(selectedFrame.AbsoluteSize.X / math.max(MainScale.Scale, 0.01) + 24, 160, 230)
 		window.Size = UDim2.new(0, width, 0, 0)
 		window.ZIndex = 41
+		window.Active = true
 
 		-- шаблонную раскладку убираем: список строим сами, внутри скроллера
 		local templateLayout = window:FindFirstChildOfClass("UIListLayout")
@@ -5596,6 +5617,8 @@ SearchUI.Panel.BackgroundColor3 = Color3.fromRGB(14, 14, 15)
 SearchUI.Panel.Visible = false
 SearchUI.Panel.ZIndex = 31
 SearchUI.Panel.Parent = Main
+SearchUI.Panel.Active = true
+
 do
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 12)
@@ -6133,6 +6156,7 @@ BindSystem.OpenMenu = function(element, position)
 	panel.Size = UDim2.new(0, 264, 0, 10)
 	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.Y end)
 	panel.ZIndex = Z
+	panel.Active = true
 	do
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 12)
@@ -6510,14 +6534,7 @@ BindSystem.OpenMenu = function(element, position)
 	renderBinds()
 
 	-- position & open ---------------------------------------------------------------------------------------
-	local viewport = ScreenGui.AbsoluteSize
-	local scaleNow = math.max(MainScale.Scale, 0.01)
-	local menuWidth = 264 * scaleNow
-	local estimatedHeight = 400 * scaleNow -- запас; реальную высоту AutomaticSize посчитает уже после Parent
-	local x = math.clamp(position.X, 8, math.max(8, viewport.X - menuWidth - 8))
-	local y = math.clamp(position.Y, 8, math.max(8, viewport.Y - estimatedHeight - 8))
-
-	openFloating(panel, Vector2.new(x, y), function()
+	openFloatingAtCursor(panel, position, function()
 		BindSystem.MenuOpen = false
 		for _, input in ipairs(activeInputs) do
 			pcall(function() input:Destroy() end)
@@ -7155,6 +7172,7 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 	menu.Name = "ConfigMenu"
 	menu.ZIndex = 45
 	menu.Visible = true
+	menu.Active = true
 
 	local actionsByButton = {
 		LoadButton = function() ConfigActions.load(configName) end,
@@ -7230,19 +7248,10 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 	themeApplyDeep(menu)
 
 	-- open next to the cursor (offset so no entry starts underneath it), clamped on-screen
-	local viewport = ScreenGui.AbsoluteSize
-	local scaleNow = math.max(MainScale.Scale, 0.01)
-	local menuWidth = 153 * scaleNow
-	local menuHeight = (CONFIG_MENU.PadY * 2
-	+ 7 * CONFIG_MENU.ItemHeight
-	+ 3 * CONFIG_MENU.SeparatorHeight
-	+ 9 * CONFIG_MENU.ItemGap) * scaleNow
-	local x = math.clamp(position.X, 8, math.max(8, viewport.X - menuWidth - 8))
-	local y = math.clamp(position.Y, 8, math.max(8, viewport.Y - menuHeight - 8))
-
-	closeMenu = openFloating(menu, Vector2.new(x, y), function()
+	closeMenu = openFloatingAtCursor(menu, position, function()
 		fadeOut(menu, 0.12)
 	end)
+	
 	popWindow(menu)
 end
 
