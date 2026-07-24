@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Build: "A1"
+	Dev info: "A2"
 
 	Quick start:
 
@@ -919,13 +919,7 @@ function SmoothInput.new(options)
 	capture.Focused:Connect(function()
 		if self.Destroyed then return end
 		ActiveInput = self
-		-- capture.Focused
-		ActiveInput = self
 		beginInputSink()
-
-		-- capture.FocusLost
-		if ActiveInput == self then ActiveInput = nil end
-		endInputSink()
 		self.Focused = true
 		self.BlinkClock = 0
 		self:_updatePlaceholder()
@@ -938,6 +932,7 @@ function SmoothInput.new(options)
 	capture.FocusLost:Connect(function(enterPressed)
 		if self.Destroyed then return end
 		if ActiveInput == self then ActiveInput = nil end
+		endInputSink()
 		self.Focused = false
 		selection.Visible = false
 		tween(caret, CHAR_OUT, { BackgroundTransparency = 1 })
@@ -4138,7 +4133,7 @@ function SectionClass:_mount(element, row, options)
 			local now = os.clock()
 			if now - lastMenuOpen < 0.25 then return end
 			lastMenuOpen = now
-			BindSystem.OpenMenu(element, mousePoint())
+			BindSystem.OpenMenu(element, input.Position)
 		end
 		-- InputBegan doesn't bubble, so hook the row AND everything inside it — right click must
 		-- work over sliders, chips and inputs, not only over the name label
@@ -6517,9 +6512,10 @@ BindSystem.OpenMenu = function(element, position)
 	-- position & open ---------------------------------------------------------------------------------------
 	local viewport = ScreenGui.AbsoluteSize
 	local scaleNow = math.max(MainScale.Scale, 0.01)
-	local panelWidth = 264 * scaleNow
+	local menuWidth = 264 * scaleNow
+	local estimatedHeight = 400 * scaleNow -- запас; реальную высоту AutomaticSize посчитает уже после Parent
 	local x = math.clamp(position.X, 8, math.max(8, viewport.X - menuWidth - 8))
-	local y = math.clamp(position.Y, 8, math.max(8, viewport.Y - menuHeight - 8))
+	local y = math.clamp(position.Y, 8, math.max(8, viewport.Y - estimatedHeight - 8))
 
 	openFloating(panel, Vector2.new(x, y), function()
 		BindSystem.MenuOpen = false
@@ -7301,9 +7297,10 @@ refreshConfigs = function()
 			end
 			lastClick = now
 		end)
-		row.MouseButton2Click:Connect(function()
+		row.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
 			setSelectedConfig(config.Name)
-			openConfigContextMenu(config.Name, mousePoint())
+			openConfigContextMenu(config.Name, input.Position)
 		end)
 		row.MouseEnter:Connect(function()
 			if ConfigSystem.SelectedConfig ~= config.Name then
