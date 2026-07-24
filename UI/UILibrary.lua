@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Build 0.9 — full release build.
+	Build 0.83 — full release build.
 
 	Quick start:
 
@@ -23,7 +23,7 @@
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.9",
+			Version = "v0.83",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
@@ -154,7 +154,7 @@ if secureMode then
 end
 
 local InterfaceBuild = "AA1AA"
-local Release = "Build 0.1"
+local Release = "Build 0.91"
 local AmphibiaFolder = "Amphibia"
 local ConfigurationFolder = AmphibiaFolder .. "/Configs"
 local ConfigurationExtension = ".amph"
@@ -2617,8 +2617,11 @@ end
 -- позиция мыши -> координаты внутри канваса
 local function mousePoint(): Vector2
 	local location = UserInputService:GetMouseLocation()
-	local inset = GuiService:GetGuiInset()
-	return Vector2.new(location.X + inset.X, location.Y + inset.Y) - canvasOrigin()
+	local point = Vector2.new(location.X, location.Y)
+	if ScreenGui.IgnoreGuiInset then
+		point += GuiService:GetGuiInset()
+	end
+	return point
 end
 
 local LoadingScreen = ScreensFolder:WaitForChild("LoadingScreen")
@@ -2657,6 +2660,25 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 --  Template extraction — pull the showcase elements out as blueprints, then clear the example content.
 ------------------------------------------------------------------------------------------------------------------------
+
+local DROPDOWN_GAP = 6      	  -- фиксированный отступ от нижней грани чипа
+local DROPDOWN_FLIP = false 	  -- true — разворачивать вверх, если не влезает вниз
+local DROPDOWN_MAX_HEIGHT = 220   -- полная высота окна, ≈ 7 пунктов
+local DROPDOWN_ITEM_HEIGHT = 25
+local DROPDOWN_ITEM_GAP = 5
+local DROPDOWN_PADDING = 12       -- UIPadding окна: 6 сверху + 6 снизу
+
+local CONFIG_MENU = {
+	Width = 153,
+	ItemHeight = 25,
+	ItemGap = 2,
+	PadX = 5,
+	PadY = 4,             -- было 6
+	SeparatorHeight = 1,
+	SeparatorInset = 8,   -- на сколько линия короче меню с каждой стороны
+	IconX = 14,           -- центр иконки от левого края кнопки
+	TextX = 28,           -- левый край текста
+}
 
 local Templates = {}
 
@@ -2769,35 +2791,62 @@ local Templates = {}
 	-- config context menu: the design left mismatched button sizes and a pre-hovered Load —
 	-- normalize to the authored 153px width with identical entries
 	do
-		pcall(function() ConfigDropdownMenu.AutomaticSize = Enum.AutomaticSize.Y end)
-		ConfigDropdownMenu.Size = UDim2.new(0, 153, 0, 10)
-		local menuLayout = ConfigDropdownMenu:FindFirstChildOfClass("UIListLayout")
+		local menu = ConfigDropdownMenu
+		pcall(function() menu.AutomaticSize = Enum.AutomaticSize.Y end)
+		menu.Size = UDim2.new(0, CONFIG_MENU.Width, 0, 10)
+
+		local menuLayout = menu:FindFirstChildOfClass("UIListLayout")
 		if not menuLayout then
 			menuLayout = Instance.new("UIListLayout")
-			menuLayout.Parent = ConfigDropdownMenu
+			menuLayout.Parent = menu
 		end
 		menuLayout.FillDirection = Enum.FillDirection.Vertical
 		menuLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 		menuLayout.SortOrder = Enum.SortOrder.LayoutOrder
-		menuLayout.Padding = UDim.new(0, 2)
-		local menuPadding = ConfigDropdownMenu:FindFirstChildOfClass("UIPadding")
+		menuLayout.Padding = UDim.new(0, CONFIG_MENU.ItemGap)
+
+		local menuPadding = menu:FindFirstChildOfClass("UIPadding")
 		if not menuPadding then
 			menuPadding = Instance.new("UIPadding")
-			menuPadding.Parent = ConfigDropdownMenu
+			menuPadding.Parent = menu
 		end
-		menuPadding.PaddingLeft = UDim.new(0, 5)
-		menuPadding.PaddingRight = UDim.new(0, 5)
-		menuPadding.PaddingTop = UDim.new(0, 6)
-		menuPadding.PaddingBottom = UDim.new(0, 6)
-		for _, child in ipairs(ConfigDropdownMenu:GetChildren()) do
+		menuPadding.PaddingLeft = UDim.new(0, CONFIG_MENU.PadX)
+		menuPadding.PaddingRight = UDim.new(0, CONFIG_MENU.PadX)
+		menuPadding.PaddingTop = UDim.new(0, CONFIG_MENU.PadY)
+		menuPadding.PaddingBottom = UDim.new(0, CONFIG_MENU.PadY)
+
+		for _, child in ipairs(menu:GetChildren()) do
 			if child:IsA("ImageButton") then
-				child.Size = UDim2.new(1, 0, 0, 25)
+				child.Size = UDim2.new(1, 0, 0, CONFIG_MENU.ItemHeight)
 				child.BackgroundTransparency = 1
+
+				-- позиционируем иконку и текст в пикселях, а не в долях ширины
+				local buttonPadding = child:FindFirstChildOfClass("UIPadding")
+				if buttonPadding then
+					buttonPadding:Destroy()
+				end
+
+				local icon = child:FindFirstChild("Icon")
+				if icon then
+					icon.AnchorPoint = Vector2.new(0.5, 0.5)
+					icon.Position = UDim2.new(0, CONFIG_MENU.IconX, 0.5, 0)
+				end
+
+				local label = child:FindFirstChild("Name")
+				if label then
+					pcall(function() label.AutomaticSize = Enum.AutomaticSize.None end)
+					label.AnchorPoint = Vector2.new(0, 0.5)
+					label.Position = UDim2.new(0, CONFIG_MENU.TextX, 0.5, 0)
+					label.Size = UDim2.new(1, -CONFIG_MENU.TextX - 6, 1, 0)
+					label.TextXAlignment = Enum.TextXAlignment.Left
+					pcall(function() label.TextTruncate = Enum.TextTruncate.AtEnd end)
+				end
 			elseif child:IsA("Frame") then
-				child.Size = UDim2.new(1, 0, 0, 1)
+				child.Size = UDim2.new(1, -CONFIG_MENU.SeparatorInset * 2, 0, CONFIG_MENU.SeparatorHeight)
 			end
 		end
-		local resetEntry = ConfigDropdownMenu:FindFirstChild("ResetButton")
+
+		local resetEntry = menu:FindFirstChild("ResetButton")
 		local resetLabel = resetEntry and resetEntry:FindFirstChild("Name")
 		if resetLabel then
 			resetLabel.Text = "Reset settings"
@@ -4759,13 +4808,6 @@ end
 
 --========================================================= Dropdown =================================================--
 
-local DROPDOWN_GAP = 6      	  -- фиксированный отступ от нижней грани чипа
-local DROPDOWN_FLIP = false 	  -- true — разворачивать вверх, если не влезает вниз
-local DROPDOWN_MAX_HEIGHT = 220   -- полная высота окна, ≈ 7 пунктов
-local DROPDOWN_ITEM_HEIGHT = 25
-local DROPDOWN_ITEM_GAP = 5
-local DROPDOWN_PADDING = 12       -- UIPadding окна: 6 сверху + 6 снизу
-
 function SectionClass:CreateDropdown(options)
 	options = options or {}
 	local optionList = table.clone(options.Options or {})
@@ -5935,6 +5977,15 @@ do
 			ActiveWindow:ApplySearch(text)
 		end
 	end
+
+	connect(UserInputService.InputBegan, function(input)
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		if input.KeyCode ~= Enum.KeyCode.Escape then return end
+		if not SearchUI.Panel.Visible then return end
+		SearchInput:SetText("", true)
+		SearchInput:Blur()
+		SearchUI.Hide()
+	end)
 
 	local clickCatcher = Instance.new("TextButton")
 	clickCatcher.BackgroundTransparency = 1
@@ -7125,7 +7176,6 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 		if child:IsA("ImageButton") then
 			-- every entry identical: same size, and the hover highlight lives on a fresh child
 			-- frame we fully control — authored per-button quirks can't leak through anymore
-			child.Size = UDim2.new(1, 0, 0, 25)
 			child.BackgroundTransparency = 1
 			child.ZIndex = 46
 			pcall(function() child.AutoButtonColor = false end)
@@ -7176,7 +7226,6 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 				end)
 			end
 		elseif child:IsA("Frame") then
-			child.Size = UDim2.new(1, 0, 0, 1)
 			child.ZIndex = 46
 		end
 	end
@@ -7188,7 +7237,10 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 	local viewport = ScreenGui.AbsoluteSize
 	local scaleNow = math.max(MainScale.Scale, 0.01)
 	local menuWidth = 153 * scaleNow
-	local menuHeight = 250 * scaleNow
+	local menuHeight = (CONFIG_MENU.PadY * 2
+	+ 7 * CONFIG_MENU.ItemHeight
+	+ 3 * CONFIG_MENU.SeparatorHeight
+	+ 9 * CONFIG_MENU.ItemGap) * scaleNow
 	local x = math.clamp(position.X + 10, 8, math.max(8, viewport.X - menuWidth - 8))
 	local y = math.clamp(position.Y + 6, 8, math.max(8, viewport.Y - menuHeight - 8))
 
