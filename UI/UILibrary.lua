@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Build 0.83 — full release build.
+	Build 0.9 — full release build.
 
 	Quick start:
 
@@ -23,7 +23,7 @@
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.83",
+			Version = "v0.9",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
@@ -2537,9 +2537,9 @@ local GuiData =
 					{"UICorner",{CornerRadius=ud(0,8)},{
 					}},
 				}},
-				{"Frame",{BackgroundColor3=c3(40,40,40),LayoutOrder=6,Name="Separator2",Position=u2(0,0,0,0),Size=u2(1.02,0,0,2)},{
+				{"Frame",{BackgroundColor3=c3(40,40,40),LayoutOrder=6,Name="Separator2",Position=u2(0,0,0,0),Size=u2(0,153,0,2)},{
 				}},
-				{"Frame",{BackgroundColor3=c3(40,40,40),LayoutOrder=8,Name="Separator3",Position=u2(0,0,0,0),Size=u2(1.02,0,0,2)},{
+				{"Frame",{BackgroundColor3=c3(40,40,40),LayoutOrder=8,Name="Separator3",Position=u2(0,0,0,0),Size=u2(0,153,0,2)},{
 				}},
 			}},
 		}},
