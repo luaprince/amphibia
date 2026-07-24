@@ -76,6 +76,7 @@ local CoreGui = getService("CoreGui")
 local HttpService = getService("HttpService")
 local RunService = getService("RunService")
 local GuiService = getService("GuiService")
+local ContextActionService = getService("ContextActionService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -653,6 +654,36 @@ end
 
 local ActiveInput = nil
 
+local INPUT_SINK_ACTION = "AmphibiaInputSink"
+local SINK_KEYS = {}
+do
+	for _, item in ipairs(Enum.KeyCode:GetEnumItems()) do
+		local value = item.Value
+		if (value >= 97 and value <= 122)        -- a-z
+			or (value >= 48 and value <= 57)     -- 0-9
+			or (value >= 256 and value <= 265)   -- numpad 0-9
+		then
+			table.insert(SINK_KEYS, item)
+		end
+	end
+end
+
+local function beginInputSink()
+	pcall(function()
+		ContextActionService:BindActionAtPriority(
+			INPUT_SINK_ACTION,
+			function() return Enum.ContextActionResult.Sink end,
+			false,
+			Enum.ContextActionPriority.High.Value + 100,
+			table.unpack(SINK_KEYS)
+		)
+	end)
+end
+
+local function endInputSink()
+	pcall(function() ContextActionService:UnbindAction(INPUT_SINK_ACTION) end)
+end
+
 local SmoothInput
 ;(function()
 SmoothInput = {}
@@ -724,6 +755,7 @@ function SmoothInput.new(options)
 	self.InstantNext = false
 	self.Destroyed = false
 	self.BlinkClock = 0
+	self.LastInsideClick = 0
 
 	local parent = options.Parent
 	local font = options.Font or FONT_BODY
@@ -819,6 +851,16 @@ function SmoothInput.new(options)
 	capture.Parent = root
 	self.Capture = capture
 
+	local function markInside(inputObject)
+		if inputObject.UserInputType == Enum.UserInputType.MouseButton1
+			or inputObject.UserInputType == Enum.UserInputType.MouseButton2
+			or inputObject.UserInputType == Enum.UserInputType.Touch then
+			self.LastInsideClick = os.clock()
+		end
+	end
+	root.InputBegan:Connect(markInside)
+	capture.InputBegan:Connect(markInside)
+
 	local measure = Instance.new("TextLabel")
 	measure.Name = "Measure"
 	measure.BackgroundTransparency = 1
@@ -877,6 +919,13 @@ function SmoothInput.new(options)
 	capture.Focused:Connect(function()
 		if self.Destroyed then return end
 		ActiveInput = self
+		-- capture.Focused
+		ActiveInput = self
+		beginInputSink()
+
+		-- capture.FocusLost
+		if ActiveInput == self then ActiveInput = nil end
+		endInputSink()
 		self.Focused = true
 		self.BlinkClock = 0
 		self:_updatePlaceholder()
@@ -1213,9 +1262,44 @@ function SmoothInput:Destroy()
 	if self._blinkConnection then
 		self._blinkConnection:Disconnect()
 	end
+	if ActiveInput == self then
+		ActiveInput = nil
+		endInputSink()
+	end
 	self.Root:Destroy()
 end
 end)()
+
+connect(UserInputService.InputBegan, function(inputObject)
+	local active = ActiveInput
+	if not active or active.Destroyed then
+		return
+	end
+
+	if inputObject.UserInputType == Enum.UserInputType.Keyboard
+		and inputObject.KeyCode == Enum.KeyCode.Escape then
+		active:Blur()
+		return
+	end
+
+	if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1
+		and inputObject.UserInputType ~= Enum.UserInputType.MouseButton2
+		and inputObject.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+
+	task.defer(function()
+		local current = ActiveInput
+		if not current or current.Destroyed or not current.Focused then
+			return
+		end
+		if os.clock() - (current.LastInsideClick or 0) < 0.1 then
+			return          -- клик пришёлся по самому полю
+		end
+		current:Blur()
+	end)
+end)
+
 ------------------------------------------------------------------------------------------------------------------------
 --  Dragging helper
 ------------------------------------------------------------------------------------------------------------------------
@@ -3403,7 +3487,7 @@ end)
 makeDraggable(Header, Main)
 
 connect(UserInputService.InputBegan, function(input, gameProcessed)
-	if gameProcessed then return end
+	if gameProcessed or ActiveInput then return end
 	if input.UserInputType == Enum.UserInputType.Keyboard then
 		local bindName = getSetting("General", "amphibiaOpen")
 		if bindName and input.KeyCode.Name == bindName and InterfaceRevealed then
@@ -3852,7 +3936,7 @@ function BindSystem.LoadSerialized(list)
 end
 
 connect(UserInputService.InputBegan, function(input, gameProcessed)
-	if gameProcessed or BindSystem.CaptureActive then return end
+	if gameProcessed or ActiveInput or BindSystem.CaptureActive then return end
 	for _, bind in ipairs(BindSystem.Binds) do
 		if inputMatchesBind(input, bind.Key) then
 			task.spawn(BindSystem.Execute, bind, true)
@@ -3861,7 +3945,7 @@ connect(UserInputService.InputBegan, function(input, gameProcessed)
 end)
 
 connect(UserInputService.InputEnded, function(input, gameProcessed)
-	if gameProcessed then return end
+	if gameProcessed or ActiveInput then return end
 	for _, bind in ipairs(BindSystem.Binds) do
 		if bind.Mode == "Hold" and inputMatchesBind(input, bind.Key) then
 			task.spawn(BindSystem.Execute, bind, false)
@@ -4675,8 +4759,12 @@ end
 
 --========================================================= Dropdown =================================================--
 
-local DROPDOWN_GAP = 6      -- фиксированный отступ от нижней грани чипа
-local DROPDOWN_FLIP = false -- true — разворачивать вверх, если не влезает вниз
+local DROPDOWN_GAP = 6      	  -- фиксированный отступ от нижней грани чипа
+local DROPDOWN_FLIP = false 	  -- true — разворачивать вверх, если не влезает вниз
+local DROPDOWN_MAX_HEIGHT = 220   -- полная высота окна, ≈ 7 пунктов
+local DROPDOWN_ITEM_HEIGHT = 25
+local DROPDOWN_ITEM_GAP = 5
+local DROPDOWN_PADDING = 12       -- UIPadding окна: 6 сверху + 6 снизу
 
 function SectionClass:CreateDropdown(options)
 	options = options or {}
@@ -4792,6 +4880,45 @@ function SectionClass:CreateDropdown(options)
 		window.Size = UDim2.new(0, width, 0, 0)
 		window.ZIndex = 41
 
+		-- шаблонную раскладку убираем: список строим сами, внутри скроллера
+		local templateLayout = window:FindFirstChildOfClass("UIListLayout")
+		if templateLayout then
+			templateLayout:Destroy()
+		end
+
+		local count = math.max(#element.Options, 1)
+		local contentHeight = count * DROPDOWN_ITEM_HEIGHT + (count - 1) * DROPDOWN_ITEM_GAP
+		local viewHeight = math.min(contentHeight, DROPDOWN_MAX_HEIGHT - DROPDOWN_PADDING)
+		local windowHeight = viewHeight + DROPDOWN_PADDING
+
+		pcall(function() window.AutomaticSize = Enum.AutomaticSize.None end)
+		window.Size = UDim2.new(0, width, 0, windowHeight)
+
+		local list = Instance.new("ScrollingFrame")
+		list.Name = "List"
+		list.BackgroundTransparency = 1
+		list.BorderSizePixel = 0
+		list.Position = UDim2.new(0, 0, 0, 0)
+		list.Size = UDim2.new(1, 0, 1, 0)
+		list.CanvasSize = UDim2.new(0, 0, 0, contentHeight)
+		list.ScrollingDirection = Enum.ScrollingDirection.Y
+		list.ScrollBarThickness = (contentHeight > viewHeight) and 2 or 0
+		list.ScrollBarImageColor3 = Color3.fromRGB(88, 88, 88)
+		list.ScrollBarImageTransparency = 0.35
+		list.ClipsDescendants = true
+		list.Active = true
+		list.ZIndex = window.ZIndex
+		pcall(function() list.VerticalScrollBarInset = Enum.ScrollBarInset.None end)
+		list.Parent = window
+
+		local listLayout = Instance.new("UIListLayout")
+		listLayout.FillDirection = Enum.FillDirection.Vertical
+		listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		listLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+		listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		listLayout.Padding = UDim.new(0, DROPDOWN_ITEM_GAP)
+		listLayout.Parent = list
+
 		local itemButtons = {}
 		local function renderItems()
 			for optionName, item in pairs(itemButtons) do
@@ -4807,6 +4934,8 @@ function SectionClass:CreateDropdown(options)
 			item.Name = "Item_" .. index
 			item.LayoutOrder = index
 			item.ZIndex = 42
+			pcall(function() item.AutomaticSize = Enum.AutomaticSize.None end)
+			item.Size = UDim2.new(1, -4, 0, DROPDOWN_ITEM_HEIGHT)
 			nameLabel(item).Text = optionName
 			nameLabel(item).Position = UDim2.new(0, 0, 0, 0)
 			pcall(function() nameLabel(item).TextTruncate = Enum.TextTruncate.AtEnd end)
@@ -4831,7 +4960,7 @@ function SectionClass:CreateDropdown(options)
 					commit()
 				end
 			end)
-			item.Parent = window
+			item.Parent = list
 			itemButtons[optionName] = item
 		end
 		renderItems()
@@ -4843,8 +4972,7 @@ function SectionClass:CreateDropdown(options)
 		local anchor = screenPointFor(selectedFrame.AbsolutePosition)
 
 		-- точная высота: UIPadding 6+6, пункты по 25, шаг списка 5
-		local count = math.max(#element.Options, 1)
-		local exactHeight = (count * 25 + (count - 1) * 5 + 12) * scaleNow
+		local exactHeight = windowHeight * scaleNow
 		local windowWidth = width * scaleNow
 
 		local chipHeight = selectedFrame.AbsoluteSize.Y
