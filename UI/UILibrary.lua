@@ -454,7 +454,7 @@ local function TC(color: Color3): Color3
 end
 
 -- Snapshot of original (authored) colours, per instance. Weak keys so destroyed instances free themselves.
-local ThemeRegistry = setmetatable({}, { __mode = "k" })
+local ThemeRegistry = {}
 
 local COLOR_PROPS = {
 	Frame = { "BackgroundColor3" },
@@ -669,6 +669,46 @@ local function toChars(text: string): { string }
 	return chars
 end
 
+local WidthCache = {}
+
+function SmoothInput:_charWidth(char: string): number
+	local key = tostring(self.Font) .. "|" .. tostring(self.TextSize) .. "|" .. char
+	local cached = WidthCache[key]
+	if cached then
+		return cached
+	end
+	local width
+	local ok, bounds = pcall(function()
+		local params = Instance.new("GetTextBoundsParams")
+		params.Text = char
+		params.Font = self.Font
+		params.Size = self.TextSize
+		return TextService:GetTextBoundsAsync(params)
+	end)
+	if ok and bounds and bounds.X > 0 then
+		width = bounds.X
+	else
+		self.Measure.Text = char          -- запасной путь
+		width = self.Measure.TextBounds.X
+	end
+	WidthCache[key] = width
+	return width
+end
+
+function SmoothInput:_updatePlaceholder(instant: boolean?)
+	local visible = self.Text == ""
+	self.Placeholder.Visible = visible
+	local target = 1
+	if visible then
+		target = self.Focused and 0.62 or (self.Options.PlaceholderTransparency or 0.35)
+	end
+	if instant then
+		self.Placeholder.TextTransparency = target
+	else
+		tween(self.Placeholder, CHAR_IN, { TextTransparency = target })
+	end
+end
+
 function SmoothInput.new(options)
 	local self = setmetatable({}, SmoothInput)
 
@@ -836,7 +876,7 @@ function SmoothInput.new(options)
 		if self.Destroyed then return end
 		self.Focused = true
 		self.BlinkClock = 0
-		tween(placeholder, CHAR_IN, { TextTransparency = self.Text == "" and 0.62 or 1 })
+		self:_updatePlaceholder()
 		if options.OnFocus then
 			task.spawn(options.OnFocus)
 		end
@@ -848,7 +888,7 @@ function SmoothInput.new(options)
 		self.Focused = false
 		selection.Visible = false
 		tween(caret, CHAR_OUT, { BackgroundTransparency = 1 })
-		tween(placeholder, CHAR_IN, { TextTransparency = self.Text == "" and (options.PlaceholderTransparency or 0.35) or 1 })
+		self:_updatePlaceholder()
 		if enterPressed and options.OnSubmit then
 			task.spawn(options.OnSubmit, self.Text)
 		end
@@ -896,11 +936,10 @@ function SmoothInput:_measureWidth(text: string): number
 end
 
 function SmoothInput:_recomputeWidths()
-	local prefix = ""
-	local widths = {}
+	local widths, total = {}, 0
 	for index, entry in ipairs(self.Chars) do
-		prefix ..= entry.Char
-		widths[index] = self:_measureWidth(prefix)
+		total += self:_charWidth(entry.Char)
+		widths[index] = total
 	end
 	self.Widths = widths
 end
@@ -914,7 +953,7 @@ function SmoothInput:_makeLabel(char: string): TextLabel
 	label.Text = char
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
-	label.Size = UDim2.new(0, math.max(4, self:_measureWidth(char)) + 3, 1, 0)
+	label.Size = UDim2.new(0, math.max(4, self:_charWidth(char)) + 3, 1, 0)
 	label.ZIndex = self.Root.ZIndex + 1
 	label.Parent = self.CharsHolder
 	return label
@@ -979,16 +1018,9 @@ function SmoothInput:_onTextChanged(rawText: string)
 	self:_reflow(instant)
 	self:_updateCaret(not instant)
 
-	if sanitized ~= oldText then
-		self.Placeholder.TextTransparency = 1
-		if sanitized == "" then
-			tween(self.Placeholder, CHAR_IN, {
-				TextTransparency = self.Focused and 0.62 or (self.Options.PlaceholderTransparency or 0.35),
-			})
-		end
-		if self.Options.OnChanged then
-			task.spawn(self.Options.OnChanged, sanitized)
-		end
+	self:_updatePlaceholder(instant)
+	if sanitized ~= oldText and self.Options.OnChanged then
+		task.spawn(self.Options.OnChanged, sanitized)
 	end
 end
 
@@ -2483,6 +2515,23 @@ local ScreensFolder = Main:WaitForChild("Screens")
 local OtherFolder = ScreenGui:WaitForChild("Other")
 local ShowUiButton = ScreenGui:WaitForChild("ShowUiButton")
 
+-- Где на экране находится точка (0,0) нашего канваса. Работает независимо от IgnoreGuiInset.
+local function canvasOrigin(): Vector2
+	return ScreenGui.AbsolutePosition
+end
+
+-- AbsolutePosition любого элемента -> координаты внутри канваса
+local function screenPointFor(absolutePosition: Vector2): Vector2
+	return absolutePosition - canvasOrigin()
+end
+
+-- позиция мыши -> координаты внутри канваса
+local function mousePoint(): Vector2
+	local location = UserInputService:GetMouseLocation()
+	local inset = GuiService:GetGuiInset()
+	return Vector2.new(location.X + inset.X, location.Y + inset.Y) - canvasOrigin()
+end
+
 local LoadingScreen = ScreensFolder:WaitForChild("LoadingScreen")
 local EnterKeyScreen = ScreensFolder:WaitForChild("EnterKeyScreen")
 local ConfirmScreen = ScreensFolder:WaitForChild("ConfirmScreen")
@@ -3951,8 +4000,7 @@ function SectionClass:_mount(element, row, options)
 			local now = os.clock()
 			if now - lastMenuOpen < 0.25 then return end
 			lastMenuOpen = now
-			local mouse = UserInputService:GetMouseLocation()
-			BindSystem.OpenMenu(element, Vector2.new(mouse.X, mouse.Y))
+			BindSystem.OpenMenu(element, mousePoint())
 		end
 		-- InputBegan doesn't bubble, so hook the row AND everything inside it — right click must
 		-- work over sliders, chips and inputs, not only over the name label
@@ -4000,6 +4048,7 @@ function SectionClass:CreateToggle(options)
 			tween(stroke, colorInfo, { Color = TC(on and Color3.fromRGB(175, 175, 175) or Color3.fromRGB(75, 75, 75)) })
 		end
 		if dotShadow then
+			dotShadow.Enabled = on
 			tween(dotShadow, colorInfo, { Transparency = on and 0 or 1 })
 		end
 		valueLabel.Text = on and "On" or "Off"
@@ -4025,6 +4074,7 @@ function SectionClass:CreateToggle(options)
 	render(true)
 	registerFlag(element, element.CurrentValue)
 	onThemeRefresh(function() render(true) end)
+	element.Render = render
 	return self:_mount(element, row, options)
 end
 
@@ -4260,6 +4310,7 @@ function SectionClass:CreateNumberPicker(options)
 	valueLabel.Text = tostring(element.CurrentValue)
 	renderBounds()
 	registerFlag(element, element.CurrentValue)
+	element.Render = renderBounds
 	return self:_mount(element, row, options)
 end
 
@@ -4275,6 +4326,15 @@ function SectionClass:CreateInput(options)
 	local label = nameLabel(row)
 	label.Text = options.Name or "Textbox"
 	local box = row.TextboxBg
+	local boxWidth = options.BoxWidth or 150
+
+	box.AnchorPoint = Vector2.new(1, 0.5)
+	box.Position = UDim2.new(0.98, 0, 0.5, 0)
+	box.Size = UDim2.new(0, boxWidth, 0, 23)
+
+	pcall(function() label.AutomaticSize = Enum.AutomaticSize.None end)
+	label.Size = UDim2.new(1, -(boxWidth + 26), 1, 0)
+	pcall(function() label.TextTruncate = Enum.TextTruncate.AtEnd end)
 	local stroke = box:FindFirstChildOfClass("UIStroke")
 	box.Text.Visible = false
 
@@ -4512,6 +4572,7 @@ function SectionClass:CreateSelector(options)
 	renderSelection(true)
 	registerFlag(element, element.CurrentOption)
 	onThemeRefresh(function() renderSelection(true) end)
+	element.Render = renderSelection
 	return self:_mount(element, row, options)
 end
 
@@ -4562,12 +4623,6 @@ end
 --  Floating overlay windows (dropdown lists, colour picker)
 ------------------------------------------------------------------------------------------------------------------------
 
-local function screenPointFor(absolutePosition: Vector2): Vector2
-	-- AbsolutePosition and the floating container's offsets live in the same gui canvas,
-	-- so no inset adjustment is ever correct here
-	return absolutePosition
-end
-
 -- Creates a fullscreen catcher + positions `content` (scaled to match the window scale). Returns close().
 local function openFloating(content: GuiObject, position: Vector2, onClose)
 	local container = Instance.new("Frame")
@@ -4614,6 +4669,9 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 end
 
 --========================================================= Dropdown =================================================--
+
+local DROPDOWN_GAP = 6      -- фиксированный отступ от нижней грани чипа
+local DROPDOWN_FLIP = false -- true — разворачивать вверх, если не влезает вниз
 
 function SectionClass:CreateDropdown(options)
 	options = options or {}
@@ -4775,23 +4833,30 @@ function SectionClass:CreateDropdown(options)
 		themeRegisterDeep(window)
 		themeApplyDeep(window)
 
-		local anchor = screenPointFor(selectedFrame.AbsolutePosition)
 		local scaleNow = math.max(MainScale.Scale, 0.01)
-		local camera = workspace.CurrentCamera
-		local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+		local viewport = ScreenGui.AbsoluteSize
+		local anchor = screenPointFor(selectedFrame.AbsolutePosition)
+
+		-- точная высота: UIPadding 6+6, пункты по 25, шаг списка 5
+		local count = math.max(#element.Options, 1)
+		local exactHeight = (count * 25 + (count - 1) * 5 + 12) * scaleNow
 		local windowWidth = width * scaleNow
-		local estimatedHeight = (#element.Options * 30 + 14) * scaleNow
-		-- right edge of the window hugs the right edge of the selected chip
-		local x = math.clamp(anchor.X + selectedFrame.AbsoluteSize.X - windowWidth, 8, math.max(8, viewport.X - windowWidth - 8))
+
 		local chipHeight = selectedFrame.AbsoluteSize.Y
 		if chipHeight < 5 then chipHeight = 25 * scaleNow end
-		local y = anchor.Y + chipHeight + 8
+
+		local x = math.clamp(
+			anchor.X + selectedFrame.AbsoluteSize.X - windowWidth,
+			8, math.max(8, viewport.X - windowWidth - 8))
+
+		local y = anchor.Y + chipHeight + DROPDOWN_GAP * scaleNow
 		local opensUpward = false
-		if y + estimatedHeight > viewport.Y - 8 then
-			y = anchor.Y - estimatedHeight - 8
+		if DROPDOWN_FLIP and y + exactHeight > viewport.Y - 8 then
+			y = anchor.Y - exactHeight - DROPDOWN_GAP * scaleNow
 			opensUpward = true
 		end
-		local target = Vector2.new(x, math.max(8, y))
+
+		local target = Vector2.new(x, y)
 
 		tween(arrowIcon, "Out", { Rotation = 180 })
 		local close
@@ -5096,8 +5161,7 @@ function SectionClass:CreateColorPicker(options)
 		local anchor = screenPointFor(preview.AbsolutePosition)
 		local scaleNow = MainScale.Scale
 		local windowWidth, windowHeight = 195 * scaleNow, 301 * scaleNow
-		local camera = workspace.CurrentCamera
-		local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+		local viewport = ScreenGui.AbsoluteSize
 		local x = math.clamp(anchor.X + preview.AbsoluteSize.X + 12, 8, viewport.X - windowWidth - 8)
 		local y = math.clamp(anchor.Y - windowHeight / 2, 8, viewport.Y - windowHeight - 8)
 
@@ -5232,6 +5296,9 @@ function WindowClass:CreateTab(options)
 	themeRegisterDeep(button)
 	themeApplyDeep(button)
 	styleTabButton(button, false, true)
+	onThemeRefresh(function()
+		styleTabButton(button, self.ActiveTab == self2, true)
+	end)
 	button.Parent = category.TabsHolder
 	self2.Button = button
 
@@ -5261,6 +5328,15 @@ function TabClass:CreateSection(options)
 	return createSection(self, options)
 end
 
+local function refreshTabVisuals(tab)
+	if not tab or tab.IsConfig then return end
+	for _, element in ipairs(tab.Elements) do
+		if element.Render then
+			pcall(element.Render, true)
+		end
+	end
+end
+
 function WindowClass:SelectTab(tab, instant: boolean?)
 	if self.ActiveTab == tab then
 		return
@@ -5283,11 +5359,13 @@ function WindowClass:SelectTab(tab, instant: boolean?)
 	if instant then
 		primeFade(page)
 		page.Visible = true
+		refreshTabVisuals(tab)
 	else
 		task.delay(previous and 0.1 or 0, function()
 			page.Position = UDim2.new(0.5, 0, 0.5, 10)
 			fadeIn(page, 0.22)
 			tween(page, "Out", { Position = UDim2.new(0.5, 0, 0.5, 0) })
+			task.delay(0.24, function() refreshTabVisuals(tab) end)
 		end)
 	end
 	if tab.IsConfig and self.OnConfigTabOpened then
@@ -6253,8 +6331,7 @@ BindSystem.OpenMenu = function(element, position)
 	renderBinds()
 
 	-- position & open ---------------------------------------------------------------------------------------
-	local camera = workspace.CurrentCamera
-	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+	local viewport = ScreenGui.AbsoluteSize
 	local scaleNow = math.max(MainScale.Scale, 0.01)
 	local panelWidth = 264 * scaleNow
 	local x = math.clamp(position.X + 10, 8, math.max(8, viewport.X - panelWidth - 8))
@@ -6310,6 +6387,10 @@ local function revealInterface(window)
 			end
 		end)
 	end
+
+	task.delay(#sections * 0.07 + 0.4, function()
+		refreshTabVisuals(tab)
+	end)
 end
 ------------------------------------------------------------------------------------------------------------------------
 --  Configuration system
@@ -6971,8 +7052,7 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 	themeApplyDeep(menu)
 
 	-- open next to the cursor (offset so no entry starts underneath it), clamped on-screen
-	local camera = workspace.CurrentCamera
-	local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+	local viewport = ScreenGui.AbsoluteSize
 	local scaleNow = math.max(MainScale.Scale, 0.01)
 	local menuWidth = 153 * scaleNow
 	local menuHeight = 250 * scaleNow
@@ -7038,8 +7118,7 @@ refreshConfigs = function()
 		end)
 		row.MouseButton2Click:Connect(function()
 			setSelectedConfig(config.Name)
-			local mouse = UserInputService:GetMouseLocation()
-			openConfigContextMenu(config.Name, Vector2.new(mouse.X, mouse.Y))
+			openConfigContextMenu(config.Name, mousePoint())
 		end)
 		row.MouseEnter:Connect(function()
 			if ConfigSystem.SelectedConfig ~= config.Name then
@@ -7202,6 +7281,9 @@ function WindowClass:CreateConfigTab(options)
 	themeRegisterDeep(button)
 	themeApplyDeep(button)
 	styleTabButton(button, false, true)
+	onThemeRefresh(function()
+		styleTabButton(button, self.ActiveTab == tab, true)
+	end)
 	button.Parent = category.TabsHolder
 	tab.Button = button
 
