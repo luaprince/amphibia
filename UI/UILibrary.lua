@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Build 0.83 — full release build.
+	Build 0.91 — full release build.
 
 	Quick start:
 
@@ -23,7 +23,7 @@
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.83",
+			Version = "v0.91",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
