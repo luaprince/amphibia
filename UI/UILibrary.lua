@@ -15,15 +15,13 @@
 	Amphibia User Interface Library
 	by Less
 
-	Build 0.83 — full release build.
-
 	Quick start:
 
 		local Amphibia = loadstring(readfile("Amphibia.lua"))()
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.83",
+			Version = "v0.1",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
