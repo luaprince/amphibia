@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Build 0.83 — full release build.
+	Build 0.9 — full release build.
 
 	Quick start:
 
@@ -23,7 +23,7 @@
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.83",
+			Version = "v0.9",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
@@ -651,6 +651,8 @@ end
 --  editing (so IME / paste / arrows keep working), while we own the presentation completely.
 ------------------------------------------------------------------------------------------------------------------------
 
+local ActiveInput = nil
+
 local SmoothInput
 ;(function()
 SmoothInput = {}
@@ -874,6 +876,7 @@ function SmoothInput.new(options)
 
 	capture.Focused:Connect(function()
 		if self.Destroyed then return end
+		ActiveInput = self
 		self.Focused = true
 		self.BlinkClock = 0
 		self:_updatePlaceholder()
@@ -885,6 +888,7 @@ function SmoothInput.new(options)
 
 	capture.FocusLost:Connect(function(enterPressed)
 		if self.Destroyed then return end
+		if ActiveInput == self then ActiveInput = nil end
 		self.Focused = false
 		selection.Visible = false
 		tween(caret, CHAR_OUT, { BackgroundTransparency = 1 })
@@ -1205,6 +1209,7 @@ end
 
 function SmoothInput:Destroy()
 	self.Destroyed = true
+	if ActiveInput == self then ActiveInput = nil end
 	if self._blinkConnection then
 		self._blinkConnection:Disconnect()
 	end
@@ -2524,6 +2529,41 @@ end
 local function screenPointFor(absolutePosition: Vector2): Vector2
 	return absolutePosition - canvasOrigin()
 end
+
+connect(UserInputService.InputBegan, function(input)
+	local active = ActiveInput
+	if not active or active.Destroyed or not active.Focused then
+		return
+	end
+
+	if input.UserInputType == Enum.UserInputType.Keyboard
+		and input.KeyCode == Enum.KeyCode.Escape then
+		active:Blur()
+		return
+	end
+
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1
+		and input.UserInputType ~= Enum.UserInputType.MouseButton2
+		and input.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+
+	local root = active.Root
+	if not root or not root.Parent then
+		active:Blur()
+		return
+	end
+
+	local inset = GuiService:GetGuiInset()
+	local point = Vector2.new(input.Position.X + inset.X, input.Position.Y + inset.Y)
+	local topLeft = root.AbsolutePosition
+	local bottomRight = topLeft + root.AbsoluteSize
+
+	if point.X < topLeft.X or point.X > bottomRight.X
+		or point.Y < topLeft.Y or point.Y > bottomRight.Y then
+		active:Blur()
+	end
+end)
 
 -- позиция мыши -> координаты внутри канваса
 local function mousePoint(): Vector2
@@ -4670,8 +4710,9 @@ end
 
 --========================================================= Dropdown =================================================--
 
-local DROPDOWN_GAP = 6      -- фиксированный отступ от нижней грани чипа
-local DROPDOWN_FLIP = false -- true — разворачивать вверх, если не влезает вниз
+local DROPDOWN_GAP = 6      	  -- фиксированный отступ от нижней грани чипа
+local DROPDOWN_FLIP = false 	  -- true — разворачивать вверх, если не влезает вниз
+local DROPDOWN_MAX_HEIGHT = 220   -- ≈ 7 пунктов; в «дизайнерских» px, до умножения на scale
 
 function SectionClass:CreateDropdown(options)
 	options = options or {}
@@ -4797,6 +4838,42 @@ function SectionClass:CreateDropdown(options)
 			end
 		end
 
+		local count = math.max(#element.Options, 1)
+		local contentHeight = count * 25 + (count - 1) * 5 + 12
+		local scrollable = contentHeight > DROPDOWN_MAX_HEIGHT
+		local windowHeight = scrollable and DROPDOWN_MAX_HEIGHT or contentHeight
+
+		if scrollable then
+			pcall(function() window.AutomaticSize = Enum.AutomaticSize.None end)
+			window.Size = UDim2.new(0, width, 0, windowHeight)
+
+			local list = Instance.new("ScrollingFrame")
+			list.Name = "List"
+			list.BackgroundTransparency = 1
+			list.BorderSizePixel = 0
+			list.Size = UDim2.new(1, 0, 1, 0)
+			list.CanvasSize = UDim2.new(0, 0, 0, 0)
+			list.ScrollBarThickness = 2
+			list.ScrollBarImageColor3 = Color3.fromRGB(88, 88, 88)
+			list.ScrollBarImageTransparency = 0.35
+			list.ZIndex = window.ZIndex
+			pcall(function() list.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
+			pcall(function() list.VerticalScrollBarInset = Enum.ScrollBarInset.None end)
+			list.Parent = window
+
+			-- раскладку и сами пункты переносим внутрь скроллера,
+			-- UIPadding и UICorner остаются на окне
+			local layout = window:FindFirstChildOfClass("UIListLayout")
+			if layout then
+				layout.Parent = list
+			end
+			for _, child in ipairs(window:GetChildren()) do
+				if child:IsA("ImageButton") then
+					child.Parent = list
+				end
+			end
+		end
+
 		for index, optionName in ipairs(element.Options) do
 			local item = Templates.DropdownItem:Clone()
 			item.Name = "Item_" .. index
@@ -4838,8 +4915,7 @@ function SectionClass:CreateDropdown(options)
 		local anchor = screenPointFor(selectedFrame.AbsolutePosition)
 
 		-- точная высота: UIPadding 6+6, пункты по 25, шаг списка 5
-		local count = math.max(#element.Options, 1)
-		local exactHeight = (count * 25 + (count - 1) * 5 + 12) * scaleNow
+		local exactHeight = windowHeight * scaleNow
 		local windowWidth = width * scaleNow
 
 		local chipHeight = selectedFrame.AbsoluteSize.Y
