@@ -15,13 +15,15 @@
 	Amphibia User Interface Library
 	by Less
 
+	Build: "A1"
+
 	Quick start:
 
 		local Amphibia = loadstring(readfile("Amphibia.lua"))()
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.1337",
+			Version = "v0.1",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
@@ -6510,7 +6512,7 @@ BindSystem.OpenMenu = function(element, position)
 		renderBinds()
 	end)
 
-	renderBinds()a
+	renderBinds()
 
 	-- position & open ---------------------------------------------------------------------------------------
 	local viewport = ScreenGui.AbsoluteSize
