@@ -21,7 +21,7 @@
 
 		local Window = Amphibia:CreateWindow({
 			Name = "amphibia",
-			Version = "v0.1",
+			Version = "v0.1337",
 			ToggleUIKeybind = "K",
 
 			KeySystem = true,
@@ -6510,14 +6510,14 @@ BindSystem.OpenMenu = function(element, position)
 		renderBinds()
 	end)
 
-	renderBinds()
+	renderBinds()a
 
 	-- position & open ---------------------------------------------------------------------------------------
 	local viewport = ScreenGui.AbsoluteSize
 	local scaleNow = math.max(MainScale.Scale, 0.01)
 	local panelWidth = 264 * scaleNow
-	local x = math.clamp(position.X + 10, 8, math.max(8, viewport.X - panelWidth - 8))
-	local y = math.clamp(position.Y + 6, 8, math.max(8, viewport.Y - 340 * scaleNow))
+	local x = math.clamp(position.X, 8, math.max(8, viewport.X - menuWidth - 8))
+	local y = math.clamp(position.Y, 8, math.max(8, viewport.Y - menuHeight - 8))
 
 	openFloating(panel, Vector2.new(x, y), function()
 		BindSystem.MenuOpen = false
@@ -7239,8 +7239,8 @@ local function openConfigContextMenu(configName: string, position: Vector2)
 	+ 7 * CONFIG_MENU.ItemHeight
 	+ 3 * CONFIG_MENU.SeparatorHeight
 	+ 9 * CONFIG_MENU.ItemGap) * scaleNow
-	local x = math.clamp(position.X + 10, 8, math.max(8, viewport.X - menuWidth - 8))
-	local y = math.clamp(position.Y + 6, 8, math.max(8, viewport.Y - menuHeight - 8))
+	local x = math.clamp(position.X, 8, math.max(8, viewport.X - menuWidth - 8))
+	local y = math.clamp(position.Y, 8, math.max(8, viewport.Y - menuHeight - 8))
 
 	closeMenu = openFloating(menu, Vector2.new(x, y), function()
 		fadeOut(menu, 0.12)
