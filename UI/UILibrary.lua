@@ -12,7 +12,7 @@
 		      ░  ░          ░                   ░  ░  ░    ░      ░          ░           ░  ░   
 		                                                               ░                        
 
-	Amphibia User Interface Libraryfffff
+	Amphibia User Interface Library
 	by Less
 
 	Build 0.83 — full release build.
@@ -2503,7 +2503,7 @@ local GuiData =
 					{"TextLabel",{AnchorPoint=v2(0,0.5),AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),Name="Name",Position=u2(0.2502,0,0.5,0),Size=u2(0,5,1,0),Text="Delete",TextColor3=c3(196,122,122),TextSize=15,TextXAlignment=2,TextYAlignment=1},{
 					}},
 				}},
-				{"Frame",{BackgroundColor3=c3(40,40,40),LayoutOrder=2,Name="Separator",Position=u2(0,0,0,0),Size=u2(1.02,0,0,2)},{
+				{"Frame",{BackgroundColor3=c3(40,40,40),LayoutOrder=2,Name="Separator",Position=u2(0,0,0,0),Size=u2(0,153,0,2)},{
 				}},
 				{"UIPadding",{PaddingBottom=ud(0,3),PaddingLeft=ud(0,3),PaddingRight=ud(0,10),PaddingTop=ud(0,3)},{
 				}},
