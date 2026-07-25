@@ -15,6 +15,8 @@
 	Amphibia User Interface Library
 	by Less
 
+	Developer info: "A4"
+
 	Quick start:
 
 		local Amphibia = loadstring(readfile("Amphibia.lua"))()
