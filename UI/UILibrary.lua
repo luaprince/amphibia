@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Developer info: "A8"
+	Developer info: "A8.1"
 
 	Quick start:
 
@@ -1500,7 +1500,7 @@ local GuiData =
 										}},
 										{"ImageButton",{Active=true,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Image="",ImageColor3=c3(255,255,255),ImageTransparency=1,Name="ValueButton",Position=u2(0.5822,0,0.32,0),Size=u2(0,97,0,24),SliceScale=1,TileSize=u2(1,0,1,0),ZIndex=3},{
 										}},
-										{"TextLabel",{AnchorPoint=v2(0.5,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187368093",700,"Normal"),Name="HexValue",Position=u2(0.7593,0,0.5,0),Size=u2(0,68,0,50),Text="8FA8A0",TextColor3=c3(222,222,222),TextSize=20,TextWrapped=true,TextXAlignment=0,TextYAlignment=1},{
+										{"TextLabel",{AnchorPoint=v2(0.5,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187368093",400,"Normal"),Name="HexValue",Position=u2(0.7593,0,0.5,0),Size=u2(0,68,0,50),Text="8FA8A0",TextColor3=c3(222,222,222),TextSize=20,TextWrapped=true,TextXAlignment=0,TextYAlignment=1},{
 										}},
 									}},
 								}},
