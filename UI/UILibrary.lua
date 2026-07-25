@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Developer info: "A6"
+	Developer info: "A7.1"
 
 	Quick start:
 
@@ -3345,6 +3345,9 @@ local function applyKeybindsModeStyle(instant: boolean?)
 	end
 	if KeybindsListShadow then
 		tween(KeybindsListShadow, info, { Transparency = transparent and 0.7 or KeybindsAuthored.Shadow })
+	end
+	if KeybindsListIcon then
+		tween(KeybindsListIcon, info, { ImageTransparency = KeybindsAuthored.Icon })
 	end
 	for _, row in ipairs(KeybindsListFrame.BindsListHolder:GetChildren()) do
 		if row:IsA("GuiObject") then
