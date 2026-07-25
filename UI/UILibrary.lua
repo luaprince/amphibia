@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Developer info: "A4"
+	Developer info: "A5"
 
 	Quick start:
 
@@ -3322,6 +3322,7 @@ local KeybindsListShadow = KeybindsListFrame:FindFirstChildOfClass("UIShadow")
 local KeybindsListIcon = KeybindsListFrame:FindFirstChild("Icon")
 local KeybindsAuthored = {
 	Bg = KeybindsListFrame.BackgroundTransparency,
+	Icon = KeybindsListIcon and KeybindsListIcon.ImageTransparency or 0,
 	Stroke = KeybindsListStroke and KeybindsListStroke.Transparency or 0,
 	Shadow = KeybindsListShadow and KeybindsListShadow.Transparency or 0,
 }
