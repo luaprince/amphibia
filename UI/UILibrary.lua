@@ -4385,21 +4385,27 @@ function SectionClass:CreateNumberPicker(options)
 		tween(plusButton.Icon, "Fast", { ImageTransparency = atMax and 0.55 or 0 })
 	end
 
-	local function animateValue(direction: number)
-		valueLabel.Text = tostring(element.CurrentValue)
-		valueLabel.Position = UDim2.new(0.5, 0, 0.5, 6 * direction)
-		valueLabel.TextTransparency = 0.6
-		tween(valueLabel, "Out", { Position = UDim2.new(0.5, 0, 0.497, 0), TextTransparency = 0 })
+	local function animateValue(direction: number, instant: boolean?)
+	valueLabel.Text = tostring(element.CurrentValue)
+	if instant then
+		valueLabel.Position = UDim2.new(0.5, 0, 0.497, 0)
+		valueLabel.TextTransparency = 0
+		pcall(function() valueLabel:SetAttribute(FADE_ATTR .. "TextTransparency", 0) end)
+		return
+	end
+	valueLabel.Position = UDim2.new(0.5, 0, 0.5, 6 * direction)
+	valueLabel.TextTransparency = 0.6
+	tween(valueLabel, "Out", { Position = UDim2.new(0.5, 0, 0.497, 0), TextTransparency = 0 })
 	end
 
-	function element:Set(value: number, silent: boolean?)
+	function element:Set(value: number, silent: boolean?, instant: boolean?)
 		local previous = element.CurrentValue
 		value = math.clamp(round(value, increment), minValue, maxValue)
 		if value == previous and not silent then
 			return
 		end
 		element.CurrentValue = value
-		animateValue(value >= previous and 1 or -1)
+		animateValue(value >= previous and 1 or -1, instant)
 		renderBounds()
 		registerFlag(element, value)
 		if not silent then
@@ -4408,8 +4414,8 @@ function SectionClass:CreateNumberPicker(options)
 	end
 	element.GetSaveValue = function() return element.CurrentValue end
 	element.LoadSaveValue = function(_, value)
-		if type(value) == "number" then element:Set(value) end
-	end
+	if type(value) == "number" then element:Set(value, nil, true) end
+end
 
 	local function bindRepeat(button: GuiButton, direction: number)
 		local holding = false
