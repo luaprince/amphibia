@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Developer info: "A7.1"
+	Developer info: "A8"
 
 	Quick start:
 
@@ -2973,6 +2973,7 @@ end
 for _, screen in ipairs({ LoadingScreen, EnterKeyScreen, ConfirmScreen, DestructiveConfirmScreen, InputboxScreen, InputboxErrorScreen }) do
 	primeFade(screen)
 end
+primeFade(Main)
 
 ------------------------------------------------------------------------------------------------------------------------
 --  Notifications
@@ -3486,28 +3487,15 @@ local function setWindowOpen(open: boolean, instant: boolean?)
 	WindowOpen = open
 	if instant then
 		Main.Visible = open
-		MainScale.Scale = BaseScale
 		return
 	end
 	windowAnimating = true
 	if open then
-		Main.Visible = true
-		MainScale.Scale = BaseScale * 0.92
-		local goalPos = RememberedWindowPosition
-		Main.Position = goalPos + UDim2.new(0, 0, 0, 14)
-		tween(MainScale, "Back", { Scale = BaseScale })
-		tween(Main, "Back", { Position = goalPos })
-		task.delay(0.36, function() windowAnimating = false end)
+		fadeIn(Main, 0.26)
+		task.delay(0.26, function() windowAnimating = false end)
 	else
-		RememberedWindowPosition = Main.Position
-		local restorePos = Main.Position
-		tween(MainScale, TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In), { Scale = BaseScale * 0.92 })
-		tween(Main, TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In), { Position = restorePos + UDim2.new(0, 0, 0, 14) })
-		task.delay(0.23, function()
-			Main.Visible = false
-			Main.Position = restorePos
-			windowAnimating = false
-		end)
+		fadeOut(Main, 0.22)
+		task.delay(0.22, function() windowAnimating = false end)
 	end
 end
 
@@ -4190,8 +4178,10 @@ function SectionClass:CreateToggle(options)
 			tween(stroke, colorInfo, { Color = TC(on and Color3.fromRGB(175, 175, 175) or Color3.fromRGB(75, 75, 75)) })
 		end
 		if dotShadow then
-			dotShadow.Enabled = on
-			tween(dotShadow, colorInfo, { Transparency = on and 0 or 1 })
+    		dotShadow.Enabled = on
+    		local targetTransparency = on and 0 or 1
+    		tween(dotShadow, colorInfo, { Transparency = targetTransparency })
+    		pcall(function() dotShadow:SetAttribute(FADE_ATTR .. "Transparency", targetTransparency) end)
 		end
 		valueLabel.Text = on and "On" or "Off"
 		tween(valueLabel, colorInfo, { TextColor3 = TC(on and Color3.fromRGB(150, 150, 150) or Color3.fromRGB(102, 102, 102)) })
@@ -5194,6 +5184,7 @@ function SectionClass:CreateColorPicker(options)
 
 	local function renderRow()
 		preview.BackgroundColor3 = element.Color
+		preview.BackgroundTransparency = element.Transparency
 		hexValueLabel.Text = toHex(element.Color)
 	end
 
