@@ -15,8 +15,6 @@
 	Amphibia User Interface Library
 	by Less
 
-	Developer info: "A3"
-
 	Quick start:
 
 		local Amphibia = loadstring(readfile("Amphibia.lua"))()
@@ -3319,6 +3317,7 @@ KeybindsListTransparentFrame.Visible = false
 
 local KeybindsListStroke = KeybindsListFrame:FindFirstChildOfClass("UIStroke")
 local KeybindsListShadow = KeybindsListFrame:FindFirstChildOfClass("UIShadow")
+local KeybindsListIcon = KeybindsListFrame:FindFirstChild("Icon")
 local KeybindsAuthored = {
 	Bg = KeybindsListFrame.BackgroundTransparency,
 	Stroke = KeybindsListStroke and KeybindsListStroke.Transparency or 0,
@@ -3366,6 +3365,7 @@ local function setKeybindsListShown(shown: boolean, instant: boolean?)
 		if not instant then
 			KeybindsListFrame.BackgroundTransparency = 1
 			if KeybindsListStroke then KeybindsListStroke.Transparency = 1 end
+			if KeybindsListIcon then KeybindsListIcon.ImageTransparency = 1 end
 			if KeybindsListShadow then KeybindsListShadow.Transparency = 1 end
 			popWindow(KeybindsListFrame)
 		end
@@ -3378,6 +3378,7 @@ local function setKeybindsListShown(shown: boolean, instant: boolean?)
 		end
 	else
 		tween(KeybindsListFrame, info, { BackgroundTransparency = 1 })
+		if KeybindsListIcon then tween(KeybindsListIcon, info, {ImageTransparency = 1}) end
 		if KeybindsListStroke then tween(KeybindsListStroke, info, { Transparency = 1 }) end
 		if KeybindsListShadow then tween(KeybindsListShadow, info, { Transparency = 1 }) end
 		for _, descendant in ipairs(KeybindsListFrame:GetDescendants()) do
