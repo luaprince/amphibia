@@ -3007,6 +3007,30 @@ local CONFIG_MENU = {
 	TextX = 28,           -- левый край текста
 }
 
+-- Единственное место, где настраиваются размеры окон биндов. Обе панели авторазмерные по
+-- высоте, поэтому итоговая высота складывается из этих слагаемых:
+--   список  = PadY*2 + TitleHeight + RowGap + N*(RowHeight + RowGap) + SplitterHeight + RowGap + NewBindHeight
+--   редактор= EditorPadY*2 + 4*EditorRowHeight + 4*EditorRowGap + SplitterHeight
+-- Значения применяются поверх GuiData в рантайме, так что править нужно здесь, а не в дизайне.
+local BIND_MENU = {
+	ListWidth = 232,
+	RowHeight = 10,         -- высота строки бинда в списке
+	RowGap = 5,             -- зазор между строками списка
+	PadY = 5,               -- отступ списка сверху/снизу
+	PadX = 5,               -- отступ списка слева/справа
+	TitleHeight = 15,       -- строка заголовка "Binds"
+	NewBindHeight = 30,     -- строка "New Bind"
+	KeySlot = 19,           -- квадрат клавиши / стрелки справа в строке (не делать больше RowHeight-8)
+
+	EditorWidth = 210,
+	EditorRowHeight = 10,   -- высота строк Key / Mode / Value / Delete Bind
+	EditorRowGap = 3,       -- зазор между строками редактора
+	EditorPadY = 5,         -- отступ редактора сверху/снизу
+	EditorGap = 6,          -- расстояние между списком и редактором
+
+	SplitterHeight = 2,
+}
+
 local Templates = {}
 
 ;(function()
@@ -6625,7 +6649,7 @@ local function makeRightSlot(row)
 	slot.BackgroundTransparency = 1
 	slot.AnchorPoint = Vector2.new(1, 0.5)
 	slot.Position = UDim2.new(1, -4, 0.5, 0)
-	slot.Size = UDim2.new(0, 19, 0, 19)
+	slot.Size = UDim2.new(0, BIND_MENU.KeySlot, 0, BIND_MENU.KeySlot)
 	slot.ZIndex = row.ZIndex
 	slot.Parent = row
 
@@ -6940,7 +6964,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	local panel = BindEditorTemplate:Clone()
 	panel.Name = "KeybindRedacting"
 	panel.Visible = true
-	panel.Size = UDim2.new(0, 210, 0, 10)
+	panel.Size = UDim2.new(0, BIND_MENU.EditorWidth, 0, 10)
 	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.Y end)
 	panel.ZIndex = BIND_Z + 10
 	panel.AnchorPoint = Vector2.new(0, 0)
@@ -6957,12 +6981,22 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	-- rows carry small negative offsets that pull them out of the panel
 	local panelPadding = panel:FindFirstChildOfClass("UIPadding")
 	if panelPadding then
+		panelPadding.PaddingTop = UDim.new(0, BIND_MENU.EditorPadY)
+		panelPadding.PaddingBottom = UDim.new(0, BIND_MENU.EditorPadY)
 		panelPadding.PaddingLeft = panelPadding.PaddingRight
+	end
+	local panelLayout = panel:FindFirstChildOfClass("UIListLayout")
+	if panelLayout then
+		panelLayout.Padding = UDim.new(0, BIND_MENU.EditorRowGap)
+	end
+	local editorSplitter = panel:FindFirstChild("Splitter")
+	if editorSplitter then
+		editorSplitter.Size = UDim2.new(0.9, 0, 0, BIND_MENU.SplitterHeight)
 	end
 	for _, fieldRow in ipairs({ keyRow, modeRow, valueRow, deleteRow }) do
 		fieldRow.Position = UDim2.new(0, 0, 0, 0)
 		-- widened from the authored 153: the label and the control were nearly touching
-		fieldRow.Size = UDim2.new(1, 0, 0, 30)
+		fieldRow.Size = UDim2.new(1, 0, 0, BIND_MENU.EditorRowHeight)
 		local fieldLabel = fieldRow:FindFirstChild("Name")
 		if fieldLabel and fieldRow ~= deleteRow then
 			-- pin the caption left and stop it from running under the control
@@ -7168,7 +7202,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	local function place()
 		local listOrigin = screenPointFor(context.panel.AbsolutePosition)
 		return Vector2.new(
-			listOrigin.X + context.panel.AbsoluteSize.X + 6,
+			listOrigin.X + context.panel.AbsoluteSize.X + BIND_MENU.EditorGap,
 			listOrigin.Y)
 	end
 	local target = place()
@@ -7210,8 +7244,19 @@ BindSystem.BuildMenu = function(element, position)
 	panel.Visible = true
 	-- Fixed width, height still automatic. Every child is scale-width, and scale-sized children
 	-- contribute nothing to AutomaticSize, so leaving X automatic makes the panel collapse.
-	panel.Size = UDim2.new(0, 232, 0, 10)
+	panel.Size = UDim2.new(0, BIND_MENU.ListWidth, 0, 10)
 	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.Y end)
+	local listPadding = panel:FindFirstChildOfClass("UIPadding")
+	if listPadding then
+		listPadding.PaddingTop = UDim.new(0, BIND_MENU.PadY)
+		listPadding.PaddingBottom = UDim.new(0, BIND_MENU.PadY)
+		listPadding.PaddingLeft = UDim.new(0, BIND_MENU.PadX)
+		listPadding.PaddingRight = UDim.new(0, BIND_MENU.PadX)
+	end
+	local listLayout = panel:FindFirstChildOfClass("UIListLayout")
+	if listLayout then
+		listLayout.Padding = UDim.new(0, BIND_MENU.RowGap)
+	end
 	-- must sit above openFloating's full-screen catcher (ZIndex 40) or the catcher swallows
 	-- every click; the design's authored 20 was relative to a different parent
 	panel.ZIndex = BIND_Z
@@ -7225,7 +7270,7 @@ BindSystem.BuildMenu = function(element, position)
 	-- time the panel's width changed. Full width + the authored left padding pins it still.
 	local title = panel:FindFirstChild("Title")
 	if title then
-		title.Size = UDim2.new(1, 0, 0, 15)
+		title.Size = UDim2.new(1, 0, 0, BIND_MENU.TitleHeight)
 		local titleLayout = title:FindFirstChildOfClass("UIListLayout")
 		if titleLayout then titleLayout:Destroy() end
 	end
@@ -7254,6 +7299,7 @@ BindSystem.BuildMenu = function(element, position)
 			row.LayoutOrder = index
 			row.Visible = true
 			row.ZIndex = BIND_Z
+			row.Size = UDim2.new(1, 0, 0, BIND_MENU.RowHeight)
 			local inner = row:FindFirstChild("Frame")
 			local rowLabel = inner and inner:FindFirstChild("Name")
 			if rowLabel then rowLabel.Text = BindSystem.Label(bind) end
@@ -7281,7 +7327,9 @@ BindSystem.BuildMenu = function(element, position)
 
 	-- keep the authored splitter + "New Bind" below the generated rows
 	splitter.LayoutOrder = 900
+	splitter.Size = UDim2.new(0.9, 0, 0, BIND_MENU.SplitterHeight)
 	newBindRow.LayoutOrder = 901
+	newBindRow.Size = UDim2.new(1, 0, 0, BIND_MENU.NewBindHeight)
 	local newBindLabel = newBindRow:FindFirstChild("Frame")
 	newBindLabel = newBindLabel and newBindLabel:FindFirstChild("Name")
 	newBindRow.MouseEnter:Connect(function()
@@ -7338,7 +7386,7 @@ BindSystem.BuildMenu = function(element, position)
 		end
 		fadeOut(panel, 0.14)
 		task.delay(0.2, function() panel:Destroy() end)
-	end, nil, 216)
+	end, nil, BIND_MENU.EditorWidth + BIND_MENU.EditorGap)
 	context.container = container
 	popWindow(panel)
 	fadeIn(panel, 0.2)
