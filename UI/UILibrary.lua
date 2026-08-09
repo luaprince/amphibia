@@ -2620,6 +2620,18 @@ local function mousePoint(): Vector2
 	return point
 end
 
+-- Every popup opened through openFloating (dropdowns, colour picker, bind menus, context
+-- menus) registers its close() here, so the whole stack can be torn down together — e.g. when
+-- the main menu is minimized, nothing should be left floating on screen.
+local OpenPopups = {}
+local function closeAllPopups()
+	local popups = OpenPopups
+	OpenPopups = {}
+	for _, close in ipairs(popups) do
+		pcall(close)
+	end
+end
+
 local LoadingScreen = ScreensFolder:WaitForChild("LoadingScreen")
 local EnterKeyScreen = ScreensFolder:WaitForChild("EnterKeyScreen")
 local ConfirmScreen = ScreensFolder:WaitForChild("ConfirmScreen")
@@ -3485,6 +3497,11 @@ local function setWindowOpen(open: boolean, instant: boolean?)
 		return
 	end
 	WindowOpen = open
+	if not open then
+		-- minimizing the menu should never leave a keybind/colour-picker/dropdown/context menu
+		-- floating on screen with no window underneath it
+		closeAllPopups()
+	end
 	if instant then
 		Main.Visible = open
 		return
@@ -3804,14 +3821,17 @@ local BindSystem = {
 	OpenMenu = nil, -- assigned by the UI module
 	Changed = function() end,
 	CaptureActive = false,
+	-- Every bindable type now gets the same Hold/Toggle behaviour around a configurable Value;
+	-- only Button has no value to hold/restore, so it just fires once on key-down.
 	ModesByType = {
 		Toggle = { "Toggle", "Hold" },
+		Slider = { "Toggle", "Hold" },
+		NumberPicker = { "Toggle", "Hold" },
+		Input = { "Toggle", "Hold" },
+		Selector = { "Toggle", "Hold" },
+		Dropdown = { "Toggle", "Hold" },
+		ColorPicker = { "Toggle", "Hold" },
 		Button = { "Press" },
-		Slider = { "Set value" },
-		NumberPicker = { "Set value" },
-		Input = { "Set value" },
-		Selector = { "Set value" },
-		Dropdown = { "Set value" },
 	},
 }
 
@@ -3876,30 +3896,94 @@ function BindSystem.ForElement(element)
 	return out
 end
 
+-- Custom bind names are gone — every bind is labelled from its element, e.g. "Fly (Hold)".
+function BindSystem.Label(bind): string
+	local element = bind.Element
+	local base = (element and (element.Name or element.Type)) or "Bind"
+	return base .. " (" .. tostring(bind.Mode) .. ")"
+end
+
+-- Colours are stored in the same serialisable shape the config system already uses, so a
+-- bind's Value survives a save/load round-trip like every other type.
+function BindSystem.PackColor(color: Color3, transparency: number?)
+	return { __c = true,
+		r = math.floor(color.R * 255 + 0.5),
+		g = math.floor(color.G * 255 + 0.5),
+		b = math.floor(color.B * 255 + 0.5),
+		t = transparency or 0 }
+end
+
+function BindSystem.UnpackColor(value)
+	if type(value) ~= "table" or not value.__c then return nil end
+	return Color3.fromRGB(value.r or 255, value.g or 255, value.b or 255), value.t or 0
+end
+
+function BindSystem.GetValue(element)
+	local elementType = element.Type
+	if elementType == "Toggle" then
+		return element.CurrentValue and true or false
+	elseif elementType == "Slider" or elementType == "NumberPicker" then
+		return element.CurrentValue
+	elseif elementType == "Input" then
+		return element.CurrentValue
+	elseif elementType == "Selector" or elementType == "Dropdown" then
+		return element.CurrentOption
+	elseif elementType == "ColorPicker" then
+		return BindSystem.PackColor(element.Color, element.Transparency)
+	end
+	return nil
+end
+
+function BindSystem.SetValue(element, value)
+	if value == nil then return end
+	local elementType = element.Type
+	if elementType == "Toggle" then
+		element:Set(value and true or false)
+	elseif elementType == "Slider" or elementType == "NumberPicker" then
+		local numeric = tonumber(value)
+		if numeric then element:Set(numeric) end
+	elseif elementType == "Input" then
+		element:Set(tostring(value))
+	elseif elementType == "Selector" or elementType == "Dropdown" then
+		if value ~= "" then element:Set(tostring(value)) end
+	elseif elementType == "ColorPicker" then
+		local color, transparency = BindSystem.UnpackColor(value)
+		if color then element:Set(color, transparency) end
+	end
+end
+
+-- Unified Hold/Toggle semantics for every bindable type: Hold applies Value while the key is
+-- down and restores whatever the element held before on release; Toggle applies Value on the
+-- first press and restores the pre-bind value on the next press. Button has no value to
+-- restore, so it's a simple fire-once-per-press action.
 function BindSystem.Execute(bind, pressed: boolean)
 	local element = bind.Element
 	if not element then return end
 	local elementType = element.Type
-	if elementType == "Toggle" then
-		if bind.Mode == "Hold" then
-			element:Set(pressed)
-		elseif pressed then
-			element:Set(not element.CurrentValue)
+	if elementType == "Button" then
+		if pressed and element.Press then element.Press() end
+		return
+	end
+	if bind.Mode == "Hold" then
+		if pressed then
+			bind.Revert = BindSystem.GetValue(element)
+			BindSystem.SetValue(element, bind.Value)
+		else
+			if bind.Revert ~= nil then BindSystem.SetValue(element, bind.Revert) end
+			bind.Revert = nil
 		end
 		return
 	end
+	-- "Toggle"
 	if not pressed then return end
-	if elementType == "Button" then
-		if element.Press then element.Press() end
-	elseif elementType == "Slider" or elementType == "NumberPicker" then
-		local numeric = tonumber(bind.Value)
-		if numeric then element:Set(numeric) end
-	elseif elementType == "Input" then
-		element:Set(tostring(bind.Value or ""))
-	elseif elementType == "Selector" or elementType == "Dropdown" then
-		if bind.Value ~= nil and bind.Value ~= "" then
-			element:Set(tostring(bind.Value))
-		end
+	if bind.Active then
+		if bind.Revert ~= nil then BindSystem.SetValue(element, bind.Revert) end
+		bind.Revert = nil
+		bind.Active = false
+	else
+		bind.Revert = BindSystem.GetValue(element)
+		BindSystem.SetValue(element, bind.Value)
+		bind.Active = true
 	end
 end
 
@@ -3908,22 +3992,23 @@ function BindSystem.Add(bind)
 	BindSystem.NextId += 1
 	table.insert(BindSystem.Binds, bind)
 	bind.UIEntry = KeybindsUI.Register({
-		Name = bind.Name,
+		Name = BindSystem.Label(bind),
 		GetBind = function() return bind.Key end,
-		StartRebind = function(refreshFn)
-			captureBindKey(function(newKey)
-				if newKey then
-					bind.Key = newKey
-					if refreshFn then refreshFn(newKey) end
-					BindSystem.Changed()
-					ConfigHooks.Autosave()
-				end
-			end)
-		end,
 	})
 	BindSystem.Changed()
 	ConfigHooks.Autosave()
 	return bind
+end
+
+-- Call after mutating bind.Key/Mode/Value from the editor so the global keybinds overlay
+-- (which snapshots its label as a plain string, not a live getter) picks up the change.
+function BindSystem.Touch(bind)
+	if bind.UIEntry then
+		bind.UIEntry.Name = BindSystem.Label(bind)
+		KeybindsUI.Refresh()
+	end
+	BindSystem.Changed()
+	ConfigHooks.Autosave()
 end
 
 function BindSystem.Remove(bind)
@@ -3945,7 +4030,7 @@ function BindSystem.Serialize()
 	for _, bind in ipairs(BindSystem.Binds) do
 		local flag = bind.Element and bind.Element.Flag
 		if flag then
-			table.insert(out, { f = flag, n = bind.Name, k = bind.Key, m = bind.Mode, v = bind.Value })
+			table.insert(out, { f = flag, k = bind.Key, m = bind.Mode, v = bind.Value })
 		end
 	end
 	return out
@@ -3966,7 +4051,6 @@ function BindSystem.LoadSerialized(list)
 		if element and BindSystem.IsBindable(element) then
 			BindSystem.Add({
 				Element = element,
-				Name = tostring(saved.n or element.Name or "Bind"),
 				Key = tostring(saved.k or "None"),
 				Mode = tostring(saved.m or (BindSystem.ModesByType[element.Type] or {})[1] or "Press"),
 				Value = saved.v,
@@ -4796,17 +4880,28 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	local function close()
 		if closed then return end
 		closed = true
+		for index, registered in ipairs(OpenPopups) do
+			if registered == close then
+				table.remove(OpenPopups, index)
+				break
+			end
+		end
 		if onClose then onClose() end
 		task.delay(0.18, function()
 			container:Destroy()
 		end)
 	end
+	table.insert(OpenPopups, close)
 	catcher.MouseButton1Click:Connect(close)
 	catcher.MouseButton2Click:Connect(close)
 	return close, container
 end
 
-local function openFloatingAtCursor(content: GuiObject, cursor: Vector2, onClose)
+-- Opens `content` anchored so `cursor` lands on its left-middle edge by default (clamped
+-- on-screen instead of running off the edge of the viewport).
+local function openFloatingAtCursor(content: GuiObject, cursor: Vector2, onClose, anchor: Vector2?)
+	anchor = anchor or Vector2.new(0, 0.5)
+	content.AnchorPoint = anchor
 	local viewport = ScreenGui.AbsoluteSize
 	local x = math.max(8, cursor.X)
 	local y = math.max(8, cursor.Y)
@@ -4815,8 +4910,12 @@ local function openFloatingAtCursor(content: GuiObject, cursor: Vector2, onClose
 		if not content.Parent then return end
 		local width = content.AbsoluteSize.X
 		local height = content.AbsoluteSize.Y
-		local correctedX = math.clamp(x, 8, math.max(8, viewport.X - width - 8))
-		local correctedY = math.clamp(y, 8, math.max(8, viewport.Y - height - 8))
+		local minX = 8 + width * anchor.X
+		local maxX = math.max(minX, viewport.X - 8 - width * (1 - anchor.X))
+		local minY = 8 + height * anchor.Y
+		local maxY = math.max(minY, viewport.Y - 8 - height * (1 - anchor.Y))
+		local correctedX = math.clamp(x, minX, maxX)
+		local correctedY = math.clamp(y, minY, maxY)
 		if correctedX ~= x or correctedY ~= y then
 			content.Position = UDim2.new(0, correctedX, 0, correctedY)
 		end
@@ -5164,6 +5263,184 @@ end
 
 local ColorPickerBusy = false
 
+-- Shared colour-picker window. Drives the single authored ColorPicker frame on behalf of
+-- whoever opened it — a ColorPicker element, or a keybind's stored Value.
+--   opts.Color / opts.Transparency        starting values
+--   opts.Cursor                           where to open (left-middle edge lands here)
+--   opts.OnChanged(color, alpha, committed)
+--   opts.OnClosed()
+local function openColorPickerWindow(opts)
+	local window = ColorPickerWindow
+	local square = window.ColorPicker
+	local squareKnob = square.Knob
+	local hueSlider = window.ColorSlider
+	local hueKnob = hueSlider.Knob
+	local alphaSlider = window.TransparencySlider
+	local alphaKnob = alphaSlider.Knob
+	local hexHolder = window.HexUnputHolder
+	local hexLabel = hexHolder:FindFirstChild("Hex")
+	-- "Transparency" is a real GuiObject property, so dot-access would return the number,
+	-- not the label — this exact collision froze the picker before
+	local alphaLabel = hexHolder:FindFirstChild("Transparency")
+
+	local function toHex(color: Color3): string
+		return ("%02X%02X%02X"):format(
+			math.floor(color.R * 255 + 0.5),
+			math.floor(color.G * 255 + 0.5),
+			math.floor(color.B * 255 + 0.5))
+	end
+
+	local h, s, v = opts.Color:ToHSV()
+	local alpha = math.clamp(opts.Transparency or 0, 0, 1)
+
+	local hexInput = nil
+	local syncingHex = false
+
+	local function renderWindow(skipHex: boolean?)
+		local hueColor = Color3.fromHSV(h, 1, 1)
+		local color = Color3.fromHSV(h, s, v)
+		square.BackgroundColor3 = hueColor
+		squareKnob.BackgroundColor3 = color
+		squareKnob.Position = UDim2.new(math.clamp(s, 0.02, 0.98), 0, math.clamp(1 - v, 0.02, 0.98), 0)
+		hueKnob.Position = UDim2.new(math.clamp(h, 0.01, 0.99), 0, 0.5, 0)
+		alphaSlider.BackgroundColor3 = color
+		-- The alpha track runs invisible (left) -> visible (right), matching the authored
+		-- checkerboard that shows through on the left. `alpha` is a real Roblox Transparency
+		-- (0 = opaque, 1 = invisible), so the knob sits at 1 - alpha and the readout is
+		-- visibility: 0% at the left end, 100% at the right end.
+		alphaKnob.Position = UDim2.new(math.clamp(1 - alpha, 0.01, 0.99), 0, 0.5, 0)
+		if alphaLabel then
+			alphaLabel.Text = ("%d%%"):format(math.floor((1 - alpha) * 100 + 0.5))
+		end
+		if hexInput and not skipHex then
+			syncingHex = true
+			hexInput:SetText(toHex(color), true)
+			syncingHex = false
+		end
+		if opts.OnChanged then opts.OnChanged(color, alpha, false) end
+	end
+
+	local function commitLive()
+		if opts.OnChanged then opts.OnChanged(Color3.fromHSV(h, s, v), alpha, true) end
+	end
+
+	-- hex input (SmoothInput over the label)
+	if hexLabel then hexLabel.Visible = false end
+	hexInput = SmoothInput.new({
+		Parent = hexHolder,
+		Font = FONT_BODY,
+		TextSize = 14,
+		TextColor = Color3.fromRGB(190, 190, 190),
+		PlaceholderText = "",
+		MaxLength = 6,
+		AllowedPattern = "%x",
+		PaddingLeft = 84,
+		PaddingRight = 60,
+		ZIndex = 44,
+	})
+	-- clicking anywhere in the hex box focuses the input
+	local hexFocusButton = Instance.new("TextButton")
+	hexFocusButton.Name = "HexFocus"
+	hexFocusButton.BackgroundTransparency = 1
+	hexFocusButton.Text = ""
+	hexFocusButton.Position = UDim2.new(0, 58, 0, 0)
+	hexFocusButton.Size = UDim2.new(1, -58, 1, 0)
+	hexFocusButton.ZIndex = 46
+	hexFocusButton.Parent = hexHolder
+	hexFocusButton.MouseButton1Click:Connect(function()
+		if hexInput then hexInput:Focus() end
+	end)
+
+	hexInput.Options.OnChanged = function(text)
+		if syncingHex then return end
+		if #text == 6 then
+			local r = tonumber(text:sub(1, 2), 16)
+			local g = tonumber(text:sub(3, 4), 16)
+			local b = tonumber(text:sub(5, 6), 16)
+			if r and g and b then
+				h, s, v = Color3.fromRGB(r, g, b):ToHSV()
+				renderWindow(true)
+				commitLive()
+			end
+		end
+	end
+
+	local dragTarget = nil -- "sv" | "hue" | "alpha"
+	local function applyDrag(position: Vector2)
+		if dragTarget == "sv" then
+			local relX = math.clamp((position.X - square.AbsolutePosition.X) / math.max(1, square.AbsoluteSize.X), 0, 1)
+			local relY = math.clamp((position.Y - square.AbsolutePosition.Y) / math.max(1, square.AbsoluteSize.Y), 0, 1)
+			s, v = relX, 1 - relY
+		elseif dragTarget == "hue" then
+			h = math.clamp((position.X - hueSlider.AbsolutePosition.X) / math.max(1, hueSlider.AbsoluteSize.X), 0, 1)
+		elseif dragTarget == "alpha" then
+			-- left edge = fully transparent, right edge = fully opaque
+			local relX = math.clamp((position.X - alphaSlider.AbsolutePosition.X) / math.max(1, alphaSlider.AbsoluteSize.X), 0, 1)
+			alpha = 1 - relX
+		end
+		renderWindow()
+		commitLive()
+	end
+
+	local zoneConnections = {}
+	local function bindZone(zone: GuiObject, target: string)
+		local hit = zone:FindFirstChild("HitZone") or zone
+		table.insert(zoneConnections, hit.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragTarget = target
+				applyDrag(Vector2.new(input.Position.X, input.Position.Y))
+			end
+		end))
+	end
+	bindZone(square, "sv")
+	bindZone(hueSlider, "hue")
+	bindZone(alphaSlider, "alpha")
+	table.insert(zoneConnections, UserInputService.InputChanged:Connect(function(input)
+		if dragTarget and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			applyDrag(Vector2.new(input.Position.X, input.Position.Y))
+		end
+	end))
+	table.insert(zoneConnections, UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragTarget = nil
+		end
+	end))
+
+	renderWindow()
+
+	openFloatingAtCursor(window, opts.Cursor, function()
+		ColorPickerBusy = false
+		for _, connection in ipairs(zoneConnections) do connection:Disconnect() end
+		if hexInput then hexInput:Destroy() end
+		hexFocusButton:Destroy()
+		if hexLabel then hexLabel.Visible = true end
+		fadeOut(window, 0.15, true)
+		task.delay(0.155, function()
+			window.Visible = false
+			window.Parent = OtherFolder
+		end)
+		if opts.OnClosed then opts.OnClosed() end
+	end)
+
+	fadeIn(window, 0.18)
+	local floatScale = window:FindFirstChild("FloatScale")
+	if floatScale then
+		floatScale.Scale = MainScale.Scale * 0.9
+		tween(floatScale, "Back", { Scale = MainScale.Scale })
+	end
+end
+
+local function openColorPicker(opts)
+	if ColorPickerBusy then return end
+	ColorPickerBusy = true
+	local ok, err = pcall(openColorPickerWindow, opts)
+	if not ok then
+		ColorPickerBusy = false
+		warn("[ Amphibia Interface ] Color picker failed to open: " .. tostring(err))
+		reportInterfaceIssue("Interface error")
+	end
+end
+
 function SectionClass:CreateColorPicker(options)
 	options = options or {}
 	local element = {
@@ -5180,6 +5457,25 @@ function SectionClass:CreateColorPicker(options)
 	local preview = row.ColorPickerPreview
 	local hexValueLabel = row.HexValue
 	local valueButton = row.ValueButton
+
+	-- Checkerboard sits behind the preview swatch (ZIndex -1 renders behind the parent's own
+	-- background fill in Roblox) so a transparent colour shows through it instead of just
+	-- vanishing into nothing.
+	do
+		local checker = Instance.new("ImageLabel")
+		checker.Name = "Checkerboard"
+		checker.Image = "rbxassetid://107060544057249"
+		checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
+		checker.ScaleType = Enum.ScaleType.Tile
+		checker.TileSize = UDim2.new(0, 8, 0, 8)
+		checker.BackgroundTransparency = 1
+		checker.Size = UDim2.new(1, 0, 1, 0)
+		checker.ZIndex = -1
+		local checkerCorner = Instance.new("UICorner")
+		checkerCorner.CornerRadius = UDim.new(0, 8)
+		checkerCorner.Parent = checker
+		checker.Parent = preview
+	end
 
 	local function toHex(color: Color3): string
 		return ("%02X%02X%02X"):format(
@@ -5226,179 +5522,30 @@ function SectionClass:CreateColorPicker(options)
 		end
 	end
 
-	local function openPickerInner()
-		local window = ColorPickerWindow
-		local square = window.ColorPicker
-		local squareKnob = square.Knob
-		local hueSlider = window.ColorSlider
-		local hueKnob = hueSlider.Knob
-		local alphaSlider = window.TransparencySlider
-		local alphaKnob = alphaSlider.Knob
-		local hexHolder = window.HexUnputHolder
-		local hexLabel = hexHolder:FindFirstChild("Hex")
-		-- "Transparency" is a real GuiObject property, so dot-access would return the number,
-		-- not the label — this exact collision froze the picker before
-		local alphaLabel = hexHolder:FindFirstChild("Transparency")
-
-		local h, s, v = element.Color:ToHSV()
-		local alpha = element.Transparency
-
-		local hexInput = nil
-		local syncingHex = false
-
-		local function renderWindow(skipHex: boolean?)
-			local hueColor = Color3.fromHSV(h, 1, 1)
-			local color = Color3.fromHSV(h, s, v)
-			square.BackgroundColor3 = hueColor
-			squareKnob.BackgroundColor3 = color
-			squareKnob.Position = UDim2.new(math.clamp(s, 0.02, 0.98), 0, math.clamp(1 - v, 0.02, 0.98), 0)
-			hueKnob.Position = UDim2.new(math.clamp(h, 0.01, 0.99), 0, 0.5, 0)
-			alphaSlider.BackgroundColor3 = color
-			alphaKnob.Position = UDim2.new(math.clamp(alpha, 0.01, 0.99), 0, 0.5, 0)
-			if alphaLabel then
-				alphaLabel.Text = ("%d%%"):format(math.floor(alpha * 100 + 0.5))
-			end
-			if hexInput and not skipHex then
-				syncingHex = true
-				hexInput:SetText(toHex(color), true)
-				syncingHex = false
-			end
-			element.Color = color
-			element.Transparency = alpha
-			renderRow()
-		end
-
-		local function commitLive()
-			commit(false)
-		end
-
-		-- hex input (SmoothInput over the label)
-		if hexLabel then hexLabel.Visible = false end
-		hexInput = SmoothInput.new({
-			Parent = hexHolder,
-			Font = FONT_BODY,
-			TextSize = 14,
-			TextColor = Color3.fromRGB(190, 190, 190),
-			PlaceholderText = "",
-			MaxLength = 6,
-			AllowedPattern = "%x",
-			PaddingLeft = 84,
-			PaddingRight = 60,
-			ZIndex = 44,
+	local function openPicker(cursor: Vector2)
+		openColorPicker({
+			Color = element.Color,
+			Transparency = element.Transparency,
+			Cursor = cursor,
+			OnChanged = function(color, alpha, committed)
+				element.Color = color
+				element.Transparency = alpha
+				renderRow()
+				if committed then commit(false) end
+			end,
+			OnClosed = function()
+				commit(false)
+			end,
 		})
-		-- clicking anywhere in the hex box focuses the input
-		local hexFocusButton = Instance.new("TextButton")
-		hexFocusButton.Name = "HexFocus"
-		hexFocusButton.BackgroundTransparency = 1
-		hexFocusButton.Text = ""
-		hexFocusButton.Position = UDim2.new(0, 58, 0, 0)
-		hexFocusButton.Size = UDim2.new(1, -58, 1, 0)
-		hexFocusButton.ZIndex = 46
-		hexFocusButton.Parent = hexHolder
-		hexFocusButton.MouseButton1Click:Connect(function()
-			if hexInput then hexInput:Focus() end
-		end)
-
-		hexInput.Options.OnChanged = function(text)
-			if syncingHex then return end
-			if #text == 6 then
-				local r = tonumber(text:sub(1, 2), 16)
-				local g = tonumber(text:sub(3, 4), 16)
-				local b = tonumber(text:sub(5, 6), 16)
-				if r and g and b then
-					h, s, v = Color3.fromRGB(r, g, b):ToHSV()
-					renderWindow(true)
-					commitLive()
-				end
-			end
-		end
-
-		local dragTarget = nil -- "sv" | "hue" | "alpha"
-		local function applyDrag(position: Vector2)
-			if dragTarget == "sv" then
-				local relX = math.clamp((position.X - square.AbsolutePosition.X) / math.max(1, square.AbsoluteSize.X), 0, 1)
-				local relY = math.clamp((position.Y - square.AbsolutePosition.Y) / math.max(1, square.AbsoluteSize.Y), 0, 1)
-				s, v = relX, 1 - relY
-			elseif dragTarget == "hue" then
-				h = math.clamp((position.X - hueSlider.AbsolutePosition.X) / math.max(1, hueSlider.AbsoluteSize.X), 0, 1)
-			elseif dragTarget == "alpha" then
-				alpha = math.clamp((position.X - alphaSlider.AbsolutePosition.X) / math.max(1, alphaSlider.AbsoluteSize.X), 0, 1)
-			end
-			renderWindow()
-			commitLive()
-		end
-
-		local zoneConnections = {}
-		local function bindZone(zone: GuiObject, target: string)
-			local hit = zone:FindFirstChild("HitZone") or zone
-			table.insert(zoneConnections, hit.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-					dragTarget = target
-					applyDrag(Vector2.new(input.Position.X, input.Position.Y))
-				end
-			end))
-		end
-		bindZone(square, "sv")
-		bindZone(hueSlider, "hue")
-		bindZone(alphaSlider, "alpha")
-		table.insert(zoneConnections, UserInputService.InputChanged:Connect(function(input)
-			if dragTarget and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-				applyDrag(Vector2.new(input.Position.X, input.Position.Y))
-			end
-		end))
-		table.insert(zoneConnections, UserInputService.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				dragTarget = nil
-			end
-		end))
-
-		-- positioning: prefer the right side of the row, clamp on-screen
-		local anchor = screenPointFor(preview.AbsolutePosition)
-		local scaleNow = MainScale.Scale
-		local windowWidth, windowHeight = 195 * scaleNow, 301 * scaleNow
-		local viewport = ScreenGui.AbsoluteSize
-		local x = math.clamp(anchor.X + preview.AbsoluteSize.X + 12, 8, viewport.X - windowWidth - 8)
-		local y = math.clamp(anchor.Y - windowHeight / 2, 8, viewport.Y - windowHeight - 8)
-
-		window.AnchorPoint = Vector2.new(0, 0)
-		renderWindow()
-
-		local close
-		close = openFloating(window, Vector2.new(x, y), function()
-			ColorPickerBusy = false
-			for _, connection in ipairs(zoneConnections) do connection:Disconnect() end
-			if hexInput then hexInput:Destroy() end
-			hexFocusButton:Destroy()
-			if hexLabel then hexLabel.Visible = true end
-			fadeOut(window, 0.15, true)
-			task.delay(0.155, function()
-				window.Visible = false
-				window.Parent = OtherFolder
-			end)
-			commit(false)
-		end)
-
-		fadeIn(window, 0.18)
-		local floatScale = window:FindFirstChild("FloatScale")
-		if floatScale then
-			floatScale.Scale = MainScale.Scale * 0.9
-			tween(floatScale, "Back", { Scale = MainScale.Scale })
-		end
 	end
 
-	local function openPicker()
-		if ColorPickerBusy then return end
-		ColorPickerBusy = true
-		local ok, err = pcall(openPickerInner)
-		if not ok then
-			ColorPickerBusy = false
-			warn("[ Amphibia Interface ] Color picker failed to open: " .. tostring(err))
-			reportInterfaceIssue("Interface error")
+	local function onPreviewInput(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			openPicker(Vector2.new(input.Position.X, input.Position.Y))
 		end
 	end
-
-	preview.MouseButton1Click:Connect(openPicker)
-	valueButton.MouseButton1Click:Connect(openPicker)
+	preview.InputBegan:Connect(onPreviewInput)
+	valueButton.InputBegan:Connect(onPreviewInput)
 	attachRowHover(row, label)
 
 	renderRow()
@@ -6021,7 +6168,7 @@ do
 end
 
 ------------------------------------------------------------------------------------------------------------------------
---  Right-click bind menu — attach custom keybinds to any element
+--  Right-click bind menu — "Binds" (existing binds on this element) + "KeybindRedacting" (editor)
 ------------------------------------------------------------------------------------------------------------------------
 
 BindSystem.MakeKeyChip = function(parent, initialText, zindex)
@@ -6147,407 +6294,634 @@ BindSystem.MakeInputBox = function(context, order, labelText, placeholder, numer
 	return input
 end
 
-BindSystem.OpenMenu = function(element, position)
-	if BindSystem.MenuOpen then return end
-	BindSystem.MenuOpen = true
+-- Sensible starting Value for a freshly-created bind, per element type.
+BindSystem.DefaultValueFor = function(element)
+	local elementType = element.Type
+	if elementType == "Toggle" then
+		return true
+	elseif elementType == "Slider" or elementType == "NumberPicker" then
+		return tostring(element.CurrentValue or 0)
+	elseif elementType == "Input" then
+		return tostring(element.CurrentValue or "")
+	elseif elementType == "Selector" then
+		return tostring(element.CurrentOption or "")
+	elseif elementType == "Dropdown" then
+		return type(element.CurrentOption) == "string" and element.CurrentOption or ""
+	elseif elementType == "ColorPicker" then
+		return BindSystem.PackColor(element.Color, element.Transparency)
+	end
+	return nil
+end
 
-	local activeInputs = {}
-	local Z = BIND_Z
+-- One row inside the "Binds" list — dot + name("Function (Mode)") + keybind chip, with
+-- rest/hover/press visual states: hover fades the chip out and fades an arrow in, press opens
+-- the editor. `onClick(rowFrame, resetVisual)` is called on click; `resetVisual()` restores the
+-- row to its resting look (used when the editor closes without a full list rebuild).
+BindSystem.BuildRow = function(parent, order, bind, onClick)
+	local hasKey = bind.Key and bind.Key ~= "None"
 
+	local row = Instance.new("ImageButton")
+	row.Name = "BindRow"
+	row.AutoButtonColor = false
+	row.ImageTransparency = 1
+	row.BackgroundColor3 = Color3.fromRGB(33, 33, 33)
+	row.BackgroundTransparency = 1
+	row.Size = UDim2.new(1, 0, 0, 32)
+	row.LayoutOrder = order
+	row.ZIndex = BIND_Z
+	row.Parent = parent
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = row
+
+	local dot = Instance.new("Frame")
+	dot.AnchorPoint = Vector2.new(0, 0.5)
+	dot.Position = UDim2.new(0, 12, 0.5, 0)
+	dot.Size = UDim2.new(0, 6, 0, 6)
+	dot.BackgroundColor3 = hasKey and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(70, 70, 70)
+	dot.ZIndex = BIND_Z
+	dot.Parent = row
+	local dotCorner = Instance.new("UICorner")
+	dotCorner.CornerRadius = UDim.new(1, 0)
+	dotCorner.Parent = dot
+	pcall(function()
+		local dotShadow = Instance.new("UIShadow")
+		dotShadow.Color = dot.BackgroundColor3
+		dotShadow.Transparency = 0.16
+		dotShadow.Parent = dot
+	end)
+
+	local nameLbl = Instance.new("TextLabel")
+	nameLbl.BackgroundTransparency = 1
+	nameLbl.AnchorPoint = Vector2.new(0, 0.5)
+	nameLbl.Position = UDim2.new(0, 26, 0.5, 0)
+	nameLbl.Size = UDim2.new(1, -70, 1, 0)
+	nameLbl.FontFace = FONT_BODY
+	nameLbl.TextSize = 13
+	nameLbl.TextColor3 = Color3.fromRGB(235, 235, 235)
+	nameLbl.TextTransparency = 0.4
+	nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+	nameLbl.Text = BindSystem.Label(bind)
+	nameLbl.ZIndex = BIND_Z
+	nameLbl.Parent = row
+	pcall(function() nameLbl.TextTruncate = Enum.TextTruncate.AtEnd end)
+
+	local chipHolder = Instance.new("Frame")
+	chipHolder.Name = "Keybind"
+	chipHolder.AnchorPoint = Vector2.new(1, 0.5)
+	chipHolder.Position = UDim2.new(1, -12, 0.5, 0)
+	chipHolder.Size = UDim2.new(0, 30, 0, 20)
+	chipHolder.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+	chipHolder.ZIndex = BIND_Z
+	chipHolder.Parent = row
+	local chipCorner = Instance.new("UICorner")
+	chipCorner.CornerRadius = UDim.new(0, 6)
+	chipCorner.Parent = chipHolder
+	local chipStroke = Instance.new("UIStroke")
+	chipStroke.Thickness = 1
+	chipStroke.Color = Color3.fromRGB(65, 65, 65)
+	chipStroke.Parent = chipHolder
+	local chipText = Instance.new("TextLabel")
+	chipText.BackgroundTransparency = 1
+	chipText.Size = UDim2.new(1, 0, 1, 0)
+	chipText.FontFace = FONT_MONO
+	chipText.TextSize = 12
+	chipText.Text = hasKey and keyDisplayName(bind.Key) or "_"
+	chipText.TextColor3 = hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88)
+	chipText.ZIndex = BIND_Z
+	chipText.Parent = chipHolder
+
+	local arrow = Instance.new("ImageLabel")
+	arrow.Name = "Arrow"
+	arrow.BackgroundTransparency = 1
+	arrow.Image = "rbxassetid://97531162692502"
+	arrow.ImageTransparency = 1
+	arrow.AnchorPoint = Vector2.new(1, 0.5)
+	arrow.Position = UDim2.new(1, -12, 0.5, 0)
+	arrow.Size = UDim2.new(0, 16, 0, 16)
+	arrow.ZIndex = BIND_Z
+	arrow.Visible = false
+	arrow.Parent = row
+
+	local state = "rest"
+	local function apply(newState)
+		state = newState
+		if newState == "rest" then
+			tween(row, "Fast", { BackgroundTransparency = 1 })
+			tween(nameLbl, "Fast", { TextTransparency = 0.4 })
+			chipHolder.Visible = true
+			tween(chipHolder, "Fast", { BackgroundTransparency = 0 })
+			tween(chipStroke, "Fast", { Transparency = 0 })
+			tween(chipText, "Fast", { TextTransparency = 0 })
+			tween(arrow, "Fast", { ImageTransparency = 1 })
+			task.delay(0.14, function()
+				if state == "rest" then arrow.Visible = false end
+			end)
+		elseif newState == "hover" then
+			tween(row, "Fast", { BackgroundTransparency = 0.6 })
+			tween(nameLbl, "Fast", { TextTransparency = 0.4 })
+			tween(chipHolder, "Fast", { BackgroundTransparency = 1 })
+			tween(chipStroke, "Fast", { Transparency = 1 })
+			tween(chipText, "Fast", { TextTransparency = 1 })
+			arrow.Visible = true
+			tween(arrow, "Fast", { ImageTransparency = 0.2 })
+			task.delay(0.14, function()
+				if state == "hover" then chipHolder.Visible = false end
+			end)
+		elseif newState == "press" then
+			tween(row, "Fast", { BackgroundTransparency = 0 })
+			tween(nameLbl, "Fast", { TextTransparency = 0.15 })
+			chipHolder.Visible = false
+			arrow.Visible = true
+			arrow.ImageTransparency = 0.2
+		end
+	end
+
+	row.MouseEnter:Connect(function() if state ~= "press" then apply("hover") end end)
+	row.MouseLeave:Connect(function() if state ~= "press" then apply("rest") end end)
+	row.MouseButton1Click:Connect(function()
+		apply("press")
+		onClick(row, function() apply("rest") end)
+	end)
+
+	themeRegisterDeep(row)
+	themeApplyDeep(row)
+	return row, apply
+end
+
+BindSystem.BuildSplitter = function(parent, order)
+	local line = Instance.new("Frame")
+	line.Name = "Splitter"
+	line.BackgroundColor3 = Color3.fromRGB(33, 33, 33)
+	line.Size = UDim2.new(1, -20, 0, 2)
+	line.LayoutOrder = order
+	line.ZIndex = BIND_Z
+	line.Parent = parent
+	local lineCorner = Instance.new("UICorner")
+	lineCorner.CornerRadius = UDim.new(1, 0)
+	lineCorner.Parent = line
+	themeRegister(line)
+	themeApply(line)
+	return line
+end
+
+BindSystem.BuildNewRow = function(parent, order, onClick)
+	local btn = Instance.new("ImageButton")
+	btn.Name = "NewBind"
+	btn.AutoButtonColor = false
+	btn.ImageTransparency = 1
+	btn.BackgroundColor3 = Color3.fromRGB(33, 33, 33)
+	btn.BackgroundTransparency = 1
+	btn.Size = UDim2.new(1, 0, 0, 32)
+	btn.LayoutOrder = order
+	btn.ZIndex = BIND_Z
+	btn.Parent = parent
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = btn
+	local icon = Instance.new("ImageLabel")
+	icon.BackgroundTransparency = 1
+	icon.Image = "rbxassetid://122653297908501"
+	icon.ImageTransparency = 0.4
+	icon.AnchorPoint = Vector2.new(0, 0.5)
+	icon.Position = UDim2.new(0, 12, 0.5, 0)
+	icon.Size = UDim2.new(0, 15, 0, 15)
+	icon.ZIndex = BIND_Z
+	icon.Parent = btn
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.AnchorPoint = Vector2.new(0, 0.5)
+	label.Position = UDim2.new(0, 34, 0.5, 0)
+	label.Size = UDim2.new(1, -46, 1, 0)
+	label.FontFace = FONT_BODY
+	label.TextSize = 13
+	label.TextColor3 = Color3.fromRGB(220, 220, 220)
+	label.TextTransparency = 0.18
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Text = "New Bind"
+	label.ZIndex = BIND_Z
+	label.Parent = btn
+	btn.MouseEnter:Connect(function() tween(btn, "Fast", { BackgroundTransparency = 0.6 }) end)
+	btn.MouseLeave:Connect(function() tween(btn, "Out", { BackgroundTransparency = 1 }) end)
+	btn.MouseButton1Click:Connect(onClick)
+	themeRegisterDeep(btn)
+	themeApplyDeep(btn)
+	return btn
+end
+
+-- Shared chrome for both floating panels ("Binds" and "KeybindRedacting") — dark rounded card
+-- with a stroke + soft shadow, auto-height, vertical list layout.
+BindSystem.BuildPanel = function(name, width)
 	local panel = Instance.new("Frame")
-	panel.Name = "BindMenu"
-	panel.BackgroundColor3 = Color3.fromRGB(16, 16, 17)
-	panel.Size = UDim2.new(0, 264, 0, 10)
+	panel.Name = name
+	panel.BackgroundColor3 = Color3.fromRGB(13, 13, 13)
+	panel.Size = UDim2.new(0, width, 0, 10)
 	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.Y end)
-	panel.ZIndex = Z
+	panel.ZIndex = BIND_Z
 	panel.Active = true
-	do
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 12)
-		corner.Parent = panel
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = Color3.fromRGB(52, 52, 52)
-		stroke.Thickness = 1
-		stroke.Parent = panel
-		pcall(function()
-			local shadow = Instance.new("UIShadow")
-			shadow.Color = Color3.fromRGB(0, 0, 0)
-			shadow.Transparency = 0.35
-			shadow.BlurRadius = UDim.new(0, 16)
-			shadow.Parent = panel
-		end)
-		local padding = Instance.new("UIPadding")
-		padding.PaddingLeft = UDim.new(0, 12)
-		padding.PaddingRight = UDim.new(0, 12)
-		padding.PaddingTop = UDim.new(0, 12)
-		padding.PaddingBottom = UDim.new(0, 12)
-		padding.Parent = panel
-		local layout = Instance.new("UIListLayout")
-		layout.FillDirection = Enum.FillDirection.Vertical
-		layout.SortOrder = Enum.SortOrder.LayoutOrder
-		layout.Padding = UDim.new(0, 8)
-		layout.Parent = panel
-		themeRegister(panel)
-		themeRegister(stroke)
-	end
-
-	local function makeSeparator(parent, order)
-		local line = Instance.new("Frame")
-		line.BackgroundColor3 = Color3.fromRGB(58, 58, 58)
-		line.BackgroundTransparency = 0.55
-		line.BorderSizePixel = 0
-		line.Size = UDim2.new(1, 0, 0, 1)
-		line.LayoutOrder = order
-		line.ZIndex = Z
-		line.Parent = parent
-		themeRegister(line)
-		themeApply(line)
-		return line
-	end
-
-	-- header ------------------------------------------------------------------------------------------------
-	local headerRow = Instance.new("Frame")
-	headerRow.BackgroundTransparency = 1
-	headerRow.Size = UDim2.new(1, 0, 0, 38)
-	headerRow.LayoutOrder = 1
-	headerRow.ZIndex = Z
-	headerRow.Parent = panel
-	local title = BindSystem.MakeLabel(headerRow, "Keybinds", 16, Color3.fromRGB(212, 212, 212))
-	title.FontFace = FONT_SERIF
-	title.Size = UDim2.new(1, 0, 0, 19)
-	local subtitle = BindSystem.MakeLabel(headerRow, element.Name or element.Type, 11, Color3.fromRGB(108, 108, 108))
-	subtitle.Position = UDim2.new(0, 0, 0, 21)
-	subtitle.Size = UDim2.new(1, 0, 0, 13)
-	pcall(function() subtitle.TextTruncate = Enum.TextTruncate.AtEnd end)
-	makeSeparator(panel, 2)
-
-	-- existing binds ----------------------------------------------------------------------------------------
-	local bindsHolder = Instance.new("Frame")
-	bindsHolder.BackgroundTransparency = 1
-	bindsHolder.Size = UDim2.new(1, 0, 0, 0)
-	pcall(function() bindsHolder.AutomaticSize = Enum.AutomaticSize.Y end)
-	bindsHolder.LayoutOrder = 3
-	bindsHolder.ZIndex = Z
-	bindsHolder.Parent = panel
-	local bindsLayout = Instance.new("UIListLayout")
-	bindsLayout.FillDirection = Enum.FillDirection.Vertical
-	bindsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	bindsLayout.Padding = UDim.new(0, 4)
-	bindsLayout.Parent = bindsHolder
-
-	local renderBinds -- forward
-	renderBinds = function()
-		for _, child in ipairs(bindsHolder:GetChildren()) do
-			if child:IsA("GuiObject") then
-				child:Destroy()
-			end
-		end
-		local binds = BindSystem.ForElement(element)
-		if #binds == 0 then
-			local empty = BindSystem.MakeLabel(bindsHolder, "No keybinds yet — add one below.", 11, Color3.fromRGB(92, 92, 92))
-			empty.Size = UDim2.new(1, 0, 0, 16)
-			return
-		end
-		for index, bind in ipairs(binds) do
-			local bindRow = Instance.new("Frame")
-			bindRow.BackgroundTransparency = 1
-			bindRow.Size = UDim2.new(1, 0, 0, 26)
-			bindRow.LayoutOrder = index
-			bindRow.ZIndex = Z
-			bindRow.Parent = bindsHolder
-
-			local bindName = BindSystem.MakeLabel(bindRow, bind.Name, 13, Color3.fromRGB(186, 186, 186))
-			bindName.AnchorPoint = Vector2.new(0, 0.5)
-			bindName.Position = UDim2.new(0, 0, 0.5, 0)
-			bindName.Size = UDim2.new(1, -96, 1, 0)
-			pcall(function() bindName.TextTruncate = Enum.TextTruncate.AtEnd end)
-
-			local chip, chipText = BindSystem.MakeKeyChip(bindRow, keyDisplayName(bind.Key), Z)
-			chip.Position = UDim2.new(1, -26, 0.5, 0)
-			chip.MouseButton1Click:Connect(function()
-				chipText.Text = "..."
-				captureBindKey(function(newKey)
-					if newKey then
-						bind.Key = newKey
-						BindSystem.Changed()
-						ConfigHooks.Autosave()
-					end
-					if chipText.Parent then
-						chipText.Text = keyDisplayName(bind.Key)
-					end
-					KeybindsUI.Refresh()
-				end)
-			end)
-
-			local deleteButton = Instance.new("TextButton")
-			deleteButton.AutoButtonColor = false
-			deleteButton.BackgroundTransparency = 1
-			deleteButton.AnchorPoint = Vector2.new(1, 0.5)
-			deleteButton.Position = UDim2.new(1, 0, 0.5, 0)
-			deleteButton.Size = UDim2.new(0, 20, 0, 20)
-			deleteButton.FontFace = FONT_BODY
-			deleteButton.TextSize = 15
-			deleteButton.TextColor3 = Color3.fromRGB(110, 110, 110)
-			deleteButton.Text = "×"
-			deleteButton.ZIndex = Z
-			deleteButton.Parent = bindRow
-			deleteButton.MouseEnter:Connect(function()
-				tween(deleteButton, "Fast", { TextColor3 = Color3.fromRGB(214, 118, 118) })
-			end)
-			deleteButton.MouseLeave:Connect(function()
-				tween(deleteButton, "Out", { TextColor3 = TC(Color3.fromRGB(110, 110, 110)) })
-			end)
-			deleteButton.MouseButton1Click:Connect(function()
-				BindSystem.Remove(bind)
-				renderBinds()
-			end)
-		end
-	end
-
-	-- "+ new" toggle ----------------------------------------------------------------------------------------
-	local addRow = Instance.new("TextButton")
-	addRow.Name = "AddRow"
-	addRow.AutoButtonColor = false
-	addRow.BackgroundTransparency = 1
-	addRow.Size = UDim2.new(1, 0, 0, 22)
-	addRow.FontFace = FONT_BODY
-	addRow.TextSize = 13
-	addRow.TextXAlignment = Enum.TextXAlignment.Left
-	addRow.TextColor3 = Color3.fromRGB(150, 150, 150)
-	addRow.Text = "+  New keybind"
-	addRow.LayoutOrder = 4
-	addRow.ZIndex = Z
-	addRow.Parent = panel
-	themeRegister(addRow)
-	themeApply(addRow)
-	addRow.MouseEnter:Connect(function()
-		tween(addRow, "Fast", { TextColor3 = TC(Color3.fromRGB(215, 215, 215)) })
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = panel
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(33, 33, 33)
+	stroke.Thickness = 1.3
+	stroke.Parent = panel
+	pcall(function()
+		local shadow = Instance.new("UIShadow")
+		shadow.Color = Color3.fromRGB(0, 0, 0)
+		shadow.Transparency = 0.43
+		shadow.BlurRadius = UDim.new(0, 20)
+		shadow.Parent = panel
 	end)
-	addRow.MouseLeave:Connect(function()
-		tween(addRow, "Out", { TextColor3 = TC(Color3.fromRGB(150, 150, 150)) })
-	end)
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 10)
+	padding.PaddingRight = UDim.new(0, 10)
+	padding.PaddingTop = UDim.new(0, 10)
+	padding.PaddingBottom = UDim.new(0, 10)
+	padding.Parent = panel
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Vertical
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, 6)
+	layout.Parent = panel
+	themeRegister(panel)
+	themeRegister(stroke)
+	return panel
+end
 
-	-- editor ------------------------------------------------------------------------------------------------
-	local modes = { "Press" }
-	do
-		local byType = {
-			Toggle = { "Toggle", "Hold" }, Button = { "Press" },
-			Slider = { "Set value" }, NumberPicker = { "Set value" }, Input = { "Set value" },
-			Selector = { "Set value" }, Dropdown = { "Set value" },
-		}
-		modes = byType[element.Type] or { "Press" }
+-- "KeybindRedacting" — Key / Mode / Value / Delete editor for a single bind, opened a bit to the
+-- right of the "Binds" panel. Every field applies live (no separate save step).
+BindSystem.OpenEditor = function(bindsPanel, element, bind, rowFrame, resetVisual, refreshList, getCloser, setCloser)
+	local closeExisting = getCloser()
+	if closeExisting then closeExisting() end
+
+	local Z = BIND_Z
+	local editorActiveInputs = {}
+	local editorPanel = BindSystem.BuildPanel("KeybindRedacting", 200)
+
+	local function makeRow(order, labelText)
+		local rowHolder = Instance.new("Frame")
+		rowHolder.BackgroundTransparency = 1
+		rowHolder.Size = UDim2.new(1, 0, 0, 26)
+		rowHolder.LayoutOrder = order
+		rowHolder.ZIndex = Z
+		rowHolder.Parent = editorPanel
+		local lbl = BindSystem.MakeLabel(rowHolder, labelText, 12, Color3.fromRGB(140, 140, 140))
+		lbl.AnchorPoint = Vector2.new(0, 0.5)
+		lbl.Position = UDim2.new(0, 0, 0.5, 0)
+		lbl.Size = UDim2.new(0, 50, 1, 0)
+		return rowHolder
 	end
-	local hasValue = element.Type == "Slider" or element.Type == "NumberPicker" or element.Type == "Input"
-		or element.Type == "Selector" or element.Type == "Dropdown"
-	local pendingMode = modes[1]
-	local pendingKey = "None"
 
-	local editor = Instance.new("Frame")
-	editor.Name = "Editor"
-	editor.BackgroundTransparency = 1
-	editor.Size = UDim2.new(1, 0, 0, 0)
-	pcall(function() editor.AutomaticSize = Enum.AutomaticSize.Y end)
-	editor.Visible = false
-	editor.LayoutOrder = 5
-	editor.ZIndex = Z
-	editor.Parent = panel
-	local editorLayout = Instance.new("UIListLayout")
-	editorLayout.FillDirection = Enum.FillDirection.Vertical
-	editorLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	editorLayout.Padding = UDim.new(0, 6)
-	editorLayout.Parent = editor
-	makeSeparator(editor, 0)
-
-	local editorContext = { editor = editor, activeInputs = activeInputs }
-	local nameInput = BindSystem.MakeInputBox(editorContext, 1, "Name", "bind name", false, nil)
-
-	local keyRow = Instance.new("Frame")
-	keyRow.Name = "KeyRow"
-	keyRow.BackgroundTransparency = 1
-	keyRow.Size = UDim2.new(1, 0, 0, 26)
-	keyRow.LayoutOrder = 2
-	keyRow.ZIndex = Z
-	keyRow.Parent = editor
-	local keyLabel = BindSystem.MakeLabel(keyRow, "Key", 12, Color3.fromRGB(115, 115, 115))
-	keyLabel.AnchorPoint = Vector2.new(0, 0.5)
-	keyLabel.Position = UDim2.new(0, 0, 0.5, 0)
-	keyLabel.Size = UDim2.new(0, 52, 1, 0)
-	local keyChip, keyChipText = BindSystem.MakeKeyChip(keyRow, "click to bind", Z)
+	-- Key -----------------------------------------------------------------------------------
+	local keyRow = makeRow(1, "Key")
+	local keyChip, keyChipText = BindSystem.MakeKeyChip(keyRow, "", Z)
+	keyChip.Size = UDim2.new(0, 78, 0, 22)
 	keyChip.Position = UDim2.new(1, 0, 0.5, 0)
-	keyChip.Size = UDim2.new(0, 92, 0, 20)
+	local function renderKeyChip()
+		local hasKey = bind.Key and bind.Key ~= "None"
+		keyChipText.Text = hasKey and keyDisplayName(bind.Key) or "_"
+		keyChipText.TextColor3 = TC(hasKey and Color3.fromRGB(172, 172, 172) or Color3.fromRGB(90, 90, 90))
+	end
+	renderKeyChip()
 	keyChip.MouseButton1Click:Connect(function()
 		keyChipText.Text = "..."
 		captureBindKey(function(newKey)
 			if newKey then
-				pendingKey = newKey
+				bind.Key = newKey
+				BindSystem.Touch(bind)
+				if refreshList then refreshList() end
 			end
-			if keyChipText.Parent then
-				keyChipText.Text = pendingKey == "None" and "click to bind" or keyDisplayName(pendingKey)
-			end
+			if keyChipText.Parent then renderKeyChip() end
 		end)
 	end)
 
-	local modeButtons = {}
+	-- Mode (skipped for types with only one mode, e.g. Button "Press") ------------------------
+	local modes = BindSystem.ModesByType[element.Type] or { "Press" }
 	if #modes > 1 then
-		local modeRow = Instance.new("Frame")
-		modeRow.BackgroundTransparency = 1
-		modeRow.Size = UDim2.new(1, 0, 0, 26)
-		modeRow.LayoutOrder = 3
-		modeRow.ZIndex = Z
-		modeRow.Parent = editor
-		local modeLabel = BindSystem.MakeLabel(modeRow, "Mode", 12, Color3.fromRGB(115, 115, 115))
-		modeLabel.AnchorPoint = Vector2.new(0, 0.5)
-		modeLabel.Position = UDim2.new(0, 0, 0.5, 0)
-		modeLabel.Size = UDim2.new(0, 52, 1, 0)
-		local function renderModes()
-			for modeName, modeButton in pairs(modeButtons) do
-				local selected = modeName == pendingMode
-				tween(modeButton, "Fast", { BackgroundTransparency = selected and 0 or 1 })
-				tween(modeButton.ModeText, "Fast", { TextColor3 = TC(selected and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(105, 105, 105)) })
+		local modeRow = makeRow(2, "Mode")
+		local holder = Instance.new("Frame")
+		holder.AnchorPoint = Vector2.new(1, 0.5)
+		holder.Position = UDim2.new(1, 0, 0.5, 0)
+		holder.Size = UDim2.new(0, 78, 0, 20)
+		holder.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
+		holder.ZIndex = Z
+		holder.Parent = modeRow
+		local hCorner = Instance.new("UICorner")
+		hCorner.CornerRadius = UDim.new(1, 0)
+		hCorner.Parent = holder
+		local hStroke = Instance.new("UIStroke")
+		hStroke.Color = Color3.fromRGB(60, 60, 60)
+		hStroke.Thickness = 0.6
+		hStroke.Parent = holder
+		local hPadding = Instance.new("UIPadding")
+		hPadding.PaddingLeft = UDim.new(0, 2)
+		hPadding.PaddingRight = UDim.new(0, 2)
+		hPadding.Parent = holder
+		local hLayout = Instance.new("UIListLayout")
+		hLayout.FillDirection = Enum.FillDirection.Horizontal
+		hLayout.Padding = UDim.new(0, 1)
+		hLayout.Parent = holder
+		local segButtons = {}
+		local function renderModeSeg()
+			for modeName, seg in pairs(segButtons) do
+				local selected = modeName == bind.Mode
+				tween(seg, "Fast", { BackgroundTransparency = selected and 0 or 1 })
+				tween(seg.SegText, "Fast", { TextColor3 = TC(selected and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(110, 110, 110)) })
 			end
 		end
-		local xOffset = 0
 		for _, modeName in ipairs(modes) do
-			local modeButton = Instance.new("TextButton")
-			modeButton.AutoButtonColor = false
-			modeButton.Text = ""
-			modeButton.AnchorPoint = Vector2.new(1, 0.5)
-			modeButton.Position = UDim2.new(1, -xOffset, 0.5, 0)
-			modeButton.Size = UDim2.new(0, 52, 0, 20)
-			modeButton.BackgroundColor3 = Color3.fromRGB(38, 38, 39)
-			modeButton.BackgroundTransparency = 1
-			modeButton.ZIndex = Z
-			modeButton.Parent = modeRow
-			local modeCorner = Instance.new("UICorner")
-			modeCorner.CornerRadius = UDim.new(0, 6)
-			modeCorner.Parent = modeButton
-			local modeText = Instance.new("TextLabel")
-			modeText.Name = "ModeText"
-			modeText.BackgroundTransparency = 1
-			modeText.Size = UDim2.new(1, 0, 1, 0)
-			modeText.FontFace = FONT_BODY
-			modeText.TextSize = 11
-			modeText.TextColor3 = Color3.fromRGB(105, 105, 105)
-			modeText.Text = modeName
-			modeText.ZIndex = Z
-			modeText.Parent = modeButton
-			themeRegister(modeButton)
-			themeRegister(modeText)
-			modeButton.MouseButton1Click:Connect(function()
-				pendingMode = modeName
-				renderModes()
+			local seg = Instance.new("TextButton")
+			seg.AutoButtonColor = false
+			seg.Text = ""
+			seg.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+			-- fixed width: holder is 78 wide with 2px side padding and a 1px gap, so a
+			-- 0.5-scale segment would overflow (0.5*78 = 39 each)
+			seg.Size = UDim2.new(0, 36, 1, 0)
+			seg.ZIndex = Z
+			seg.Parent = holder
+			local sCorner = Instance.new("UICorner")
+			sCorner.CornerRadius = UDim.new(1, 0)
+			sCorner.Parent = seg
+			local segText = Instance.new("TextLabel")
+			segText.Name = "SegText"
+			segText.BackgroundTransparency = 1
+			segText.Size = UDim2.new(1, 0, 1, 0)
+			segText.FontFace = FONT_BODY
+			segText.TextSize = 10
+			segText.Text = modeName
+			segText.ZIndex = Z
+			segText.Parent = seg
+			seg.MouseButton1Click:Connect(function()
+				bind.Mode = modeName
+				BindSystem.Touch(bind)
+				renderModeSeg()
+				if refreshList then refreshList() end
 			end)
-			modeButtons[modeName] = modeButton
-			xOffset += 56
+			segButtons[modeName] = seg
 		end
-		renderModes()
+		renderModeSeg()
+		themeRegisterDeep(holder)
+		themeApplyDeep(holder)
 	end
 
-	local valueInput = nil
-	if hasValue then
-		local defaultValue = ""
-		if element.Type == "Slider" or element.Type == "NumberPicker" then
-			defaultValue = tostring(element.CurrentValue or "")
-		elseif element.Type == "Input" then
-			defaultValue = tostring(element.CurrentValue or "")
-		elseif element.Type == "Selector" then
-			defaultValue = tostring(element.CurrentOption or "")
-		elseif element.Type == "Dropdown" then
-			defaultValue = type(element.CurrentOption) == "string" and element.CurrentOption or ""
-		end
-		local numeric = element.Type == "Slider" or element.Type == "NumberPicker"
-		valueInput = BindSystem.MakeInputBox(editorContext, 4, "Value", numeric and "value to set" or "value / option to set", numeric, defaultValue)
-	end
-
-	local createButton = Instance.new("TextButton")
-	createButton.Name = "CreateButton"
-	createButton.AutoButtonColor = false
-	createButton.Text = ""
-	createButton.BackgroundColor3 = Color3.fromRGB(33, 33, 34)
-	createButton.Size = UDim2.new(1, 0, 0, 28)
-	createButton.LayoutOrder = 5
-	createButton.ZIndex = Z
-	createButton.Parent = editor
-	do
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 7)
-		corner.Parent = createButton
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = Color3.fromRGB(64, 64, 64)
-		stroke.Thickness = 1
-		stroke.Parent = createButton
-		themeRegister(createButton)
-		themeRegister(stroke)
-		themeApply(createButton)
-		themeApply(stroke)
-	end
-	local createText = Instance.new("TextLabel")
-	createText.BackgroundTransparency = 1
-	createText.Size = UDim2.new(1, 0, 1, 0)
-	createText.FontFace = FONT_BODY
-	createText.TextSize = 13
-	createText.TextColor3 = Color3.fromRGB(205, 205, 205)
-	createText.Text = "Create bind"
-	createText.ZIndex = Z
-	createText.Parent = createButton
-	themeRegister(createText)
-	themeApply(createText)
-	createButton.MouseEnter:Connect(function()
-		tween(createButton, "Fast", { BackgroundColor3 = TC(Color3.fromRGB(46, 46, 47)) })
-	end)
-	createButton.MouseLeave:Connect(function()
-		tween(createButton, "Out", { BackgroundColor3 = TC(Color3.fromRGB(36, 36, 37)) })
-	end)
-
-	local function setEditorOpen(open)
-		editor.Visible = open
-		addRow.Text = open and "−  Cancel" or "+  New keybind"
-	end
-	addRow.MouseButton1Click:Connect(function()
-		setEditorOpen(not editor.Visible)
-	end)
-
-	createButton.MouseButton1Click:Connect(function()
-		if pendingKey == "None" then
-			keyChipText.Text = "set a key!"
-			task.delay(1.1, function()
-				if keyChipText.Parent and pendingKey == "None" then
-					keyChipText.Text = "click to bind"
+	-- Value (skipped for Button — nothing to hold/restore for a fire-once action) -------------
+	if element.Type ~= "Button" then
+		if element.Type == "Toggle" then
+			if bind.Value == nil then bind.Value = true end
+			local valueRow = makeRow(3, "Value")
+			local holder = Instance.new("Frame")
+			holder.AnchorPoint = Vector2.new(1, 0.5)
+			holder.Position = UDim2.new(1, 0, 0.5, 0)
+			holder.Size = UDim2.new(0, 30, 0, 16)
+			holder.BackgroundColor3 = bind.Value and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(24, 24, 24)
+			holder.ZIndex = Z
+			holder.Parent = valueRow
+			local hCorner = Instance.new("UICorner")
+			hCorner.CornerRadius = UDim.new(1, 0)
+			hCorner.Parent = holder
+			local hStroke = Instance.new("UIStroke")
+			hStroke.Color = Color3.fromRGB(90, 90, 90)
+			hStroke.Thickness = 0.5
+			hStroke.Parent = holder
+			local dot = Instance.new("Frame")
+			dot.AnchorPoint = Vector2.new(0.5, 0.5)
+			dot.Position = bind.Value and UDim2.new(1, -9, 0.5, 0) or UDim2.new(0, 9, 0.5, 0)
+			dot.Size = UDim2.new(0, 12, 0, 12)
+			dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			dot.ZIndex = Z + 1
+			dot.Parent = holder
+			local dCorner = Instance.new("UICorner")
+			dCorner.CornerRadius = UDim.new(1, 0)
+			dCorner.Parent = dot
+			pcall(function()
+				local dShadow = Instance.new("UIShadow")
+				dShadow.Transparency = 0.2
+				dShadow.Parent = dot
+			end)
+			local function renderToggle()
+				local pos = bind.Value and UDim2.new(1, -9, 0.5, 0) or UDim2.new(0, 9, 0.5, 0)
+				tween(dot, "Fast", { Position = pos })
+				tween(holder, "Fast", { BackgroundColor3 = TC(bind.Value and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(24, 24, 24)) })
+			end
+			local hit = Instance.new("TextButton")
+			hit.BackgroundTransparency = 1
+			hit.Text = ""
+			hit.Size = UDim2.new(1, 0, 1, 0)
+			hit.ZIndex = Z + 2
+			hit.Parent = holder
+			hit.MouseButton1Click:Connect(function()
+				bind.Value = not bind.Value
+				renderToggle()
+				BindSystem.Touch(bind)
+			end)
+			themeRegisterDeep(holder)
+			themeApplyDeep(holder)
+		elseif element.Type == "ColorPicker" then
+			if bind.Value == nil then
+				bind.Value = BindSystem.PackColor(element.Color, element.Transparency)
+			end
+			local valueRow = makeRow(3, "Value")
+			local swatch = Instance.new("ImageButton")
+			swatch.Name = "ColorValue"
+			swatch.AutoButtonColor = false
+			swatch.ImageTransparency = 1
+			swatch.AnchorPoint = Vector2.new(1, 0.5)
+			swatch.Position = UDim2.new(1, 0, 0.5, 0)
+			swatch.Size = UDim2.new(0, 30, 0, 18)
+			swatch.ZIndex = Z + 1
+			swatch.Parent = valueRow
+			local sCorner = Instance.new("UICorner")
+			sCorner.CornerRadius = UDim.new(0, 6)
+			sCorner.Parent = swatch
+			local sStroke = Instance.new("UIStroke")
+			sStroke.Color = Color3.fromRGB(65, 65, 65)
+			sStroke.Thickness = 1
+			sStroke.Parent = swatch
+			-- checkerboard behind the swatch so a transparent bind colour reads as transparent
+			local checker = Instance.new("ImageLabel")
+			checker.Name = "Checkerboard"
+			checker.Image = "rbxassetid://107060544057249"
+			checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
+			checker.ScaleType = Enum.ScaleType.Tile
+			checker.TileSize = UDim2.new(0, 8, 0, 8)
+			checker.BackgroundTransparency = 1
+			checker.Size = UDim2.new(1, 0, 1, 0)
+			checker.ZIndex = Z
+			checker.Parent = swatch
+			local cCorner = Instance.new("UICorner")
+			cCorner.CornerRadius = UDim.new(0, 6)
+			cCorner.Parent = checker
+			local function renderSwatch()
+				local color, transparency = BindSystem.UnpackColor(bind.Value)
+				if color then
+					swatch.BackgroundColor3 = color
+					swatch.BackgroundTransparency = transparency
 				end
+			end
+			swatch.MouseButton1Click:Connect(function()
+				local color, transparency = BindSystem.UnpackColor(bind.Value)
+				local origin = screenPointFor(swatch.AbsolutePosition)
+				openColorPicker({
+					Color = color or element.Color,
+					Transparency = transparency or 0,
+					Cursor = Vector2.new(origin.X + swatch.AbsoluteSize.X + 10, origin.Y + swatch.AbsoluteSize.Y / 2),
+					OnChanged = function(newColor, newAlpha, committed)
+						bind.Value = BindSystem.PackColor(newColor, newAlpha)
+						renderSwatch()
+						if committed then ConfigHooks.Autosave() end
+					end,
+				})
 			end)
-			return
+			themeRegisterDeep(valueRow)
+			themeApplyDeep(valueRow)
+			-- after theming, so the chosen colour isn't re-tinted by TC()
+			renderSwatch()
+		else
+			local numeric = element.Type == "Slider" or element.Type == "NumberPicker"
+			local default = bind.Value
+			if default == nil then default = BindSystem.GetValue(element) end
+			local valueInput = BindSystem.MakeInputBox({ editor = editorPanel, activeInputs = editorActiveInputs }, 3,
+				"Value", numeric and "value" or "value / option", numeric,
+				default ~= nil and tostring(default) or nil)
+			valueInput.Options.OnChanged = function(text)
+				bind.Value = text
+				ConfigHooks.Autosave()
+			end
 		end
-		local bindName = nameInput.Text
-		if bindName == "" then
-			bindName = element.Name or element.Type
+	end
+
+	-- Delete ----------------------------------------------------------------------------------
+	local deleteRow = Instance.new("TextButton")
+	deleteRow.Name = "DeleteBind"
+	deleteRow.AutoButtonColor = false
+	deleteRow.BackgroundTransparency = 1
+	deleteRow.Size = UDim2.new(1, 0, 0, 22)
+	deleteRow.FontFace = FONT_BODY
+	deleteRow.TextSize = 13
+	deleteRow.TextXAlignment = Enum.TextXAlignment.Left
+	deleteRow.TextColor3 = Color3.fromRGB(196, 122, 122)
+	deleteRow.Text = "  Delete Bind"
+	deleteRow.LayoutOrder = 4
+	deleteRow.ZIndex = Z
+	deleteRow.Parent = editorPanel
+	deleteRow.MouseEnter:Connect(function()
+		tween(deleteRow, "Fast", { TextColor3 = Color3.fromRGB(224, 140, 140) })
+	end)
+	deleteRow.MouseLeave:Connect(function()
+		tween(deleteRow, "Out", { TextColor3 = TC(Color3.fromRGB(196, 122, 122)) })
+	end)
+	deleteRow.MouseButton1Click:Connect(function()
+		BindSystem.Remove(bind)
+		if refreshList then refreshList() end
+		local closer = getCloser()
+		if closer then closer() end
+	end)
+
+	themeRegisterDeep(editorPanel)
+	themeApplyDeep(editorPanel)
+
+	-- open just to the right of the Binds panel, vertically centred on the row that was clicked
+	local panelOrigin = screenPointFor(bindsPanel.AbsolutePosition)
+	local rowOrigin = screenPointFor(rowFrame.AbsolutePosition)
+	local anchorPoint = Vector2.new(
+		panelOrigin.X + bindsPanel.AbsoluteSize.X + 10,
+		rowOrigin.Y + rowFrame.AbsoluteSize.Y / 2
+	)
+
+	local close
+	close = openFloatingAtCursor(editorPanel, anchorPoint, function()
+		if getCloser() == close then setCloser(nil) end
+		for _, input in ipairs(editorActiveInputs) do pcall(function() input:Destroy() end) end
+		fadeOut(editorPanel, 0.12)
+		if resetVisual then pcall(resetVisual) end
+	end)
+	setCloser(close)
+	popWindow(editorPanel)
+	fadeIn(editorPanel, 0.14)
+end
+
+-- "Binds" — lists every existing bind on `element`, plus a "New Bind" row. Opened via right
+-- click on any bindable element, at the cursor (left-middle edge lands on the click point).
+BindSystem.OpenMenu = function(element, position)
+	if BindSystem.MenuOpen then return end
+	BindSystem.MenuOpen = true
+
+	local panel = BindSystem.BuildPanel("Binds", 240)
+
+	-- static — never changes, just names the window
+	local title = BindSystem.MakeLabel(panel, "Binds", 14, Color3.fromRGB(220, 220, 220))
+	title.Size = UDim2.new(1, 0, 0, 16)
+	title.LayoutOrder = 0
+
+	local editorCloser = nil
+	local function getCloser() return editorCloser end
+	local function setCloser(fn) editorCloser = fn end
+
+	-- which bind currently has the editor open — kept so a list rebuild (after a mode change,
+	-- a rebind, etc) can restore that row's pressed look instead of dropping back to rest
+	local editingBind = nil
+	local rowsByBind = {}
+
+	local renderBinds -- forward
+	local function selectBind(bind, rowFrame, resetVisual)
+		editingBind = bind
+		BindSystem.OpenEditor(panel, element, bind, rowFrame, function()
+			if editingBind == bind then editingBind = nil end
+			-- the row may have been destroyed by a rebuild while the editor was open
+			if resetVisual and rowFrame.Parent then resetVisual() end
+		end, renderBinds, getCloser, setCloser)
+	end
+
+	renderBinds = function()
+		for _, child in ipairs(panel:GetChildren()) do
+			if child.Name == "BindRow" then
+				child:Destroy()
+			end
 		end
-		BindSystem.Add({
+		rowsByBind = {}
+		local binds = BindSystem.ForElement(element)
+		for index, bind in ipairs(binds) do
+			local rowFrame, apply = BindSystem.BuildRow(panel, 10 + index, bind, function(frame, resetVisual)
+				selectBind(bind, frame, resetVisual)
+			end)
+			rowsByBind[bind] = rowFrame
+			if bind == editingBind then
+				apply("press")
+			end
+		end
+	end
+
+	BindSystem.BuildSplitter(panel, 900)
+	BindSystem.BuildNewRow(panel, 901, function()
+		local modes = BindSystem.ModesByType[element.Type] or { "Press" }
+		local newBind = BindSystem.Add({
 			Element = element,
-			Name = bindName,
-			Key = pendingKey,
-			Mode = pendingMode,
-			Value = valueInput and valueInput.Text or nil,
+			Key = "None",
+			Mode = modes[1],
+			Value = BindSystem.DefaultValueFor(element),
 		})
-		pendingKey = "None"
-		keyChipText.Text = "click to bind"
-		nameInput:SetText("", true)
-		setEditorOpen(false)
 		renderBinds()
+		local targetRow = rowsByBind[newBind]
+		if targetRow then
+			selectBind(newBind, targetRow)
+		end
 	end)
 
 	renderBinds()
+	themeRegisterDeep(panel)
+	themeApplyDeep(panel)
 
-	-- position & open ---------------------------------------------------------------------------------------
 	openFloatingAtCursor(panel, position, function()
 		BindSystem.MenuOpen = false
-		for _, input in ipairs(activeInputs) do
-			pcall(function() input:Destroy() end)
-		end
+		local closer = getCloser()
+		if closer then closer() end
 		fadeOut(panel, 0.12)
 	end)
 	popWindow(panel)
 	fadeIn(panel, 0.14)
 end
+
 
 ------------------------------------------------------------------------------------------------------------------------
 --  Interface reveal (after loading)
