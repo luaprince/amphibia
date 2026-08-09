@@ -5179,14 +5179,16 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	return close, container
 end
 
--- Opens `content` anchored so `cursor` lands on its left-middle edge by default (clamped
--- on-screen instead of running off the edge of the viewport).
+-- Opens `content` just below and to the right of `cursor`, so the pointer sits slightly above
+-- and left of the window's top-left corner (clamped on-screen rather than running off the edge).
+local CURSOR_POPUP_OFFSET = Vector2.new(10, 10)
+
 local function openFloatingAtCursor(content: GuiObject, cursor: Vector2, onClose, anchor: Vector2?)
-	anchor = anchor or Vector2.new(0, 0.5)
+	anchor = anchor or Vector2.new(0, 0)
 	content.AnchorPoint = anchor
 	local viewport = ScreenGui.AbsoluteSize
-	local x = math.max(8, cursor.X)
-	local y = math.max(8, cursor.Y)
+	local x = math.max(8, cursor.X + CURSOR_POPUP_OFFSET.X)
+	local y = math.max(8, cursor.Y + CURSOR_POPUP_OFFSET.Y)
 	local close, container = openFloating(content, Vector2.new(x, y), onClose)
 	task.defer(function()
 		if not content.Parent then return end
@@ -6631,6 +6633,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	local panel = BindEditorTemplate:Clone()
 	panel.Name = "KeybindRedacting"
 	panel.Visible = true
+	panel.ZIndex = BIND_Z -- above openFloating's catcher, same reason as the Binds list
 
 	local keyRow = panel:WaitForChild("Key")
 	local modeRow = panel:WaitForChild("Mode")
@@ -6836,6 +6839,8 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	)
 
 	local close
+	-- anchored left-middle: the editor lines up with the row it belongs to, rather than
+	-- hanging below it like a cursor-opened popup
 	close = openFloatingAtCursor(panel, anchorPoint, function()
 		if context.closeEditor == close then
 			context.closeEditor = nil
@@ -6844,20 +6849,20 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 		fadeOut(panel, 0.12)
 		task.delay(0.18, function() panel:Destroy() end)
 		if setRowState and row.Parent then setRowState("rest") end
-	end)
+	end, Vector2.new(0, 0.5))
 	context.closeEditor = close
 	popWindow(panel)
 	fadeIn(panel, 0.14)
 end
 
 -- "Binds" — the list of binds attached to `element`, opened at the cursor on right click.
-BindSystem.OpenMenu = function(element, position)
-	if BindSystem.MenuOpen then return end
-	BindSystem.MenuOpen = true
-
+BindSystem.BuildMenu = function(element, position)
 	local panel = BindsPanelTemplate:Clone()
 	panel.Name = "Binds"
 	panel.Visible = true
+	-- must sit above openFloating's full-screen catcher (ZIndex 40) or the catcher swallows
+	-- every click; the design's authored 20 was relative to a different parent
+	panel.ZIndex = BIND_Z
 
 	local context = { Element = element, panel = panel, closeEditor = nil, editingBind = nil }
 
@@ -6941,6 +6946,19 @@ BindSystem.OpenMenu = function(element, position)
 	end)
 	popWindow(panel)
 	fadeIn(panel, 0.14)
+end
+
+BindSystem.OpenMenu = function(element, position)
+	if BindSystem.MenuOpen then return end
+	BindSystem.MenuOpen = true
+	-- without this the flag would stay stuck on a failure and right-click would stop working
+	-- for the rest of the session
+	local ok, err = pcall(BindSystem.BuildMenu, element, position)
+	if not ok then
+		BindSystem.MenuOpen = false
+		warn("[ Amphibia Interface ] Bind menu failed to open: " .. tostring(err))
+		reportInterfaceIssue("Interface error")
+	end
 end
 
 ------------------------------------------------------------------------------------------------------------------------
