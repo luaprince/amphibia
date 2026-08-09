@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A8.8"
+		Developer info: "A8.9"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -3044,9 +3044,9 @@ local POPUP_CURSOR_OFFSET = {
 -- мельче и плотнее клетка.
 local COLOR_PICKER = {
 	HexPrefixX = 66,
-	HexTextX = 82,
+	HexTextX = 92,
 	HexTextRightPad = 60,
-	CheckerTile = 6,
+	CheckerTile = 0.5,
 }
 
 local Templates = {}
