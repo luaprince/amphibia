@@ -2921,6 +2921,13 @@ local BindsPanelTemplate = OtherFolder:WaitForChild("Keybinds")
 local BindEditorTemplate = OtherFolder:WaitForChild("KeybindRedacting")
 local BindRowTemplate = BindsPanelTemplate:WaitForChild("Bind4None"):Clone()
 BindRowTemplate.Name = "BindRow"
+-- the dashed border the design puts on an unbound key chip, reused by the editor's Key field
+local BindKeyDashTemplate = (function()
+	local chip = BindRowTemplate:FindFirstChild("Keybind")
+	local stroke = chip and chip:FindFirstChildOfClass("UIStroke")
+	local gradient = stroke and stroke:FindFirstChildOfClass("UIGradient")
+	return gradient and gradient:Clone() or nil
+end)()
 for _, exampleName in ipairs({ "Bind1Pressed", "Bind2Hovered", "Bind3", "Bind4None" }) do
 	local example = BindsPanelTemplate:FindFirstChild(exampleName)
 	if example then example:Destroy() end
@@ -6472,25 +6479,252 @@ end
 BindSystem.MenuOpen = false
 local BIND_Z = 45
 
+local BIND_SMOOTH = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local BIND_SWIFT = TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local BIND_GLIDE = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
 -- Authored state values, read straight off the design's example rows:
 --   rest   (Bind3/Bind4None) bg 1    name 0.4  nameStroke 0.7   arrow hidden      keybind shown
 --   hover  (Bind2Hovered)    bg 0.6  name 0.4  nameStroke 0.7   arrow 0.2         keybind faded out
 --   press  (Bind1Pressed)    bg 0    name 0.15 nameStroke 0.45  arrow 0.2         keybind hidden
 local BIND_ROW_STATES = {
-	rest  = { Bg = 1,   Name = 0.4,  Stroke = 0.7,  Arrow = 1,   Keybind = false },
-	hover = { Bg = 0.6, Name = 0.4,  Stroke = 0.7,  Arrow = 0.2, Keybind = true  },
-	press = { Bg = 0,   Name = 0.15, Stroke = 0.45, Arrow = 0.2, Keybind = true  },
+	rest  = { Bg = 1,   Name = 0.4,  Stroke = 0.7,  Arrow = 1,   HideChip = false },
+	hover = { Bg = 0.6, Name = 0.4,  Stroke = 0.7,  Arrow = 0.2, HideChip = true  },
+	press = { Bg = 0,   Name = 0.15, Stroke = 0.45, Arrow = 0.2, HideChip = true  },
 }
-local BIND_STATE_INFO = TweenInfo.new(0.13, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+------------------------------------------------------------------------------------ small helpers
+
+local function bindTween(object, info, goal)
+	if object then tween(object, info, goal) end
+end
+
+-- The row's chip and arrow both live in a fixed-width slot so crossfading one into the other
+-- never changes the row's width — the layout would otherwise pop while both are visible.
+local function makeRightSlot(row)
+	local chip = row:FindFirstChild("Keybind")
+	local arrow = row:FindFirstChild("Arrow")
+	if not chip or not arrow then return chip, arrow end
+
+	local slot = Instance.new("Frame")
+	slot.Name = "RightSlot"
+	slot.BackgroundTransparency = 1
+	slot.Size = UDim2.new(0, 19, 0, 19)
+	slot.LayoutOrder = 3
+	slot.ZIndex = row.ZIndex
+	slot.Parent = row
+
+	chip.Parent = slot
+	chip.AnchorPoint = Vector2.new(0.5, 0.5)
+	chip.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+	arrow.Parent = slot
+	arrow.AnchorPoint = Vector2.new(0.5, 0.5)
+	arrow.Position = UDim2.new(0.5, 0, 0.5, 0)
+	arrow.Visible = true
+	arrow.ImageTransparency = 1
+	return chip, arrow
+end
+
+-- Paints a row's key chip: real key, or the dashed "no key" look from Bind4None.
+BindSystem.PaintKeybind = function(row, key)
+	local chip = row:FindFirstChild("RightSlot")
+	chip = chip and chip:FindFirstChild("Keybind") or row:FindFirstChild("Keybind")
+	if not chip then return end
+	local label = chip:FindFirstChild("TextLabel")
+	local stroke = chip:FindFirstChildOfClass("UIStroke")
+	local dashes = stroke and stroke:FindFirstChildOfClass("UIGradient")
+	local hasKey = key ~= nil and key ~= "None"
+	if label then
+		label.Text = hasKey and keyDisplayName(key) or "_"
+		label.TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88))
+	end
+	if dashes then
+		dashes.Enabled = not hasKey
+	end
+	local inner = row:FindFirstChild("Frame")
+	local dot = inner and inner:FindFirstChild("Dot")
+	if dot then
+		bindTween(dot, BIND_SMOOTH, { BackgroundColor3 = TC(hasKey and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(58, 58, 58)) })
+		local dotShadow = dot:FindFirstChildOfClass("UIShadow")
+		if dotShadow then
+			bindTween(dotShadow, BIND_SMOOTH, { Transparency = hasKey and 0.16 or 1 })
+		end
+	end
+end
+
+-- Drives one row between rest / hover / press using the authored values above.
+BindSystem.MakeRowState = function(row)
+	local chip, arrow = makeRightSlot(row)
+	local inner = row:FindFirstChild("Frame")
+	local nameLabel = inner and inner:FindFirstChild("Name")
+	local nameStroke = nameLabel and nameLabel:FindFirstChildOfClass("UIStroke")
+	local chipStroke = chip and chip:FindFirstChildOfClass("UIStroke")
+	local chipLabel = chip and chip:FindFirstChild("TextLabel")
+
+	return function(stateName, instant)
+		local state = BIND_ROW_STATES[stateName]
+		local info = instant and TweenInfo.new(0) or BIND_SMOOTH
+		bindTween(row, info, { BackgroundTransparency = state.Bg })
+		bindTween(nameLabel, info, { TextTransparency = state.Name })
+		bindTween(nameStroke, info, { Transparency = state.Stroke })
+		bindTween(arrow, info, { ImageTransparency = state.Arrow })
+		-- chip and arrow crossfade inside a fixed slot, so nothing reflows mid-animation
+		local hide = state.HideChip
+		bindTween(chip, info, { BackgroundTransparency = hide and 1 or 0 })
+		bindTween(chipStroke, info, { Transparency = hide and 1 or 0 })
+		bindTween(chipLabel, info, { TextTransparency = hide and 1 or 0 })
+	end
+end
+
+-- The main menu's segmented selector, rebuilt at bind-menu proportions: same sliding indicator,
+-- same easing, same hover colours — just smaller, and inside the authored SelectionsHolder.
+BindSystem.MakeSelector = function(holder, optionList, current, onPick)
+	for _, child in ipairs(holder:GetChildren()) do
+		if child:IsA("GuiObject") or child:IsA("UIListLayout") or child:IsA("UIPadding") then
+			child:Destroy()
+		end
+	end
+	pcall(function() holder.AutomaticSize = Enum.AutomaticSize.None end)
+
+	local HEIGHT, PAD_X, GAP, EDGE = 17, 8, 2, 3
+	local COLOR_SELECTED = Color3.fromRGB(196, 196, 196)
+	local COLOR_IDLE = Color3.fromRGB(106, 106, 106)
+	local COLOR_HOVER = Color3.fromRGB(158, 158, 158)
+
+	local indicator = Instance.new("Frame")
+	indicator.Name = "Indicator"
+	indicator.AnchorPoint = Vector2.new(0, 0.5)
+	indicator.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	indicator.Size = UDim2.new(0, 0, 0, HEIGHT)
+	indicator.Position = UDim2.new(0, EDGE, 0.5, 0)
+	indicator.ZIndex = holder.ZIndex + 1
+	indicator.Parent = holder
+	local indicatorCorner = Instance.new("UICorner")
+	indicatorCorner.CornerRadius = UDim.new(0, 6)
+	indicatorCorner.Parent = indicator
+	local indicatorStroke = Instance.new("UIStroke")
+	indicatorStroke.Thickness = 1
+	indicatorStroke.Color = Color3.fromRGB(90, 90, 90)
+	indicatorStroke.Transparency = 0.25
+	indicatorStroke.Parent = indicator
+	themeRegister(indicator)
+	themeRegister(indicatorStroke)
+	themeApply(indicator)
+	themeApply(indicatorStroke)
+
+	local entriesInOrder, optionEntries = {}, {}
+
+	local function entryWidth(entry)
+		local ok, bounds = pcall(function() return entry.Label.TextBounds end)
+		if ok and bounds and bounds.X and bounds.X > 1 then
+			return math.clamp(math.ceil(bounds.X) + PAD_X * 2, 22, 96)
+		end
+		return entry.EstimatedWidth
+	end
+
+	local function relayout()
+		local x = EDGE
+		for _, entry in ipairs(entriesInOrder) do
+			entry.X = x
+			entry.Width = entryWidth(entry)
+			entry.Button.Position = UDim2.new(0, entry.X, 0.5, 0)
+			entry.Button.Size = UDim2.new(0, entry.Width, 0, HEIGHT)
+			x += entry.Width + GAP
+		end
+		holder.Size = UDim2.new(0, x - GAP + EDGE, 0, HEIGHT + 5)
+		local active = optionEntries[current]
+		if active then
+			indicator.Position = UDim2.new(0, active.X, 0.5, 0)
+			indicator.Size = UDim2.new(0, active.Width, 0, HEIGHT)
+		end
+	end
+
+	local function render(instant)
+		for optionName, entry in pairs(optionEntries) do
+			local selected = optionName == current
+			bindTween(entry.Label, instant and TweenInfo.new(0) or BIND_SMOOTH,
+				{ TextColor3 = TC(selected and COLOR_SELECTED or COLOR_IDLE) })
+		end
+		local active = optionEntries[current]
+		if active then
+			indicator.Visible = true
+			bindTween(indicator, instant and TweenInfo.new(0) or BIND_GLIDE, {
+				Position = UDim2.new(0, active.X, 0.5, 0),
+				Size = UDim2.new(0, active.Width, 0, HEIGHT),
+			})
+		else
+			indicator.Visible = false
+		end
+	end
+
+	for index, optionName in ipairs(optionList) do
+		local button = Templates.SelectorOption:Clone()
+		button.Name = "Option_" .. optionName
+		button.LayoutOrder = index
+		button.BackgroundTransparency = 1
+		pcall(function() button.AutomaticSize = Enum.AutomaticSize.None end)
+		button.AnchorPoint = Vector2.new(0, 0.5)
+		button.ZIndex = holder.ZIndex + 2
+		local buttonPadding = button:FindFirstChildOfClass("UIPadding")
+		if buttonPadding then buttonPadding:Destroy() end
+		local buttonStroke = button:FindFirstChildOfClass("UIStroke")
+		if buttonStroke then buttonStroke:Destroy() end
+		local optionLabel = nameLabel(button)
+		pcall(function() optionLabel.AutomaticSize = Enum.AutomaticSize.None end)
+		optionLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+		optionLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+		optionLabel.Size = UDim2.new(1, 0, 1, 0)
+		optionLabel.TextXAlignment = Enum.TextXAlignment.Center
+		optionLabel.TextSize = 12
+		optionLabel.ZIndex = holder.ZIndex + 3
+		optionLabel.Text = optionName
+		button.Parent = holder
+
+		button.MouseEnter:Connect(function()
+			if current ~= optionName then bindTween(optionLabel, BIND_SWIFT, { TextColor3 = TC(COLOR_HOVER) }) end
+		end)
+		button.MouseLeave:Connect(function()
+			if current ~= optionName then bindTween(optionLabel, BIND_SMOOTH, { TextColor3 = TC(COLOR_IDLE) }) end
+		end)
+		button.MouseButton1Click:Connect(function()
+			if current == optionName then return end
+			current = optionName
+			render(false)
+			onPick(optionName)
+		end)
+
+		local entry = { Button = button, Label = optionLabel, X = 0, Width = 0,
+			EstimatedWidth = math.max(22, math.ceil((utf8.len(optionName) or #optionName) * 12 * 0.56) + PAD_X * 2) }
+		table.insert(entriesInOrder, entry)
+		optionEntries[optionName] = entry
+		pcall(function()
+			optionLabel:GetPropertyChangedSignal("TextBounds"):Connect(function()
+				task.defer(function()
+					relayout()
+					render(true)
+				end)
+			end)
+		end)
+	end
+
+	relayout()
+	render(true)
+	task.delay(0.08, function()
+		relayout()
+		render(true)
+	end)
+	return holder
+end
 
 BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged)
 	local box = Instance.new("Frame")
 	box.Name = "ValueBox"
 	box.AnchorPoint = Vector2.new(1, 0.5)
 	box.Position = UDim2.new(0.97, 0, 0.5, 0)
-	box.Size = UDim2.new(0, 74, 0, 20)
+	box.Size = UDim2.new(0, 78, 0, 20)
 	box.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
-	box.ZIndex = BIND_Z
+	box.ZIndex = BIND_Z + 1
 	box.Parent = parent
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 4)
@@ -6512,22 +6746,22 @@ BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged)
 		PlaceholderColor = Color3.fromRGB(88, 88, 88),
 		MaxLength = 40,
 		AllowedPattern = numeric and "%d%.%-" or nil,
-		PaddingLeft = 6,
-		PaddingRight = 6,
-		ZIndex = BIND_Z + 1,
+		PaddingLeft = 7,
+		PaddingRight = 7,
+		ZIndex = BIND_Z + 2,
 	})
 	input.Options.OnFocus = function()
-		tween(stroke, "Fast", { Color = TC(Color3.fromRGB(70, 70, 70)) })
+		bindTween(stroke, BIND_SWIFT, { Color = TC(Color3.fromRGB(70, 70, 70)) })
 	end
 	input.Options.OnBlur = function()
-		tween(stroke, "Out", { Color = TC(Color3.fromRGB(29, 29, 29)) })
+		bindTween(stroke, BIND_SMOOTH, { Color = TC(Color3.fromRGB(29, 29, 29)) })
 	end
 	input.Options.OnChanged = onChanged
 	local focusCatcher = Instance.new("TextButton")
 	focusCatcher.BackgroundTransparency = 1
 	focusCatcher.Text = ""
 	focusCatcher.Size = UDim2.new(1, 0, 1, 0)
-	focusCatcher.ZIndex = BIND_Z
+	focusCatcher.ZIndex = BIND_Z + 1
 	focusCatcher.Parent = box
 	focusCatcher.MouseButton1Click:Connect(function()
 		input:Focus()
@@ -6538,12 +6772,17 @@ BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged)
 	return input, box
 end
 
--- Sensible starting Value for a freshly-created bind, per element type.
+-- Value only means something for elements that carry one. A Toggle bind just flips the toggle
+-- (or holds it), and a Button bind just fires it — neither needs a value, so the row is dropped.
+local function bindHasValue(element)
+	local t = element.Type
+	return t == "Slider" or t == "NumberPicker" or t == "Input"
+		or t == "Selector" or t == "Dropdown" or t == "ColorPicker"
+end
+
 BindSystem.DefaultValueFor = function(element)
 	local elementType = element.Type
-	if elementType == "Toggle" then
-		return true
-	elseif elementType == "Slider" or elementType == "NumberPicker" then
+	if elementType == "Slider" or elementType == "NumberPicker" then
 		return tostring(element.CurrentValue or 0)
 	elseif elementType == "Input" then
 		return tostring(element.CurrentValue or "")
@@ -6553,79 +6792,16 @@ BindSystem.DefaultValueFor = function(element)
 		return type(element.CurrentOption) == "string" and element.CurrentOption or ""
 	elseif elementType == "ColorPicker" then
 		return BindSystem.PackColor(element.Color, element.Transparency)
+	elseif elementType == "Toggle" then
+		return true
 	end
 	return nil
 end
 
--- Paints a cloned row's key chip: real key, or the dashed "none" look from Bind4None.
-BindSystem.PaintKeybind = function(row, key)
-	local chip = row:FindFirstChild("Keybind")
-	if not chip then return end
-	local label = chip:FindFirstChild("TextLabel")
-	local stroke = chip:FindFirstChildOfClass("UIStroke")
-	local dashes = stroke and stroke:FindFirstChildOfClass("UIGradient")
-	local hasKey = key ~= nil and key ~= "None"
-	if label then
-		label.Text = hasKey and keyDisplayName(key) or "_"
-		label.TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88))
-	end
-	if dashes then
-		dashes.Enabled = not hasKey
-	end
-	local dot = row:FindFirstChild("Frame") and row.Frame:FindFirstChild("Dot")
-	if dot then
-		dot.BackgroundColor3 = TC(hasKey and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(58, 58, 58))
-		local dotShadow = dot:FindFirstChildOfClass("UIShadow")
-		if dotShadow then
-			dotShadow.Transparency = hasKey and 0.16 or 1
-		end
-	end
-end
+------------------------------------------------------------------------------------ editor window
 
--- Drives one row between rest / hover / press using the authored values above.
-BindSystem.MakeRowState = function(row)
-	local arrow = row:FindFirstChild("Arrow")
-	local inner = row:FindFirstChild("Frame")
-	local nameLabel = inner and inner:FindFirstChild("Name")
-	local nameStroke = nameLabel and nameLabel:FindFirstChildOfClass("UIStroke")
-	local chip = row:FindFirstChild("Keybind")
-	local chipStroke = chip and chip:FindFirstChildOfClass("UIStroke")
-	local chipLabel = chip and chip:FindFirstChild("TextLabel")
-
-	local current = "rest"
-	return function(stateName, instant)
-		current = stateName
-		local state = BIND_ROW_STATES[stateName]
-		local info = instant and TweenInfo.new(0) or BIND_STATE_INFO
-		tween(row, info, { BackgroundTransparency = state.Bg })
-		if nameLabel then tween(nameLabel, info, { TextTransparency = state.Name }) end
-		if nameStroke then tween(nameStroke, info, { Transparency = state.Stroke }) end
-		if arrow then
-			if state.Arrow < 1 then arrow.Visible = true end
-			tween(arrow, info, { ImageTransparency = state.Arrow })
-			if state.Arrow >= 1 then
-				task.delay(0.14, function()
-					if current == stateName and arrow.Parent then arrow.Visible = false end
-				end)
-			end
-		end
-		-- "keybind fades out" — the frame and every child of it go together
-		if chip then
-			local hide = state.Keybind
-			if not hide then chip.Visible = true end
-			tween(chip, info, { BackgroundTransparency = hide and 1 or 0 })
-			if chipStroke then tween(chipStroke, info, { Transparency = hide and 1 or 0 }) end
-			if chipLabel then tween(chipLabel, info, { TextTransparency = hide and 1 or 0 }) end
-			if hide then
-				task.delay(0.14, function()
-					if current == stateName and chip.Parent then chip.Visible = false end
-				end)
-			end
-		end
-	end
-end
-
--- "KeybindRedacting" — Key / Mode / Value / Delete for one bind, opened just right of the list.
+-- "KeybindRedacting" — Key / Mode / Value / Delete for one bind. It lives in the same floating
+-- container as the list, so one click outside dismisses both together.
 BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	if context.closeEditor then context.closeEditor() end
 
@@ -6633,7 +6809,8 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	local panel = BindEditorTemplate:Clone()
 	panel.Name = "KeybindRedacting"
 	panel.Visible = true
-	panel.ZIndex = BIND_Z -- above openFloating's catcher, same reason as the Binds list
+	panel.ZIndex = BIND_Z + 10
+	panel.AnchorPoint = Vector2.new(0, 0.5)
 
 	local keyRow = panel:WaitForChild("Key")
 	local modeRow = panel:WaitForChild("Mode")
@@ -6641,17 +6818,32 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	local deleteRow = panel:WaitForChild("DeleteBind")
 
 	-- Key ---------------------------------------------------------------------------------------
-	local keyChipLabel = keyRow.Frame.TextLabel
-	local keyChipStroke = keyRow.Frame:FindFirstChildOfClass("UIStroke")
+	local keyChip = keyRow:WaitForChild("Frame")
+	local keyChipLabel = keyChip:WaitForChild("TextLabel")
+	local keyChipStroke = keyChip:FindFirstChildOfClass("UIStroke")
+	-- the empty chip gets the same dashed gradient the bind row uses for "no key"
+	local keyDashes = keyChipStroke and keyChipStroke:FindFirstChildOfClass("UIGradient")
+	if keyChipStroke and not keyDashes and BindKeyDashTemplate then
+		keyDashes = BindKeyDashTemplate:Clone()
+		keyDashes.Parent = keyChipStroke
+	end
 	local function renderKey()
 		local hasKey = bind.Key and bind.Key ~= "None"
 		keyChipLabel.Text = hasKey and keyDisplayName(bind.Key) or "_"
-		keyChipLabel.TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88))
+		bindTween(keyChipLabel, BIND_SWIFT, { TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88)) })
+		if keyDashes then keyDashes.Enabled = not hasKey end
 	end
 	renderKey()
+	keyRow.MouseEnter:Connect(function()
+		bindTween(keyRow, BIND_SWIFT, { BackgroundTransparency = 0.94 })
+	end)
+	keyRow.MouseLeave:Connect(function()
+		bindTween(keyRow, BIND_SMOOTH, { BackgroundTransparency = 1 })
+	end)
 	keyRow.MouseButton1Click:Connect(function()
 		keyChipLabel.Text = "..."
-		if keyChipStroke then tween(keyChipStroke, "Fast", { Color = TC(Color3.fromRGB(70, 70, 70)) }) end
+		if keyDashes then keyDashes.Enabled = false end
+		bindTween(keyChipStroke, BIND_SWIFT, { Color = TC(Color3.fromRGB(80, 80, 80)) })
 		captureBindKey(function(newKey)
 			if newKey then
 				bind.Key = newKey
@@ -6659,7 +6851,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 				if row.Parent then BindSystem.PaintKeybind(row, bind.Key) end
 			end
 			if keyChipLabel.Parent then renderKey() end
-			if keyChipStroke then tween(keyChipStroke, "Out", { Color = TC(Color3.fromRGB(29, 29, 29)) }) end
+			bindTween(keyChipStroke, BIND_SMOOTH, { Color = TC(Color3.fromRGB(29, 29, 29)) })
 		end)
 	end)
 
@@ -6668,194 +6860,170 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	if #modes < 2 then
 		modeRow.Visible = false
 	else
-		local holder = modeRow.SelectionsHolder
-		local segments = { Toggle = holder:WaitForChild("Toggle"), Hold = holder:WaitForChild("Hold") }
-		for _, seg in pairs(segments) do
-			if not seg:FindFirstChildOfClass("UIStroke") then
-				local segStroke = Instance.new("UIStroke")
-				segStroke.Color = Color3.fromRGB(90, 90, 90)
-				segStroke.Thickness = 1
-				segStroke.Transparency = 1
-				segStroke.Parent = seg
-			end
-		end
-		local function renderModes()
-			for modeName, seg in pairs(segments) do
-				local selected = modeName == bind.Mode
-				tween(seg, "Fast", { BackgroundColor3 = TC(selected and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(16, 16, 16)) })
-				-- ":FindFirstChild" — `seg.Name` would return the instance's own Name string
-				local segLabel = seg:FindFirstChild("Name")
-				if segLabel then
-					tween(segLabel, "Fast", { TextColor3 = TC(selected and Color3.fromRGB(184, 184, 184) or Color3.fromRGB(106, 106, 106)) })
-				end
-				local segStroke = seg:FindFirstChildOfClass("UIStroke")
-				if segStroke then tween(segStroke, "Fast", { Transparency = selected and 0 or 1 }) end
-			end
-		end
-		for modeName, seg in pairs(segments) do
-			seg.MouseButton1Click:Connect(function()
-				bind.Mode = modeName
-				BindSystem.Touch(bind)
-				renderModes()
-				local inner = row:FindFirstChild("Frame")
-				local rowLabel = inner and inner:FindFirstChild("Name")
-				if rowLabel then
-					rowLabel.Text = BindSystem.Label(bind)
-				end
-			end)
-		end
-		renderModes()
+		BindSystem.MakeSelector(modeRow:WaitForChild("SelectionsHolder"), modes, bind.Mode, function(picked)
+			bind.Mode = picked
+			BindSystem.Touch(bind)
+			local inner = row:FindFirstChild("Frame")
+			local rowLabel = inner and inner:FindFirstChild("Name")
+			if rowLabel then rowLabel.Text = BindSystem.Label(bind) end
+		end)
 	end
 
 	-- Value -------------------------------------------------------------------------------------
-	local toggleFrame = valueRow:WaitForChild("ToggleFrame")
-	if element.Type == "Button" then
+	local toggleFrame = valueRow:FindFirstChild("ToggleFrame")
+	if not bindHasValue(element) then
 		valueRow.Visible = false
-	elseif element.Type == "Toggle" then
-		if bind.Value == nil then bind.Value = true end
-		local dot = toggleFrame.Dot
-		local function renderToggle(instant)
-			local info = instant and TweenInfo.new(0) or TweenInfo.new(0.13, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			tween(dot, info, { Position = bind.Value and UDim2.new(0.7, 0, 0.5, 0) or UDim2.new(0.3, 0, 0.5, 0) })
-			tween(toggleFrame, info, { BackgroundColor3 = TC(bind.Value and Color3.fromRGB(48, 48, 47) or Color3.fromRGB(24, 24, 24)) })
-		end
-		renderToggle(true)
-		local hit = Instance.new("TextButton")
-		hit.BackgroundTransparency = 1
-		hit.Text = ""
-		hit.Size = UDim2.new(1, 0, 1, 0)
-		hit.ZIndex = BIND_Z + 3
-		hit.Parent = toggleFrame
-		hit.MouseButton1Click:Connect(function()
-			bind.Value = not bind.Value
-			renderToggle()
-			BindSystem.Touch(bind)
-		end)
-	elseif element.Type == "ColorPicker" then
-		-- swap the authored toggle for a colour swatch in the same slot
-		toggleFrame.Visible = false
-		if bind.Value == nil then
-			bind.Value = BindSystem.PackColor(element.Color, element.Transparency)
-		end
-		local swatch = Instance.new("ImageButton")
-		swatch.Name = "ColorValue"
-		swatch.AutoButtonColor = false
-		swatch.ImageTransparency = 1
-		swatch.BackgroundTransparency = 1
-		swatch.AnchorPoint = Vector2.new(1, 0.5)
-		swatch.Position = UDim2.new(0.97, 0, 0.5, 0)
-		swatch.Size = UDim2.new(0, 36, 0, 20)
-		swatch.ZIndex = BIND_Z
-		swatch.Parent = valueRow
-		local sCorner = Instance.new("UICorner")
-		sCorner.CornerRadius = UDim.new(0, 6)
-		sCorner.Parent = swatch
-		local sStroke = Instance.new("UIStroke")
-		sStroke.Color = Color3.fromRGB(29, 29, 29)
-		sStroke.Thickness = 1
-		sStroke.Parent = swatch
-		-- children draw above their parent (ZIndexBehavior.Sibling), so checkerboard first,
-		-- then the colour as its own layer on top of it
-		local checker = Instance.new("ImageLabel")
-		checker.Image = "rbxassetid://107060544057249"
-		checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
-		checker.ScaleType = Enum.ScaleType.Tile
-		checker.TileSize = UDim2.new(0, 10, 0, 10)
-		checker.BackgroundTransparency = 1
-		checker.Size = UDim2.new(1, 0, 1, 0)
-		checker.ZIndex = BIND_Z + 1
-		checker.Parent = swatch
-		local cCorner = Instance.new("UICorner")
-		cCorner.CornerRadius = UDim.new(0, 6)
-		cCorner.Parent = checker
-		local fill = Instance.new("Frame")
-		fill.Size = UDim2.new(1, 0, 1, 0)
-		fill.BorderSizePixel = 0
-		fill.ZIndex = BIND_Z + 2
-		local fCorner = Instance.new("UICorner")
-		fCorner.CornerRadius = UDim.new(0, 6)
-		fCorner.Parent = fill
-		fill.Parent = swatch
-		local function renderSwatch()
-			local color, transparency = BindSystem.UnpackColor(bind.Value)
-			if color then
-				fill.BackgroundColor3 = color
-				fill.BackgroundTransparency = transparency
-			end
-		end
-		swatch.MouseButton1Click:Connect(function()
-			local color, transparency = BindSystem.UnpackColor(bind.Value)
-			local origin = screenPointFor(swatch.AbsolutePosition)
-			openColorPicker({
-				Color = color or element.Color,
-				Transparency = transparency or 0,
-				Cursor = Vector2.new(origin.X + swatch.AbsoluteSize.X + 10, origin.Y + swatch.AbsoluteSize.Y / 2),
-				OnChanged = function(newColor, newAlpha, committed)
-					bind.Value = BindSystem.PackColor(newColor, newAlpha)
-					renderSwatch()
-					if committed then ConfigHooks.Autosave() end
-				end,
-			})
-		end)
-		renderSwatch()
 	else
-		toggleFrame.Visible = false
-		local numeric = element.Type == "Slider" or element.Type == "NumberPicker"
-		local default = bind.Value
-		if default == nil then default = BindSystem.GetValue(element) end
-		BindSystem.MakeInputBox(valueRow, numeric, default ~= nil and tostring(default) or nil, function(text)
-			bind.Value = text
-			ConfigHooks.Autosave()
-		end)
+		if toggleFrame then toggleFrame.Visible = false end
+		if element.Type == "ColorPicker" then
+			if bind.Value == nil then
+				bind.Value = BindSystem.PackColor(element.Color, element.Transparency)
+			end
+			local swatch = Instance.new("ImageButton")
+			swatch.Name = "ColorValue"
+			swatch.AutoButtonColor = false
+			swatch.ImageTransparency = 1
+			swatch.BackgroundTransparency = 1
+			swatch.AnchorPoint = Vector2.new(1, 0.5)
+			swatch.Position = UDim2.new(0.97, 0, 0.5, 0)
+			swatch.Size = UDim2.new(0, 38, 0, 20)
+			swatch.ZIndex = BIND_Z + 11
+			swatch.Parent = valueRow
+			local sCorner = Instance.new("UICorner")
+			sCorner.CornerRadius = UDim.new(0, 6)
+			sCorner.Parent = swatch
+			local sStroke = Instance.new("UIStroke")
+			sStroke.Color = Color3.fromRGB(29, 29, 29)
+			sStroke.Thickness = 1
+			sStroke.Parent = swatch
+			-- children draw above their parent (ZIndexBehavior.Sibling): checkerboard first,
+			-- then the colour as its own layer on top
+			local checker = Instance.new("ImageLabel")
+			checker.Image = "rbxassetid://107060544057249"
+			checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
+			checker.ScaleType = Enum.ScaleType.Tile
+			checker.TileSize = UDim2.new(0, 10, 0, 10)
+			checker.BackgroundTransparency = 1
+			checker.Size = UDim2.new(1, 0, 1, 0)
+			checker.ZIndex = BIND_Z + 12
+			checker.Parent = swatch
+			local cCorner = Instance.new("UICorner")
+			cCorner.CornerRadius = UDim.new(0, 6)
+			cCorner.Parent = checker
+			local fill = Instance.new("Frame")
+			fill.Name = "Fill"
+			fill.Size = UDim2.new(1, 0, 1, 0)
+			fill.BorderSizePixel = 0
+			fill.ZIndex = BIND_Z + 13
+			local fCorner = Instance.new("UICorner")
+			fCorner.CornerRadius = UDim.new(0, 6)
+			fCorner.Parent = fill
+			fill.Parent = swatch
+			local function renderSwatch()
+				local color, transparency = BindSystem.UnpackColor(bind.Value)
+				if color then
+					fill.BackgroundColor3 = color
+					fill.BackgroundTransparency = transparency
+				end
+			end
+			swatch.MouseEnter:Connect(function()
+				bindTween(sStroke, BIND_SWIFT, { Color = TC(Color3.fromRGB(70, 70, 70)) })
+			end)
+			swatch.MouseLeave:Connect(function()
+				bindTween(sStroke, BIND_SMOOTH, { Color = TC(Color3.fromRGB(29, 29, 29)) })
+			end)
+			swatch.MouseButton1Click:Connect(function()
+				local color, transparency = BindSystem.UnpackColor(bind.Value)
+				local origin = screenPointFor(swatch.AbsolutePosition)
+				openColorPicker({
+					Color = color or element.Color,
+					Transparency = transparency or 0,
+					Cursor = Vector2.new(origin.X + swatch.AbsoluteSize.X + 10, origin.Y + swatch.AbsoluteSize.Y / 2),
+					OnChanged = function(newColor, newAlpha, committed)
+						bind.Value = BindSystem.PackColor(newColor, newAlpha)
+						renderSwatch()
+						if committed then ConfigHooks.Autosave() end
+					end,
+				})
+			end)
+			context.renderSwatch = renderSwatch
+		else
+			local numeric = element.Type == "Slider" or element.Type == "NumberPicker"
+			local default = bind.Value
+			if default == nil then default = BindSystem.GetValue(element) end
+			BindSystem.MakeInputBox(valueRow, numeric, default ~= nil and tostring(default) or nil, function(text)
+				bind.Value = text
+				ConfigHooks.Autosave()
+			end)
+		end
 	end
 
 	-- Delete ------------------------------------------------------------------------------------
+	local deleteLabel = deleteRow:FindFirstChild("Name")
+	local deleteIcon = deleteRow:FindFirstChild("Icon")
+	deleteRow.MouseEnter:Connect(function()
+		bindTween(deleteRow, BIND_SWIFT, { BackgroundTransparency = 0.94 })
+		bindTween(deleteLabel, BIND_SWIFT, { TextColor3 = Color3.fromRGB(224, 140, 140) })
+		bindTween(deleteIcon, BIND_SWIFT, { ImageColor3 = Color3.fromRGB(224, 140, 140) })
+	end)
+	deleteRow.MouseLeave:Connect(function()
+		bindTween(deleteRow, BIND_SMOOTH, { BackgroundTransparency = 1 })
+		bindTween(deleteLabel, BIND_SMOOTH, { TextColor3 = TC(Color3.fromRGB(196, 122, 122)) })
+		bindTween(deleteIcon, BIND_SMOOTH, { ImageColor3 = TC(Color3.fromRGB(196, 122, 122)) })
+	end)
 	deleteRow.MouseButton1Click:Connect(function()
 		BindSystem.Remove(bind)
-		if context.refresh then context.refresh() end
 		if context.closeEditor then context.closeEditor() end
+		if context.refresh then context.refresh() end
 	end)
 
 	themeRegisterDeep(panel)
 	themeApplyDeep(panel)
-	if element.Type == "ColorPicker" then
-		local swatchFill = valueRow:FindFirstChild("ColorValue")
-		if swatchFill then
-			local fill = swatchFill:FindFirstChildOfClass("Frame")
-			local color, transparency = BindSystem.UnpackColor(bind.Value)
-			if fill and color then
-				fill.BackgroundColor3 = color
-				fill.BackgroundTransparency = transparency
-			end
-		end
+	if context.renderSwatch then context.renderSwatch() end
+
+	panel.Parent = context.container
+
+	-- sits just off the list's right edge, vertically centred on its row
+	local function place()
+		local listOrigin = screenPointFor(context.panel.AbsolutePosition)
+		local rowOrigin = screenPointFor(row.AbsolutePosition)
+		return Vector2.new(
+			listOrigin.X + context.panel.AbsoluteSize.X + 6,
+			rowOrigin.Y + row.AbsoluteSize.Y / 2)
 	end
-
-	-- open just right of the list, vertically centred on the row that was clicked
-	local listOrigin = screenPointFor(context.panel.AbsolutePosition)
-	local rowOrigin = screenPointFor(row.AbsolutePosition)
-	local anchorPoint = Vector2.new(
-		listOrigin.X + context.panel.AbsoluteSize.X + 8,
-		rowOrigin.Y + row.AbsoluteSize.Y / 2
-	)
-
-	local close
-	-- anchored left-middle: the editor lines up with the row it belongs to, rather than
-	-- hanging below it like a cursor-opened popup
-	close = openFloatingAtCursor(panel, anchorPoint, function()
-		if context.closeEditor == close then
-			context.closeEditor = nil
-			context.editingBind = nil
+	local target = place()
+	panel.Position = UDim2.new(0, target.X - 10, 0, target.Y)
+	tween(panel, BIND_GLIDE, { Position = UDim2.new(0, target.X, 0, target.Y) })
+	-- AutomaticSize settles a frame later; re-seat once it has a real width
+	task.defer(function()
+		if panel.Parent then
+			local settled = place()
+			tween(panel, BIND_SWIFT, { Position = UDim2.new(0, settled.X, 0, settled.Y) })
 		end
-		fadeOut(panel, 0.12)
-		task.delay(0.18, function() panel:Destroy() end)
+	end)
+
+	local scale = Instance.new("UIScale")
+	scale.Name = "OpenScale"
+	scale.Scale = 0.94
+	scale.Parent = panel
+	tween(scale, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+	fadeIn(panel, 0.2)
+
+	local closed = false
+	context.closeEditor = function()
+		if closed then return end
+		closed = true
+		context.closeEditor = nil
+		context.editingBind = nil
+		fadeOut(panel, 0.14, true)
+		tween(scale, BIND_SWIFT, { Scale = 0.96 })
 		if setRowState and row.Parent then setRowState("rest") end
-	end, Vector2.new(0, 0.5))
-	context.closeEditor = close
-	popWindow(panel)
-	fadeIn(panel, 0.14)
+		task.delay(0.16, function() panel:Destroy() end)
+	end
 end
 
--- "Binds" — the list of binds attached to `element`, opened at the cursor on right click.
+------------------------------------------------------------------------------------ list window
+
 BindSystem.BuildMenu = function(element, position)
 	local panel = BindsPanelTemplate:Clone()
 	panel.Name = "Binds"
@@ -6870,31 +7038,41 @@ BindSystem.BuildMenu = function(element, position)
 	local splitter = panel:WaitForChild("Splitter")
 
 	local function selectBind(bind, row, setRowState)
+		if context.editingBind == bind then
+			if context.closeEditor then context.closeEditor() end
+			return
+		end
 		context.editingBind = bind
 		setRowState("press")
 		BindSystem.OpenEditor(context, bind, row, setRowState)
 	end
 
+	context.rows = {}
 	context.refresh = function()
 		for _, child in ipairs(panel:GetChildren()) do
 			if child.Name == "BindRow" then
 				child:Destroy()
 			end
 		end
+		context.rows = {}
 		for index, bind in ipairs(BindSystem.ForElement(element)) do
 			local row = BindRowTemplate:Clone()
 			row.Name = "BindRow"
 			row.LayoutOrder = index
 			row.Visible = true
-			local rowLabel = row.Frame:FindFirstChild("Name")
+			row.ZIndex = BIND_Z
+			local inner = row:FindFirstChild("Frame")
+			local rowLabel = inner and inner:FindFirstChild("Name")
 			if rowLabel then rowLabel.Text = BindSystem.Label(bind) end
-			BindSystem.PaintKeybind(row, bind.Key)
 			row.Parent = panel
 			themeRegisterDeep(row)
 			themeApplyDeep(row)
 
 			local setRowState = BindSystem.MakeRowState(row)
+			BindSystem.PaintKeybind(row, bind.Key)
 			setRowState(bind == context.editingBind and "press" or "rest", true)
+			context.rows[bind] = { Row = row, SetState = setRowState }
+
 			row.MouseEnter:Connect(function()
 				if context.editingBind ~= bind then setRowState("hover") end
 			end)
@@ -6910,11 +7088,15 @@ BindSystem.BuildMenu = function(element, position)
 	-- keep the authored splitter + "New Bind" below the generated rows
 	splitter.LayoutOrder = 900
 	newBindRow.LayoutOrder = 901
+	local newBindLabel = newBindRow:FindFirstChild("Frame")
+	newBindLabel = newBindLabel and newBindLabel:FindFirstChild("Name")
 	newBindRow.MouseEnter:Connect(function()
-		tween(newBindRow, "Fast", { BackgroundTransparency = 0.6 })
+		bindTween(newBindRow, BIND_SWIFT, { BackgroundTransparency = 0.6 })
+		bindTween(newBindLabel, BIND_SWIFT, { TextTransparency = 0 })
 	end)
 	newBindRow.MouseLeave:Connect(function()
-		tween(newBindRow, "Out", { BackgroundTransparency = 1 })
+		bindTween(newBindRow, BIND_SMOOTH, { BackgroundTransparency = 1 })
+		bindTween(newBindLabel, BIND_SMOOTH, { TextTransparency = 0.18 })
 	end)
 	newBindRow.MouseButton1Click:Connect(function()
 		local modes = BindSystem.ModesByType[element.Type] or { "Press" }
@@ -6926,11 +7108,14 @@ BindSystem.BuildMenu = function(element, position)
 		})
 		context.editingBind = newBind
 		context.refresh()
-		for _, child in ipairs(panel:GetChildren()) do
-			if child.Name == "BindRow" and child.LayoutOrder == #BindSystem.ForElement(element) then
-				BindSystem.OpenEditor(context, newBind, child, BindSystem.MakeRowState(child))
-				break
-			end
+		local entry = context.rows[newBind]
+		if entry then
+			-- the row must exist on screen before the editor can measure where to sit
+			task.defer(function()
+				if entry.Row.Parent then
+					BindSystem.OpenEditor(context, newBind, entry.Row, entry.SetState)
+				end
+			end)
 		end
 	end)
 
@@ -6938,14 +7123,15 @@ BindSystem.BuildMenu = function(element, position)
 	themeRegisterDeep(panel)
 	themeApplyDeep(panel)
 
-	openFloatingAtCursor(panel, position, function()
+	local _, container = openFloatingAtCursor(panel, position, function()
 		BindSystem.MenuOpen = false
 		if context.closeEditor then context.closeEditor() end
-		fadeOut(panel, 0.12)
-		task.delay(0.18, function() panel:Destroy() end)
+		fadeOut(panel, 0.14)
+		task.delay(0.2, function() panel:Destroy() end)
 	end)
+	context.container = container
 	popWindow(panel)
-	fadeIn(panel, 0.14)
+	fadeIn(panel, 0.2)
 end
 
 BindSystem.OpenMenu = function(element, position)
