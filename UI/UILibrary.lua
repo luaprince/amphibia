@@ -3036,7 +3036,7 @@ local BIND_MENU = {
 -- конфигов. Если окно не влезает справа, оно уходит влево от курсора на тот же X.
 local POPUP_CURSOR_OFFSET = {
 	X = 1,
-	Y = 1,
+	Y = -10,
 }
 
 local Templates = {}
