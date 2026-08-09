@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A8.7"
+		Developer info: "A8.8"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -3038,6 +3038,17 @@ local POPUP_CURSOR_OFFSET = {
 	Y = -50,
 }
 
+-- Колор-пикер. HexPrefixX/HexTextX — положение "#" и самого значения в строке HEX, в пикселях
+-- от левого края холдера (в дизайне они заданы в долях, из-за чего разъезжались при смене
+-- ширины). CheckerTile — размер клетки шахматки под прозрачным цветом: меньше значение —
+-- мельче и плотнее клетка.
+local COLOR_PICKER = {
+	HexPrefixX = 66,
+	HexTextX = 82,
+	HexTextRightPad = 60,
+	CheckerTile = 6,
+}
+
 local Templates = {}
 
 ;(function()
@@ -5747,6 +5758,15 @@ local function openColorPickerWindow(opts)
 
 	-- hex input (SmoothInput over the label)
 	if hexLabel then hexLabel.Visible = false end
+	-- "#" is authored at a scale position while the input is placed in pixels, so the two drift
+	-- apart whenever the holder's width changes. Pin both to the same pixel ruler.
+	local hexPrefix = hexHolder:FindFirstChild("HexPrefix")
+	if hexPrefix then
+		hexPrefix.AnchorPoint = Vector2.new(0, 0.5)
+		hexPrefix.Position = UDim2.new(0, COLOR_PICKER.HexPrefixX, 0.5, 0)
+		hexPrefix.Size = UDim2.new(0, 12, 1, 0)
+		hexPrefix.TextXAlignment = Enum.TextXAlignment.Left
+	end
 	hexInput = SmoothInput.new({
 		Parent = hexHolder,
 		Font = FONT_BODY,
@@ -5755,8 +5775,8 @@ local function openColorPickerWindow(opts)
 		PlaceholderText = "",
 		MaxLength = 6,
 		AllowedPattern = "%x",
-		PaddingLeft = 84,
-		PaddingRight = 60,
+		PaddingLeft = COLOR_PICKER.HexTextX,
+		PaddingRight = COLOR_PICKER.HexTextRightPad,
 		ZIndex = 44,
 	})
 	-- clicking anywhere in the hex box focuses the input
@@ -5892,7 +5912,7 @@ function SectionClass:CreateColorPicker(options)
 		checker.Image = "rbxassetid://107060544057249"
 		checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
 		checker.ScaleType = Enum.ScaleType.Tile
-		checker.TileSize = UDim2.new(0, 10, 0, 10)
+		checker.TileSize = UDim2.new(0, COLOR_PICKER.CheckerTile, 0, COLOR_PICKER.CheckerTile)
 		checker.BackgroundTransparency = 1
 		checker.Size = UDim2.new(1, 0, 1, 0)
 		checker.ZIndex = 1
@@ -7096,7 +7116,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 			checker.Image = "rbxassetid://107060544057249"
 			checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
 			checker.ScaleType = Enum.ScaleType.Tile
-			checker.TileSize = UDim2.new(0, 10, 0, 10)
+			checker.TileSize = UDim2.new(0, COLOR_PICKER.CheckerTile, 0, COLOR_PICKER.CheckerTile)
 			checker.BackgroundTransparency = 1
 			checker.Size = UDim2.new(1, 0, 1, 0)
 			checker.ZIndex = BIND_Z + 12
