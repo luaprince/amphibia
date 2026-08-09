@@ -2285,6 +2285,274 @@ local GuiData =
 			}},
 		}},
 		{"Folder",{Name="Other"},{
+		{"Frame",{AutomaticSize=3,BackgroundColor3=c3(13,13,13),BackgroundTransparency=0,Name="Keybinds",Position=u2(0.45348,0,0.420744,0),Size=u2(0,10,0,10),ZIndex=20},{
+			{"UICorner",{BottomLeftRadius=ud(0,12),BottomRightRadius=ud(0,12),Name="UICorner",TopLeftRadius=ud(0,12),TopRightRadius=ud(0,12)},{
+			}},
+			{"UIShadow",{BlurRadius=ud(0,20),Color=c3(0,0,0),Name="UIShadow",Offset=u2(0,0,0,0),Spread=u2(0,0,0,0),Transparency=0.43,ZIndex=-1},{
+			}},
+			{"UIStroke",{ApplyStrokeMode=0,Color=c3(33,33,33),LineJoinMode=0,Name="UIStroke",Thickness=1.3,Transparency=0},{
+			}},
+			{"UIListLayout",{FillDirection=1,HorizontalAlignment=0,Name="UIListLayout",Padding=ud(0,5),SortOrder=2,VerticalAlignment=1},{
+			}},
+			{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,5),PaddingLeft=ud(0,5),PaddingRight=ud(0,5),PaddingTop=ud(0,5)},{
+			}},
+			{"ImageButton",{Active=true,AutoButtonColor=false,AutomaticSize=1,BackgroundColor3=c3(33,33,33),BackgroundTransparency=0,LayoutOrder=1,Name="Bind1Pressed",Position=u2(0,0,0,0),Size=u2(1,0,0,30)},{
+				{"UICorner",{BottomLeftRadius=ud(0,10),BottomRightRadius=ud(0,10),Name="UICorner",TopLeftRadius=ud(0,10),TopRightRadius=ud(0,10)},{
+				}},
+				{"ImageLabel",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Image="rbxassetid://97531162692502",ImageTransparency=0.2,LayoutOrder=3,Name="Arrow",Position=u2(0.95,0,0.5,0),Size=u2(0,18,0,18)},{
+				}},
+				{"Frame",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Name="Frame",Position=u2(0,0,0,0),Size=u2(0,0,0,30)},{
+					{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,13),PaddingRight=ud(0,8),PaddingTop=ud(0,0)},{
+					}},
+					{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,15),SortOrder=2,VerticalAlignment=0},{
+					}},
+					{"TextLabel",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),LayoutOrder=1,Name="Name",Position=u2(0,0,0,0),Size=u2(0,0,1,0),Text="Toggle",TextColor3=c3(255,255,255),TextSize=15,TextTransparency=0.15,TextXAlignment=0,TextYAlignment=1},{
+						{"UIStroke",{ApplyStrokeMode=0,Color=c3(255,255,255),LineJoinMode=0,Name="UIStroke",Thickness=0.2,Transparency=0.45},{
+						}},
+					}},
+					{"Frame",{BackgroundColor3=c3(143,168,160),BackgroundTransparency=0,Name="Dot",Position=u2(0,0,0,0),Size=u2(0,6,0,6)},{
+						{"UICorner",{BottomLeftRadius=ud(1,0),BottomRightRadius=ud(1,0),Name="UICorner",TopLeftRadius=ud(1,0),TopRightRadius=ud(1,0)},{
+						}},
+						{"UIShadow",{BlurRadius=ud(0,7),Color=c3(143,168,160),Name="UIShadow",Offset=u2(0,0,0,0),Spread=u2(0,2,0,2),Transparency=0.16,ZIndex=-1},{
+						}},
+					}},
+				}},
+				{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,0),PaddingRight=ud(0,5),PaddingTop=ud(0,0)},{
+				}},
+				{"Frame",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(15,15,15),BackgroundTransparency=0,Name="Keybind",Position=u2(0,0,0,0),Size=u2(0,19,0,19),Visible=false},{
+					{"UICorner",{BottomLeftRadius=ud(0,4),BottomRightRadius=ud(0,4),Name="UICorner",TopLeftRadius=ud(0,4),TopRightRadius=ud(0,4)},{
+					}},
+					{"UIStroke",{ApplyStrokeMode=0,Color=c3(65,65,65),LineJoinMode=0,Name="UIStroke",Thickness=1,Transparency=0},{
+					}},
+					{"TextLabel",{BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxasset://fonts/families/RobotoMono.json",400,"Normal"),Name="TextLabel",Position=u2(0,0,0,0),Size=u2(1,0,1,0),Text="E",TextColor3=c3(141,141,141),TextSize=15,TextTransparency=0,TextXAlignment=2,TextYAlignment=1},{
+					}},
+				}},
+				{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,30),SortOrder=2,VerticalAlignment=0},{
+				}},
+			}},
+			{"ImageButton",{Active=true,AutoButtonColor=false,AutomaticSize=1,BackgroundColor3=c3(33,33,33),BackgroundTransparency=0.6,LayoutOrder=2,Name="Bind2Hovered",Position=u2(0,0,0,0),Size=u2(1,0,0,30)},{
+				{"UICorner",{BottomLeftRadius=ud(0,10),BottomRightRadius=ud(0,10),Name="UICorner",TopLeftRadius=ud(0,10),TopRightRadius=ud(0,10)},{
+				}},
+				{"ImageLabel",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Image="rbxassetid://97531162692502",ImageTransparency=0.2,LayoutOrder=3,Name="Arrow",Position=u2(0.95,0,0.5,0),Size=u2(0,18,0,18)},{
+				}},
+				{"Frame",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Name="Frame",Position=u2(0,0,0,0),Size=u2(0,0,0,30)},{
+					{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,13),PaddingRight=ud(0,8),PaddingTop=ud(0,0)},{
+					}},
+					{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,15),SortOrder=2,VerticalAlignment=0},{
+					}},
+					{"TextLabel",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),LayoutOrder=1,Name="Name",Position=u2(0,0,0,0),Size=u2(0,0,1,0),Text="Toggle",TextColor3=c3(255,255,255),TextSize=15,TextTransparency=0.4,TextXAlignment=0,TextYAlignment=1},{
+						{"UIStroke",{ApplyStrokeMode=0,Color=c3(255,255,255),LineJoinMode=0,Name="UIStroke",Thickness=0.2,Transparency=0.7},{
+						}},
+					}},
+					{"Frame",{BackgroundColor3=c3(58,58,58),BackgroundTransparency=0,Name="Dot",Position=u2(0,0,0,0),Size=u2(0,6,0,6)},{
+						{"UICorner",{BottomLeftRadius=ud(1,0),BottomRightRadius=ud(1,0),Name="UICorner",TopLeftRadius=ud(1,0),TopRightRadius=ud(1,0)},{
+						}},
+						{"UIShadow",{BlurRadius=ud(0,7),Color=c3(143,168,160),Name="UIShadow",Offset=u2(0,0,0,0),Spread=u2(0,2,0,2),Transparency=1,ZIndex=-1},{
+						}},
+					}},
+				}},
+				{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,30),SortOrder=2,VerticalAlignment=0},{
+				}},
+				{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,0),PaddingRight=ud(0,5),PaddingTop=ud(0,0)},{
+				}},
+			}},
+			{"ImageButton",{Active=true,AutoButtonColor=false,AutomaticSize=1,BackgroundColor3=c3(33,33,33),BackgroundTransparency=1,LayoutOrder=3,Name="Bind3",Position=u2(0,0,0,0),Size=u2(1,0,0,30)},{
+				{"UICorner",{BottomLeftRadius=ud(0,10),BottomRightRadius=ud(0,10),Name="UICorner",TopLeftRadius=ud(0,10),TopRightRadius=ud(0,10)},{
+				}},
+				{"ImageLabel",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Image="rbxassetid://97531162692502",ImageTransparency=0.5,LayoutOrder=3,Name="Arrow",Position=u2(0.95,0,0.5,0),Size=u2(0,18,0,18),Visible=false},{
+				}},
+				{"Frame",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Name="Frame",Position=u2(0,0,0,0),Size=u2(0,0,0,30)},{
+					{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,13),PaddingRight=ud(0,8),PaddingTop=ud(0,0)},{
+					}},
+					{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,15),SortOrder=2,VerticalAlignment=0},{
+					}},
+					{"TextLabel",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),LayoutOrder=1,Name="Name",Position=u2(0,0,0,0),Size=u2(0,0,1,0),Text="Hold",TextColor3=c3(255,255,255),TextSize=15,TextTransparency=0.4,TextXAlignment=0,TextYAlignment=1},{
+						{"UIStroke",{ApplyStrokeMode=0,Color=c3(255,255,255),LineJoinMode=0,Name="UIStroke",Thickness=0.2,Transparency=0.7},{
+						}},
+					}},
+					{"Frame",{BackgroundColor3=c3(143,168,160),BackgroundTransparency=0,Name="Dot",Position=u2(0,0,0,0),Size=u2(0,6,0,6)},{
+						{"UICorner",{BottomLeftRadius=ud(1,0),BottomRightRadius=ud(1,0),Name="UICorner",TopLeftRadius=ud(1,0),TopRightRadius=ud(1,0)},{
+						}},
+						{"UIShadow",{BlurRadius=ud(0,7),Color=c3(143,168,160),Name="UIShadow",Offset=u2(0,0,0,0),Spread=u2(0,2,0,2),Transparency=0.16,ZIndex=-1},{
+						}},
+					}},
+				}},
+				{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,0),PaddingRight=ud(0,5),PaddingTop=ud(0,0)},{
+				}},
+				{"Frame",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(15,15,15),BackgroundTransparency=0,Name="Keybind",Position=u2(0,0,0,0),Size=u2(0,19,0,19)},{
+					{"UICorner",{BottomLeftRadius=ud(0,4),BottomRightRadius=ud(0,4),Name="UICorner",TopLeftRadius=ud(0,4),TopRightRadius=ud(0,4)},{
+					}},
+					{"UIStroke",{ApplyStrokeMode=0,Color=c3(65,65,65),LineJoinMode=0,Name="UIStroke",Thickness=1,Transparency=0},{
+					}},
+					{"TextLabel",{BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxasset://fonts/families/RobotoMono.json",400,"Normal"),Name="TextLabel",Position=u2(0,0,0,0),Size=u2(1,0,1,0),Text="B",TextColor3=c3(141,141,141),TextSize=15,TextTransparency=0,TextXAlignment=2,TextYAlignment=1},{
+					}},
+				}},
+				{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,30),SortOrder=2,VerticalAlignment=0},{
+				}},
+			}},
+			{"ImageButton",{Active=true,AutoButtonColor=false,AutomaticSize=1,BackgroundColor3=c3(33,33,33),BackgroundTransparency=1,LayoutOrder=5,Name="NewBind",Position=u2(0,0,0,0),Size=u2(1,0,0,30)},{
+				{"UICorner",{BottomLeftRadius=ud(0,10),BottomRightRadius=ud(0,10),Name="UICorner",TopLeftRadius=ud(0,10),TopRightRadius=ud(0,10)},{
+				}},
+				{"Frame",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Name="Frame",Position=u2(0,0,0,0),Size=u2(0,0,0,30)},{
+					{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,8),PaddingRight=ud(0,8),PaddingTop=ud(0,0)},{
+					}},
+					{"ImageLabel",{BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Image="rbxassetid://122653297908501",ImageTransparency=0.4,Name="Icon",Position=u2(0,0,0,0),Size=u2(0,18,0,18)},{
+					}},
+					{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,5),SortOrder=2,VerticalAlignment=0},{
+					}},
+					{"TextLabel",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),LayoutOrder=1,Name="Name",Position=u2(0,0,0,0),Size=u2(0,0,1,0),Text="New Bind",TextColor3=c3(255,255,255),TextSize=15,TextTransparency=0.18,TextXAlignment=0,TextYAlignment=1},{
+						{"UIStroke",{ApplyStrokeMode=0,Color=c3(255,255,255),LineJoinMode=0,Name="UIStroke",Thickness=0.2,Transparency=0.7},{
+						}},
+					}},
+				}},
+				{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,5),SortOrder=2,VerticalAlignment=0},{
+				}},
+				{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,0),PaddingRight=ud(0,5),PaddingTop=ud(0,0)},{
+				}},
+			}},
+			{"Frame",{BackgroundColor3=c3(33,33,33),BackgroundTransparency=0,LayoutOrder=4,Name="Splitter",Position=u2(0,0,0,0),Size=u2(0.9,0,0,2)},{
+				{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,5),SortOrder=2,VerticalAlignment=0},{
+				}},
+				{"UICorner",{BottomLeftRadius=ud(1,0),BottomRightRadius=ud(1,0),Name="UICorner",TopLeftRadius=ud(1,0),TopRightRadius=ud(1,0)},{
+				}},
+			}},
+			{"TextLabel",{BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),Name="Title",Position=u2(0,0,0,0),Size=u2(0.95,0,0,15),Text="Binds",TextColor3=c3(59,59,59),TextSize=14,TextTransparency=0,TextXAlignment=0,TextYAlignment=1},{
+				{"UIListLayout",{FillDirection=0,HorizontalAlignment=2,Name="UIListLayout",Padding=ud(0,0),SortOrder=2,VerticalAlignment=0},{
+				}},
+				{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,5),PaddingRight=ud(0,0),PaddingTop=ud(0,0)},{
+				}},
+			}},
+			{"ImageButton",{Active=true,AutoButtonColor=false,AutomaticSize=1,BackgroundColor3=c3(33,33,33),BackgroundTransparency=1,LayoutOrder=3,Name="Bind4None",Position=u2(0,0,0,0),Size=u2(1,0,0,30)},{
+				{"UICorner",{BottomLeftRadius=ud(0,10),BottomRightRadius=ud(0,10),Name="UICorner",TopLeftRadius=ud(0,10),TopRightRadius=ud(0,10)},{
+				}},
+				{"ImageLabel",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Image="rbxassetid://97531162692502",ImageTransparency=0.5,LayoutOrder=3,Name="Arrow",Position=u2(0.95,0,0.5,0),Size=u2(0,18,0,18),Visible=false},{
+				}},
+				{"Frame",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Name="Frame",Position=u2(0,0,0,0),Size=u2(0,0,0,30)},{
+					{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,13),PaddingRight=ud(0,8),PaddingTop=ud(0,0)},{
+					}},
+					{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,15),SortOrder=2,VerticalAlignment=0},{
+					}},
+					{"TextLabel",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),LayoutOrder=1,Name="Name",Position=u2(0,0,0,0),Size=u2(0,0,1,0),Text="Toggle",TextColor3=c3(255,255,255),TextSize=15,TextTransparency=0.4,TextXAlignment=0,TextYAlignment=1},{
+						{"UIStroke",{ApplyStrokeMode=0,Color=c3(255,255,255),LineJoinMode=0,Name="UIStroke",Thickness=0.2,Transparency=0.7},{
+						}},
+					}},
+					{"Frame",{BackgroundColor3=c3(143,168,160),BackgroundTransparency=0,Name="Dot",Position=u2(0,0,0,0),Size=u2(0,6,0,6)},{
+						{"UICorner",{BottomLeftRadius=ud(1,0),BottomRightRadius=ud(1,0),Name="UICorner",TopLeftRadius=ud(1,0),TopRightRadius=ud(1,0)},{
+						}},
+						{"UIShadow",{BlurRadius=ud(0,7),Color=c3(143,168,160),Name="UIShadow",Offset=u2(0,0,0,0),Spread=u2(0,2,0,2),Transparency=0.16,ZIndex=-1},{
+						}},
+					}},
+				}},
+				{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,0),PaddingRight=ud(0,5),PaddingTop=ud(0,0)},{
+				}},
+				{"Frame",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(15,15,15),BackgroundTransparency=0,Name="Keybind",Position=u2(0,0,0,0),Size=u2(0,19,0,19)},{
+					{"UICorner",{BottomLeftRadius=ud(0,4),BottomRightRadius=ud(0,4),Name="UICorner",TopLeftRadius=ud(0,4),TopRightRadius=ud(0,4)},{
+					}},
+					{"UIStroke",{ApplyStrokeMode=0,Color=c3(65,65,65),LineJoinMode=0,Name="UIStroke",Thickness=1,Transparency=0},{
+						{"UIGradient",{Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(1,1,1)),ColorSequenceKeypoint.new(1,Color3.new(1,1,1))}),Name="UIGradient",Offset=v2(0,0),Rotation=50,Scale=1,TileMode=0,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.100872,0),NumberSequenceKeypoint.new(0.104608,1),NumberSequenceKeypoint.new(0.199253,1),NumberSequenceKeypoint.new(0.199253,0),NumberSequenceKeypoint.new(0.300125,0),NumberSequenceKeypoint.new(0.30137,1),NumberSequenceKeypoint.new(0.399751,1),NumberSequenceKeypoint.new(0.399751,0),NumberSequenceKeypoint.new(0.499377,0),NumberSequenceKeypoint.new(0.501868,1),NumberSequenceKeypoint.new(0.600249,1),NumberSequenceKeypoint.new(0.601494,0),NumberSequenceKeypoint.new(0.699875,0),NumberSequenceKeypoint.new(0.701121,1),NumberSequenceKeypoint.new(0.798257,1),NumberSequenceKeypoint.new(0.799502,0),NumberSequenceKeypoint.new(0.900374,1),NumberSequenceKeypoint.new(0.901619,0),NumberSequenceKeypoint.new(1,0)}),Type=0},{
+						}},
+					}},
+					{"TextLabel",{BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxasset://fonts/families/RobotoMono.json",400,"Normal"),Name="TextLabel",Position=u2(0,0,0,0),Size=u2(1,0,1,0),Text="_",TextColor3=c3(88,88,88),TextSize=15,TextTransparency=0,TextXAlignment=2,TextYAlignment=1},{
+					}},
+				}},
+				{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,30),SortOrder=2,VerticalAlignment=0},{
+				}},
+			}},
+		}},
+		{"Frame",{AutomaticSize=3,BackgroundColor3=c3(13,13,13),BackgroundTransparency=0,Name="KeybindRedacting",Position=u2(0.549658,0,0.419843,0),Size=u2(0,132,0,10),ZIndex=20},{
+			{"UICorner",{BottomLeftRadius=ud(0,12),BottomRightRadius=ud(0,12),Name="UICorner",TopLeftRadius=ud(0,12),TopRightRadius=ud(0,12)},{
+			}},
+			{"UIShadow",{BlurRadius=ud(0,20),Color=c3(0,0,0),Name="UIShadow",Offset=u2(0,0,0,0),Spread=u2(0,0,0,0),Transparency=0.43,ZIndex=-1},{
+			}},
+			{"UIStroke",{ApplyStrokeMode=0,Color=c3(33,33,33),LineJoinMode=0,Name="UIStroke",Thickness=1.3,Transparency=0},{
+			}},
+			{"ImageButton",{Active=true,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,LayoutOrder=1,Name="Key",Position=u2(-0.078996,0,0,0),Size=u2(0,153,0,30)},{
+				{"UICorner",{BottomLeftRadius=ud(0,8),BottomRightRadius=ud(0,8),Name="UICorner",TopLeftRadius=ud(0,8),TopRightRadius=ud(0,8)},{
+				}},
+				{"TextLabel",{BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),Name="Name",Position=u2(0.079541,0,0,0),Size=u2(0.920459,0,1,0),Text="Key",TextColor3=c3(193,193,193),TextSize=16,TextTransparency=0,TextXAlignment=0,TextYAlignment=1},{
+				}},
+				{"Frame",{AnchorPoint=v2(1,0.5),AutomaticSize=1,BackgroundColor3=c3(8,8,8),BackgroundTransparency=0,Name="Frame",Position=u2(0.97,0,0.5,0),Size=u2(0,10,0,18)},{
+					{"UICorner",{BottomLeftRadius=ud(0,4),BottomRightRadius=ud(0,4),Name="UICorner",TopLeftRadius=ud(0,4),TopRightRadius=ud(0,4)},{
+					}},
+					{"UIStroke",{ApplyStrokeMode=0,Color=c3(29,29,29),LineJoinMode=0,Name="UIStroke",Thickness=1,Transparency=0},{
+					}},
+					{"TextLabel",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxasset://fonts/families/RobotoMono.json",400,"Normal"),Name="TextLabel",Position=u2(0,0,0,0),Size=u2(0,0,1,0),Text="E",TextColor3=c3(141,141,141),TextSize=15,TextTransparency=0,TextXAlignment=2,TextYAlignment=1},{
+					}},
+					{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,10),PaddingRight=ud(0,10),PaddingTop=ud(0,0)},{
+					}},
+				}},
+			}},
+			{"UIListLayout",{FillDirection=1,HorizontalAlignment=0,Name="UIListLayout",Padding=ud(0,3),SortOrder=2,VerticalAlignment=1},{
+			}},
+			{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,5),PaddingLeft=ud(0,0),PaddingRight=ud(0,5),PaddingTop=ud(0,5)},{
+			}},
+			{"ImageButton",{Active=true,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,LayoutOrder=2,Name="Mode",Position=u2(0.006537,0,0.5,0),Size=u2(0,153,0,30)},{
+				{"UICorner",{BottomLeftRadius=ud(0,8),BottomRightRadius=ud(0,8),Name="UICorner",TopLeftRadius=ud(0,8),TopRightRadius=ud(0,8)},{
+				}},
+				{"TextLabel",{BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),Name="Name",Position=u2(0.079541,0,0,0),Size=u2(0.920459,0,1,0),Text="Mode",TextColor3=c3(193,193,193),TextSize=16,TextTransparency=0,TextXAlignment=0,TextYAlignment=1},{
+				}},
+				{"Frame",{AnchorPoint=v2(1,0.5),AutomaticSize=1,BackgroundColor3=c3(16,16,16),BackgroundTransparency=0,Name="SelectionsHolder",Position=u2(0.97,0,0.5,0),Size=u2(0,81,0,22)},{
+					{"UICorner",{BottomLeftRadius=ud(0,8),BottomRightRadius=ud(0,8),Name="UICorner",TopLeftRadius=ud(0,8),TopRightRadius=ud(0,8)},{
+					}},
+					{"ImageButton",{Active=true,AutoButtonColor=false,AutomaticSize=1,BackgroundColor3=c3(16,16,16),BackgroundTransparency=0,ImageTransparency=1,Name="Toggle",Position=u2(0,0,0,0),Size=u2(0,13,1,0)},{
+						{"UICorner",{BottomLeftRadius=ud(0,8),BottomRightRadius=ud(0,8),Name="UICorner",TopLeftRadius=ud(0,8),TopRightRadius=ud(0,8)},{
+						}},
+						{"TextLabel",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),Name="Name",Position=u2(0,0,0,0),Size=u2(1,0,1,0),Text="Toggle",TextColor3=c3(106,106,106),TextSize=14,TextTransparency=0,TextXAlignment=2,TextYAlignment=1},{
+						}},
+						{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,4),PaddingRight=ud(0,4),PaddingTop=ud(0,0)},{
+						}},
+					}},
+					{"UIListLayout",{FillDirection=0,HorizontalAlignment=2,Name="UIListLayout",Padding=ud(0,1),SortOrder=2,VerticalAlignment=0},{
+					}},
+					{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,3),PaddingRight=ud(0,0),PaddingTop=ud(0,0)},{
+					}},
+					{"ImageButton",{Active=true,AutoButtonColor=false,AutomaticSize=1,BackgroundColor3=c3(40,40,40),BackgroundTransparency=0,ImageTransparency=1,Name="Hold",Position=u2(0,0,0,0),Size=u2(0,13,1,0)},{
+						{"UICorner",{BottomLeftRadius=ud(0,8),BottomRightRadius=ud(0,8),Name="UICorner",TopLeftRadius=ud(0,8),TopRightRadius=ud(0,8)},{
+						}},
+						{"TextLabel",{AutomaticSize=1,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),Name="Name",Position=u2(0,0,0,0),Size=u2(1,0,1,0),Text="Hold",TextColor3=c3(184,184,184),TextSize=14,TextTransparency=0,TextXAlignment=2,TextYAlignment=1},{
+						}},
+						{"UIPadding",{Name="UIPadding",PaddingBottom=ud(0,0),PaddingLeft=ud(0,4),PaddingRight=ud(0,4),PaddingTop=ud(0,0)},{
+						}},
+						{"UIStroke",{ApplyStrokeMode=0,Color=c3(90,90,90),LineJoinMode=0,Name="UIStroke",Thickness=1,Transparency=0},{
+						}},
+					}},
+					{"UIStroke",{ApplyStrokeMode=0,Color=c3(44,44,44),LineJoinMode=0,Name="UIStroke",Thickness=1,Transparency=0},{
+					}},
+				}},
+			}},
+			{"ImageButton",{Active=true,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,LayoutOrder=3,Name="Value",Position=u2(0.006537,0,0.5,0),Size=u2(0,153,0,30)},{
+				{"UICorner",{BottomLeftRadius=ud(0,8),BottomRightRadius=ud(0,8),Name="UICorner",TopLeftRadius=ud(0,8),TopRightRadius=ud(0,8)},{
+				}},
+				{"TextLabel",{BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),Name="Name",Position=u2(0.079541,0,0,0),Size=u2(0.920459,0,1,0),Text="Value",TextColor3=c3(193,193,193),TextSize=16,TextTransparency=0,TextXAlignment=0,TextYAlignment=1},{
+				}},
+				{"Frame",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(48,48,47),BackgroundTransparency=0,Name="ToggleFrame",Position=u2(0.966929,0,0.471308,0),Size=u2(0,36,0,20)},{
+					{"UICorner",{BottomLeftRadius=ud(1,0),BottomRightRadius=ud(1,0),Name="UICorner",TopLeftRadius=ud(1,0),TopRightRadius=ud(1,0)},{
+					}},
+					{"UIStroke",{ApplyStrokeMode=0,Color=c3(175,175,175),LineJoinMode=0,Name="UIStroke",Thickness=0.5,Transparency=0},{
+					}},
+					{"Frame",{AnchorPoint=v2(0.5,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=0,Name="Dot",Position=u2(0.7,0,0.5,0),Size=u2(0,15,0,15)},{
+						{"UICorner",{BottomLeftRadius=ud(1,0),BottomRightRadius=ud(1,0),Name="UICorner",TopLeftRadius=ud(1,0),TopRightRadius=ud(1,0)},{
+						}},
+						{"UIShadow",{BlurRadius=ud(0,10),Color=c3(225,225,225),Name="UIShadow",Offset=u2(0,0,0,0),Spread=u2(0,0,0,0),Transparency=0,ZIndex=-1},{
+						}},
+					}},
+				}},
+			}},
+			{"Frame",{BackgroundColor3=c3(22,22,22),BackgroundTransparency=0,LayoutOrder=4,Name="Splitter",Position=u2(0,0,0,0),Size=u2(0.9,0,0,2)},{
+				{"UIListLayout",{FillDirection=0,HorizontalAlignment=1,Name="UIListLayout",Padding=ud(0,5),SortOrder=2,VerticalAlignment=0},{
+				}},
+				{"UICorner",{BottomLeftRadius=ud(1,0),BottomRightRadius=ud(1,0),Name="UICorner",TopLeftRadius=ud(1,0),TopRightRadius=ud(1,0)},{
+				}},
+			}},
+			{"ImageButton",{Active=true,BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,LayoutOrder=5,Name="DeleteBind",Position=u2(0.006537,0,0.5,0),Size=u2(0,153,0,30)},{
+				{"UICorner",{BottomLeftRadius=ud(0,8),BottomRightRadius=ud(0,8),Name="UICorner",TopLeftRadius=ud(0,8),TopRightRadius=ud(0,8)},{
+				}},
+				{"TextLabel",{BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),Name="Name",Position=u2(0.21963,0,0,0),Size=u2(0.78037,0,1,0),Text="Delete Bind",TextColor3=c3(196,122,122),TextSize=16,TextTransparency=0,TextXAlignment=0,TextYAlignment=1},{
+				}},
+				{"ImageLabel",{AnchorPoint=v2(0,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Image="rbxassetid://90320116313568",ImageColor3=c3(196,122,122),LayoutOrder=-1,Name="Icon",Position=u2(0.078,0,0.5,0),Size=u2(0,16,0,16)},{
+				}},
+			}},
+		}},
 			{"Frame",{AnchorPoint=v2(0.5,0.5),BackgroundColor3=c3(18,18,18),Name="ColorPicker",Position=u2(0.8421,0,0.5261,0),Size=u2(0,195,0,301),Visible=false,ZIndex=5},{
 				{"Frame",{AnchorPoint=v2(0.5,0.5),BackgroundColor3=c3(143,168,160),Name="ColorPicker",Position=u2(0.5,0,0.3222,0),Size=u2(0,178,0,178)},{
 					{"UICorner",{CornerRadius=ud(0,5)},{
@@ -2645,6 +2913,20 @@ local KeybindsListFrame = OtherFolder:WaitForChild("KeybindsList")
 local KeybindsListTransparentFrame = OtherFolder:WaitForChild("KeybindsListTransparentMode")
 local DropdownWindowTemplate = OtherFolder:WaitForChild("Dropdown")
 local ConfigDropdownMenu = OtherFolder:WaitForChild("ConfigDropdownMenu")
+
+-- Authored bind windows. Bind1Pressed / Bind2Hovered / Bind3 / Bind4None in the design are
+-- state examples of one row: Bind4None is kept as the live template (it carries the dashed
+-- "no key" gradient on its chip, which the others don't), the rest are dropped.
+local BindsPanelTemplate = OtherFolder:WaitForChild("Keybinds")
+local BindEditorTemplate = OtherFolder:WaitForChild("KeybindRedacting")
+local BindRowTemplate = BindsPanelTemplate:WaitForChild("Bind4None"):Clone()
+BindRowTemplate.Name = "BindRow"
+for _, exampleName in ipairs({ "Bind1Pressed", "Bind2Hovered", "Bind3", "Bind4None" }) do
+	local example = BindsPanelTemplate:FindFirstChild(exampleName)
+	if example then example:Destroy() end
+end
+BindsPanelTemplate.Visible = false
+BindEditorTemplate.Visible = false
 
 local ConfigPage = Pages:WaitForChild("TabConfig")
 local PageTemplateSource = Pages:WaitForChild("TabPlayer")
@@ -5458,23 +5740,37 @@ function SectionClass:CreateColorPicker(options)
 	local hexValueLabel = row.HexValue
 	local valueButton = row.ValueButton
 
-	-- Checkerboard sits behind the preview swatch (ZIndex -1 renders behind the parent's own
-	-- background fill in Roblox) so a transparent colour shows through it instead of just
-	-- vanishing into nothing.
+	-- The swatch is layered: checkerboard underneath, the colour itself on top of it. The
+	-- ScreenGui uses ZIndexBehavior.Sibling, where a child always draws above its parent no
+	-- matter its ZIndex — so the colour has to be its own sibling *above* the checkerboard
+	-- rather than the button's own background, otherwise the checkerboard hides it.
+	local colorFill
 	do
+		preview.BackgroundTransparency = 1
+
 		local checker = Instance.new("ImageLabel")
 		checker.Name = "Checkerboard"
 		checker.Image = "rbxassetid://107060544057249"
 		checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
 		checker.ScaleType = Enum.ScaleType.Tile
-		checker.TileSize = UDim2.new(0, 8, 0, 8)
+		checker.TileSize = UDim2.new(0, 10, 0, 10)
 		checker.BackgroundTransparency = 1
 		checker.Size = UDim2.new(1, 0, 1, 0)
-		checker.ZIndex = -1
+		checker.ZIndex = 1
 		local checkerCorner = Instance.new("UICorner")
 		checkerCorner.CornerRadius = UDim.new(0, 8)
 		checkerCorner.Parent = checker
 		checker.Parent = preview
+
+		colorFill = Instance.new("Frame")
+		colorFill.Name = "ColorFill"
+		colorFill.Size = UDim2.new(1, 0, 1, 0)
+		colorFill.BorderSizePixel = 0
+		colorFill.ZIndex = 2
+		local fillCorner = Instance.new("UICorner")
+		fillCorner.CornerRadius = UDim.new(0, 8)
+		fillCorner.Parent = colorFill
+		colorFill.Parent = preview
 	end
 
 	local function toHex(color: Color3): string
@@ -5485,8 +5781,8 @@ function SectionClass:CreateColorPicker(options)
 	end
 
 	local function renderRow()
-		preview.BackgroundColor3 = element.Color
-		preview.BackgroundTransparency = element.Transparency
+		colorFill.BackgroundColor3 = element.Color
+		colorFill.BackgroundTransparency = element.Transparency
 		hexValueLabel.Text = toHex(element.Color)
 	end
 
@@ -6168,91 +6464,37 @@ do
 end
 
 ------------------------------------------------------------------------------------------------------------------------
---  Right-click bind menu — "Binds" (existing binds on this element) + "KeybindRedacting" (editor)
+--  Right-click bind menu — "Binds" list + "KeybindRedacting" editor, cloned from the authored design
 ------------------------------------------------------------------------------------------------------------------------
-
-BindSystem.MakeKeyChip = function(parent, initialText, zindex)
-	local chip = Instance.new("TextButton")
-	chip.Name = "KeyChip"
-	chip.AutoButtonColor = false
-	chip.Text = ""
-	chip.AnchorPoint = Vector2.new(1, 0.5)
-	chip.BackgroundColor3 = Color3.fromRGB(30, 30, 31)
-	chip.Size = UDim2.new(0, 58, 0, 20)
-	chip.ZIndex = zindex
-	chip.Parent = parent
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
-	corner.Parent = chip
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(58, 58, 58)
-	stroke.Thickness = 1
-	stroke.Parent = chip
-	local chipText = Instance.new("TextLabel")
-	chipText.BackgroundTransparency = 1
-	chipText.Size = UDim2.new(1, -6, 1, 0)
-	chipText.Position = UDim2.new(0, 3, 0, 0)
-	chipText.FontFace = FONT_MONO
-	chipText.TextSize = 11
-	chipText.TextColor3 = Color3.fromRGB(172, 172, 172)
-	chipText.Text = initialText
-	pcall(function() chipText.TextTruncate = Enum.TextTruncate.AtEnd end)
-	chipText.ZIndex = zindex
-	chipText.Parent = chip
-	for _, guiObject in ipairs({ chip, stroke, chipText }) do
-		themeRegister(guiObject)
-		themeApply(guiObject)
-	end
-	chip.MouseEnter:Connect(function()
-		tween(stroke, "Fast", { Color = TC(Color3.fromRGB(95, 95, 95)) })
-	end)
-	chip.MouseLeave:Connect(function()
-		tween(stroke, "Out", { Color = TC(Color3.fromRGB(58, 58, 58)) })
-	end)
-	return chip, chipText, stroke
-end
 
 BindSystem.MenuOpen = false
 local BIND_Z = 45
 
-BindSystem.MakeLabel = function(parent, text, size, color)
-	local textLabel = Instance.new("TextLabel")
-	textLabel.BackgroundTransparency = 1
-	textLabel.FontFace = FONT_BODY
-	textLabel.TextSize = size
-	textLabel.TextColor3 = color
-	textLabel.TextXAlignment = Enum.TextXAlignment.Left
-	textLabel.Text = text
-	textLabel.ZIndex = BIND_Z
-	textLabel.Parent = parent
-	themeRegister(textLabel)
-	themeApply(textLabel)
-	return textLabel
-end
+-- Authored state values, read straight off the design's example rows:
+--   rest   (Bind3/Bind4None) bg 1    name 0.4  nameStroke 0.7   arrow hidden      keybind shown
+--   hover  (Bind2Hovered)    bg 0.6  name 0.4  nameStroke 0.7   arrow 0.2         keybind faded out
+--   press  (Bind1Pressed)    bg 0    name 0.15 nameStroke 0.45  arrow 0.2         keybind hidden
+local BIND_ROW_STATES = {
+	rest  = { Bg = 1,   Name = 0.4,  Stroke = 0.7,  Arrow = 1,   Keybind = false },
+	hover = { Bg = 0.6, Name = 0.4,  Stroke = 0.7,  Arrow = 0.2, Keybind = true  },
+	press = { Bg = 0,   Name = 0.15, Stroke = 0.45, Arrow = 0.2, Keybind = true  },
+}
+local BIND_STATE_INFO = TweenInfo.new(0.13, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-BindSystem.MakeInputBox = function(context, order, labelText, placeholder, numeric, defaultText)
-	local row = Instance.new("Frame")
-	row.BackgroundTransparency = 1
-	row.Size = UDim2.new(1, 0, 0, 26)
-	row.LayoutOrder = order
-	row.ZIndex = BIND_Z
-	row.Parent = context.editor
-	local rowLabel = BindSystem.MakeLabel(row, labelText, 12, Color3.fromRGB(115, 115, 115))
-	rowLabel.AnchorPoint = Vector2.new(0, 0.5)
-	rowLabel.Position = UDim2.new(0, 0, 0.5, 0)
-	rowLabel.Size = UDim2.new(0, 52, 1, 0)
+BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged)
 	local box = Instance.new("Frame")
+	box.Name = "ValueBox"
 	box.AnchorPoint = Vector2.new(1, 0.5)
-	box.Position = UDim2.new(1, 0, 0.5, 0)
-	box.BackgroundColor3 = Color3.fromRGB(12, 12, 13)
-	box.Size = UDim2.new(1, -58, 1, 0)
+	box.Position = UDim2.new(0.97, 0, 0.5, 0)
+	box.Size = UDim2.new(0, 74, 0, 20)
+	box.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
 	box.ZIndex = BIND_Z
-	box.Parent = row
+	box.Parent = parent
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
+	corner.CornerRadius = UDim.new(0, 4)
 	corner.Parent = box
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(44, 44, 44)
+	stroke.Color = Color3.fromRGB(29, 29, 29)
 	stroke.Thickness = 1
 	stroke.Parent = box
 	themeRegister(box)
@@ -6261,23 +6503,24 @@ BindSystem.MakeInputBox = function(context, order, labelText, placeholder, numer
 	themeApply(stroke)
 	local input = SmoothInput.new({
 		Parent = box,
-		Font = FONT_BODY,
+		Font = FONT_MONO,
 		TextSize = 13,
-		TextColor = Color3.fromRGB(180, 180, 180),
-		PlaceholderText = placeholder,
-		PlaceholderColor = Color3.fromRGB(95, 95, 95),
+		TextColor = Color3.fromRGB(141, 141, 141),
+		PlaceholderText = numeric and "0" or "value",
+		PlaceholderColor = Color3.fromRGB(88, 88, 88),
 		MaxLength = 40,
 		AllowedPattern = numeric and "%d%.%-" or nil,
-		PaddingLeft = 8,
-		PaddingRight = 8,
+		PaddingLeft = 6,
+		PaddingRight = 6,
 		ZIndex = BIND_Z + 1,
 	})
 	input.Options.OnFocus = function()
-		tween(stroke, "Fast", { Color = TC(Color3.fromRGB(85, 85, 85)) })
+		tween(stroke, "Fast", { Color = TC(Color3.fromRGB(70, 70, 70)) })
 	end
 	input.Options.OnBlur = function()
-		tween(stroke, "Out", { Color = TC(Color3.fromRGB(44, 44, 44)) })
+		tween(stroke, "Out", { Color = TC(Color3.fromRGB(29, 29, 29)) })
 	end
+	input.Options.OnChanged = onChanged
 	local focusCatcher = Instance.new("TextButton")
 	focusCatcher.BackgroundTransparency = 1
 	focusCatcher.Text = ""
@@ -6290,8 +6533,7 @@ BindSystem.MakeInputBox = function(context, order, labelText, placeholder, numer
 	if defaultText and defaultText ~= "" then
 		input:SetText(defaultText, true)
 	end
-	table.insert(context.activeInputs, input)
-	return input
+	return input, box
 end
 
 -- Sensible starting Value for a freshly-created bind, per element type.
@@ -6313,587 +6555,363 @@ BindSystem.DefaultValueFor = function(element)
 	return nil
 end
 
--- One row inside the "Binds" list — dot + name("Function (Mode)") + keybind chip, with
--- rest/hover/press visual states: hover fades the chip out and fades an arrow in, press opens
--- the editor. `onClick(rowFrame, resetVisual)` is called on click; `resetVisual()` restores the
--- row to its resting look (used when the editor closes without a full list rebuild).
-BindSystem.BuildRow = function(parent, order, bind, onClick)
-	local hasKey = bind.Key and bind.Key ~= "None"
-
-	local row = Instance.new("ImageButton")
-	row.Name = "BindRow"
-	row.AutoButtonColor = false
-	row.ImageTransparency = 1
-	row.BackgroundColor3 = Color3.fromRGB(33, 33, 33)
-	row.BackgroundTransparency = 1
-	row.Size = UDim2.new(1, 0, 0, 32)
-	row.LayoutOrder = order
-	row.ZIndex = BIND_Z
-	row.Parent = parent
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent = row
-
-	local dot = Instance.new("Frame")
-	dot.AnchorPoint = Vector2.new(0, 0.5)
-	dot.Position = UDim2.new(0, 12, 0.5, 0)
-	dot.Size = UDim2.new(0, 6, 0, 6)
-	dot.BackgroundColor3 = hasKey and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(70, 70, 70)
-	dot.ZIndex = BIND_Z
-	dot.Parent = row
-	local dotCorner = Instance.new("UICorner")
-	dotCorner.CornerRadius = UDim.new(1, 0)
-	dotCorner.Parent = dot
-	pcall(function()
-		local dotShadow = Instance.new("UIShadow")
-		dotShadow.Color = dot.BackgroundColor3
-		dotShadow.Transparency = 0.16
-		dotShadow.Parent = dot
-	end)
-
-	local nameLbl = Instance.new("TextLabel")
-	nameLbl.BackgroundTransparency = 1
-	nameLbl.AnchorPoint = Vector2.new(0, 0.5)
-	nameLbl.Position = UDim2.new(0, 26, 0.5, 0)
-	nameLbl.Size = UDim2.new(1, -70, 1, 0)
-	nameLbl.FontFace = FONT_BODY
-	nameLbl.TextSize = 13
-	nameLbl.TextColor3 = Color3.fromRGB(235, 235, 235)
-	nameLbl.TextTransparency = 0.4
-	nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-	nameLbl.Text = BindSystem.Label(bind)
-	nameLbl.ZIndex = BIND_Z
-	nameLbl.Parent = row
-	pcall(function() nameLbl.TextTruncate = Enum.TextTruncate.AtEnd end)
-
-	local chipHolder = Instance.new("Frame")
-	chipHolder.Name = "Keybind"
-	chipHolder.AnchorPoint = Vector2.new(1, 0.5)
-	chipHolder.Position = UDim2.new(1, -12, 0.5, 0)
-	chipHolder.Size = UDim2.new(0, 30, 0, 20)
-	chipHolder.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-	chipHolder.ZIndex = BIND_Z
-	chipHolder.Parent = row
-	local chipCorner = Instance.new("UICorner")
-	chipCorner.CornerRadius = UDim.new(0, 6)
-	chipCorner.Parent = chipHolder
-	local chipStroke = Instance.new("UIStroke")
-	chipStroke.Thickness = 1
-	chipStroke.Color = Color3.fromRGB(65, 65, 65)
-	chipStroke.Parent = chipHolder
-	local chipText = Instance.new("TextLabel")
-	chipText.BackgroundTransparency = 1
-	chipText.Size = UDim2.new(1, 0, 1, 0)
-	chipText.FontFace = FONT_MONO
-	chipText.TextSize = 12
-	chipText.Text = hasKey and keyDisplayName(bind.Key) or "_"
-	chipText.TextColor3 = hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88)
-	chipText.ZIndex = BIND_Z
-	chipText.Parent = chipHolder
-
-	local arrow = Instance.new("ImageLabel")
-	arrow.Name = "Arrow"
-	arrow.BackgroundTransparency = 1
-	arrow.Image = "rbxassetid://97531162692502"
-	arrow.ImageTransparency = 1
-	arrow.AnchorPoint = Vector2.new(1, 0.5)
-	arrow.Position = UDim2.new(1, -12, 0.5, 0)
-	arrow.Size = UDim2.new(0, 16, 0, 16)
-	arrow.ZIndex = BIND_Z
-	arrow.Visible = false
-	arrow.Parent = row
-
-	local state = "rest"
-	local function apply(newState)
-		state = newState
-		if newState == "rest" then
-			tween(row, "Fast", { BackgroundTransparency = 1 })
-			tween(nameLbl, "Fast", { TextTransparency = 0.4 })
-			chipHolder.Visible = true
-			tween(chipHolder, "Fast", { BackgroundTransparency = 0 })
-			tween(chipStroke, "Fast", { Transparency = 0 })
-			tween(chipText, "Fast", { TextTransparency = 0 })
-			tween(arrow, "Fast", { ImageTransparency = 1 })
-			task.delay(0.14, function()
-				if state == "rest" then arrow.Visible = false end
-			end)
-		elseif newState == "hover" then
-			tween(row, "Fast", { BackgroundTransparency = 0.6 })
-			tween(nameLbl, "Fast", { TextTransparency = 0.4 })
-			tween(chipHolder, "Fast", { BackgroundTransparency = 1 })
-			tween(chipStroke, "Fast", { Transparency = 1 })
-			tween(chipText, "Fast", { TextTransparency = 1 })
-			arrow.Visible = true
-			tween(arrow, "Fast", { ImageTransparency = 0.2 })
-			task.delay(0.14, function()
-				if state == "hover" then chipHolder.Visible = false end
-			end)
-		elseif newState == "press" then
-			tween(row, "Fast", { BackgroundTransparency = 0 })
-			tween(nameLbl, "Fast", { TextTransparency = 0.15 })
-			chipHolder.Visible = false
-			arrow.Visible = true
-			arrow.ImageTransparency = 0.2
+-- Paints a cloned row's key chip: real key, or the dashed "none" look from Bind4None.
+BindSystem.PaintKeybind = function(row, key)
+	local chip = row:FindFirstChild("Keybind")
+	if not chip then return end
+	local label = chip:FindFirstChild("TextLabel")
+	local stroke = chip:FindFirstChildOfClass("UIStroke")
+	local dashes = stroke and stroke:FindFirstChildOfClass("UIGradient")
+	local hasKey = key ~= nil and key ~= "None"
+	if label then
+		label.Text = hasKey and keyDisplayName(key) or "_"
+		label.TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88))
+	end
+	if dashes then
+		dashes.Enabled = not hasKey
+	end
+	local dot = row:FindFirstChild("Frame") and row.Frame:FindFirstChild("Dot")
+	if dot then
+		dot.BackgroundColor3 = TC(hasKey and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(58, 58, 58))
+		local dotShadow = dot:FindFirstChildOfClass("UIShadow")
+		if dotShadow then
+			dotShadow.Transparency = hasKey and 0.16 or 1
 		end
 	end
-
-	row.MouseEnter:Connect(function() if state ~= "press" then apply("hover") end end)
-	row.MouseLeave:Connect(function() if state ~= "press" then apply("rest") end end)
-	row.MouseButton1Click:Connect(function()
-		apply("press")
-		onClick(row, function() apply("rest") end)
-	end)
-
-	themeRegisterDeep(row)
-	themeApplyDeep(row)
-	return row, apply
 end
 
-BindSystem.BuildSplitter = function(parent, order)
-	local line = Instance.new("Frame")
-	line.Name = "Splitter"
-	line.BackgroundColor3 = Color3.fromRGB(33, 33, 33)
-	line.Size = UDim2.new(1, -20, 0, 2)
-	line.LayoutOrder = order
-	line.ZIndex = BIND_Z
-	line.Parent = parent
-	local lineCorner = Instance.new("UICorner")
-	lineCorner.CornerRadius = UDim.new(1, 0)
-	lineCorner.Parent = line
-	themeRegister(line)
-	themeApply(line)
-	return line
-end
+-- Drives one row between rest / hover / press using the authored values above.
+BindSystem.MakeRowState = function(row)
+	local arrow = row:FindFirstChild("Arrow")
+	local inner = row:FindFirstChild("Frame")
+	local nameLabel = inner and inner:FindFirstChild("Name")
+	local nameStroke = nameLabel and nameLabel:FindFirstChildOfClass("UIStroke")
+	local chip = row:FindFirstChild("Keybind")
+	local chipStroke = chip and chip:FindFirstChildOfClass("UIStroke")
+	local chipLabel = chip and chip:FindFirstChild("TextLabel")
 
-BindSystem.BuildNewRow = function(parent, order, onClick)
-	local btn = Instance.new("ImageButton")
-	btn.Name = "NewBind"
-	btn.AutoButtonColor = false
-	btn.ImageTransparency = 1
-	btn.BackgroundColor3 = Color3.fromRGB(33, 33, 33)
-	btn.BackgroundTransparency = 1
-	btn.Size = UDim2.new(1, 0, 0, 32)
-	btn.LayoutOrder = order
-	btn.ZIndex = BIND_Z
-	btn.Parent = parent
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent = btn
-	local icon = Instance.new("ImageLabel")
-	icon.BackgroundTransparency = 1
-	icon.Image = "rbxassetid://122653297908501"
-	icon.ImageTransparency = 0.4
-	icon.AnchorPoint = Vector2.new(0, 0.5)
-	icon.Position = UDim2.new(0, 12, 0.5, 0)
-	icon.Size = UDim2.new(0, 15, 0, 15)
-	icon.ZIndex = BIND_Z
-	icon.Parent = btn
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.AnchorPoint = Vector2.new(0, 0.5)
-	label.Position = UDim2.new(0, 34, 0.5, 0)
-	label.Size = UDim2.new(1, -46, 1, 0)
-	label.FontFace = FONT_BODY
-	label.TextSize = 13
-	label.TextColor3 = Color3.fromRGB(220, 220, 220)
-	label.TextTransparency = 0.18
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Text = "New Bind"
-	label.ZIndex = BIND_Z
-	label.Parent = btn
-	btn.MouseEnter:Connect(function() tween(btn, "Fast", { BackgroundTransparency = 0.6 }) end)
-	btn.MouseLeave:Connect(function() tween(btn, "Out", { BackgroundTransparency = 1 }) end)
-	btn.MouseButton1Click:Connect(onClick)
-	themeRegisterDeep(btn)
-	themeApplyDeep(btn)
-	return btn
-end
-
--- Shared chrome for both floating panels ("Binds" and "KeybindRedacting") — dark rounded card
--- with a stroke + soft shadow, auto-height, vertical list layout.
-BindSystem.BuildPanel = function(name, width)
-	local panel = Instance.new("Frame")
-	panel.Name = name
-	panel.BackgroundColor3 = Color3.fromRGB(13, 13, 13)
-	panel.Size = UDim2.new(0, width, 0, 10)
-	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.Y end)
-	panel.ZIndex = BIND_Z
-	panel.Active = true
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 12)
-	corner.Parent = panel
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(33, 33, 33)
-	stroke.Thickness = 1.3
-	stroke.Parent = panel
-	pcall(function()
-		local shadow = Instance.new("UIShadow")
-		shadow.Color = Color3.fromRGB(0, 0, 0)
-		shadow.Transparency = 0.43
-		shadow.BlurRadius = UDim.new(0, 20)
-		shadow.Parent = panel
-	end)
-	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0, 10)
-	padding.PaddingRight = UDim.new(0, 10)
-	padding.PaddingTop = UDim.new(0, 10)
-	padding.PaddingBottom = UDim.new(0, 10)
-	padding.Parent = panel
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Vertical
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(0, 6)
-	layout.Parent = panel
-	themeRegister(panel)
-	themeRegister(stroke)
-	return panel
-end
-
--- "KeybindRedacting" — Key / Mode / Value / Delete editor for a single bind, opened a bit to the
--- right of the "Binds" panel. Every field applies live (no separate save step).
-BindSystem.OpenEditor = function(bindsPanel, element, bind, rowFrame, resetVisual, refreshList, getCloser, setCloser)
-	local closeExisting = getCloser()
-	if closeExisting then closeExisting() end
-
-	local Z = BIND_Z
-	local editorActiveInputs = {}
-	local editorPanel = BindSystem.BuildPanel("KeybindRedacting", 200)
-
-	local function makeRow(order, labelText)
-		local rowHolder = Instance.new("Frame")
-		rowHolder.BackgroundTransparency = 1
-		rowHolder.Size = UDim2.new(1, 0, 0, 26)
-		rowHolder.LayoutOrder = order
-		rowHolder.ZIndex = Z
-		rowHolder.Parent = editorPanel
-		local lbl = BindSystem.MakeLabel(rowHolder, labelText, 12, Color3.fromRGB(140, 140, 140))
-		lbl.AnchorPoint = Vector2.new(0, 0.5)
-		lbl.Position = UDim2.new(0, 0, 0.5, 0)
-		lbl.Size = UDim2.new(0, 50, 1, 0)
-		return rowHolder
+	local current = "rest"
+	return function(stateName, instant)
+		current = stateName
+		local state = BIND_ROW_STATES[stateName]
+		local info = instant and TweenInfo.new(0) or BIND_STATE_INFO
+		tween(row, info, { BackgroundTransparency = state.Bg })
+		if nameLabel then tween(nameLabel, info, { TextTransparency = state.Name }) end
+		if nameStroke then tween(nameStroke, info, { Transparency = state.Stroke }) end
+		if arrow then
+			if state.Arrow < 1 then arrow.Visible = true end
+			tween(arrow, info, { ImageTransparency = state.Arrow })
+			if state.Arrow >= 1 then
+				task.delay(0.14, function()
+					if current == stateName and arrow.Parent then arrow.Visible = false end
+				end)
+			end
+		end
+		-- "keybind fades out" — the frame and every child of it go together
+		if chip then
+			local hide = state.Keybind
+			if not hide then chip.Visible = true end
+			tween(chip, info, { BackgroundTransparency = hide and 1 or 0 })
+			if chipStroke then tween(chipStroke, info, { Transparency = hide and 1 or 0 }) end
+			if chipLabel then tween(chipLabel, info, { TextTransparency = hide and 1 or 0 }) end
+			if hide then
+				task.delay(0.14, function()
+					if current == stateName and chip.Parent then chip.Visible = false end
+				end)
+			end
+		end
 	end
+end
 
-	-- Key -----------------------------------------------------------------------------------
-	local keyRow = makeRow(1, "Key")
-	local keyChip, keyChipText = BindSystem.MakeKeyChip(keyRow, "", Z)
-	keyChip.Size = UDim2.new(0, 78, 0, 22)
-	keyChip.Position = UDim2.new(1, 0, 0.5, 0)
-	local function renderKeyChip()
+-- "KeybindRedacting" — Key / Mode / Value / Delete for one bind, opened just right of the list.
+BindSystem.OpenEditor = function(context, bind, row, setRowState)
+	if context.closeEditor then context.closeEditor() end
+
+	local element = context.Element
+	local panel = BindEditorTemplate:Clone()
+	panel.Name = "KeybindRedacting"
+	panel.Visible = true
+
+	local keyRow = panel:WaitForChild("Key")
+	local modeRow = panel:WaitForChild("Mode")
+	local valueRow = panel:WaitForChild("Value")
+	local deleteRow = panel:WaitForChild("DeleteBind")
+
+	-- Key ---------------------------------------------------------------------------------------
+	local keyChipLabel = keyRow.Frame.TextLabel
+	local keyChipStroke = keyRow.Frame:FindFirstChildOfClass("UIStroke")
+	local function renderKey()
 		local hasKey = bind.Key and bind.Key ~= "None"
-		keyChipText.Text = hasKey and keyDisplayName(bind.Key) or "_"
-		keyChipText.TextColor3 = TC(hasKey and Color3.fromRGB(172, 172, 172) or Color3.fromRGB(90, 90, 90))
+		keyChipLabel.Text = hasKey and keyDisplayName(bind.Key) or "_"
+		keyChipLabel.TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88))
 	end
-	renderKeyChip()
-	keyChip.MouseButton1Click:Connect(function()
-		keyChipText.Text = "..."
+	renderKey()
+	keyRow.MouseButton1Click:Connect(function()
+		keyChipLabel.Text = "..."
+		if keyChipStroke then tween(keyChipStroke, "Fast", { Color = TC(Color3.fromRGB(70, 70, 70)) }) end
 		captureBindKey(function(newKey)
 			if newKey then
 				bind.Key = newKey
 				BindSystem.Touch(bind)
-				if refreshList then refreshList() end
+				if row.Parent then BindSystem.PaintKeybind(row, bind.Key) end
 			end
-			if keyChipText.Parent then renderKeyChip() end
+			if keyChipLabel.Parent then renderKey() end
+			if keyChipStroke then tween(keyChipStroke, "Out", { Color = TC(Color3.fromRGB(29, 29, 29)) }) end
 		end)
 	end)
 
-	-- Mode (skipped for types with only one mode, e.g. Button "Press") ------------------------
+	-- Mode --------------------------------------------------------------------------------------
 	local modes = BindSystem.ModesByType[element.Type] or { "Press" }
-	if #modes > 1 then
-		local modeRow = makeRow(2, "Mode")
-		local holder = Instance.new("Frame")
-		holder.AnchorPoint = Vector2.new(1, 0.5)
-		holder.Position = UDim2.new(1, 0, 0.5, 0)
-		holder.Size = UDim2.new(0, 78, 0, 20)
-		holder.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
-		holder.ZIndex = Z
-		holder.Parent = modeRow
-		local hCorner = Instance.new("UICorner")
-		hCorner.CornerRadius = UDim.new(1, 0)
-		hCorner.Parent = holder
-		local hStroke = Instance.new("UIStroke")
-		hStroke.Color = Color3.fromRGB(60, 60, 60)
-		hStroke.Thickness = 0.6
-		hStroke.Parent = holder
-		local hPadding = Instance.new("UIPadding")
-		hPadding.PaddingLeft = UDim.new(0, 2)
-		hPadding.PaddingRight = UDim.new(0, 2)
-		hPadding.Parent = holder
-		local hLayout = Instance.new("UIListLayout")
-		hLayout.FillDirection = Enum.FillDirection.Horizontal
-		hLayout.Padding = UDim.new(0, 1)
-		hLayout.Parent = holder
-		local segButtons = {}
-		local function renderModeSeg()
-			for modeName, seg in pairs(segButtons) do
-				local selected = modeName == bind.Mode
-				tween(seg, "Fast", { BackgroundTransparency = selected and 0 or 1 })
-				tween(seg.SegText, "Fast", { TextColor3 = TC(selected and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(110, 110, 110)) })
+	if #modes < 2 then
+		modeRow.Visible = false
+	else
+		local holder = modeRow.SelectionsHolder
+		local segments = { Toggle = holder:WaitForChild("Toggle"), Hold = holder:WaitForChild("Hold") }
+		for _, seg in pairs(segments) do
+			if not seg:FindFirstChildOfClass("UIStroke") then
+				local segStroke = Instance.new("UIStroke")
+				segStroke.Color = Color3.fromRGB(90, 90, 90)
+				segStroke.Thickness = 1
+				segStroke.Transparency = 1
+				segStroke.Parent = seg
 			end
 		end
-		for _, modeName in ipairs(modes) do
-			local seg = Instance.new("TextButton")
-			seg.AutoButtonColor = false
-			seg.Text = ""
-			seg.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-			-- fixed width: holder is 78 wide with 2px side padding and a 1px gap, so a
-			-- 0.5-scale segment would overflow (0.5*78 = 39 each)
-			seg.Size = UDim2.new(0, 36, 1, 0)
-			seg.ZIndex = Z
-			seg.Parent = holder
-			local sCorner = Instance.new("UICorner")
-			sCorner.CornerRadius = UDim.new(1, 0)
-			sCorner.Parent = seg
-			local segText = Instance.new("TextLabel")
-			segText.Name = "SegText"
-			segText.BackgroundTransparency = 1
-			segText.Size = UDim2.new(1, 0, 1, 0)
-			segText.FontFace = FONT_BODY
-			segText.TextSize = 10
-			segText.Text = modeName
-			segText.ZIndex = Z
-			segText.Parent = seg
+		local function renderModes()
+			for modeName, seg in pairs(segments) do
+				local selected = modeName == bind.Mode
+				tween(seg, "Fast", { BackgroundColor3 = TC(selected and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(16, 16, 16)) })
+				-- ":FindFirstChild" — `seg.Name` would return the instance's own Name string
+				local segLabel = seg:FindFirstChild("Name")
+				if segLabel then
+					tween(segLabel, "Fast", { TextColor3 = TC(selected and Color3.fromRGB(184, 184, 184) or Color3.fromRGB(106, 106, 106)) })
+				end
+				local segStroke = seg:FindFirstChildOfClass("UIStroke")
+				if segStroke then tween(segStroke, "Fast", { Transparency = selected and 0 or 1 }) end
+			end
+		end
+		for modeName, seg in pairs(segments) do
 			seg.MouseButton1Click:Connect(function()
 				bind.Mode = modeName
 				BindSystem.Touch(bind)
-				renderModeSeg()
-				if refreshList then refreshList() end
-			end)
-			segButtons[modeName] = seg
-		end
-		renderModeSeg()
-		themeRegisterDeep(holder)
-		themeApplyDeep(holder)
-	end
-
-	-- Value (skipped for Button — nothing to hold/restore for a fire-once action) -------------
-	if element.Type ~= "Button" then
-		if element.Type == "Toggle" then
-			if bind.Value == nil then bind.Value = true end
-			local valueRow = makeRow(3, "Value")
-			local holder = Instance.new("Frame")
-			holder.AnchorPoint = Vector2.new(1, 0.5)
-			holder.Position = UDim2.new(1, 0, 0.5, 0)
-			holder.Size = UDim2.new(0, 30, 0, 16)
-			holder.BackgroundColor3 = bind.Value and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(24, 24, 24)
-			holder.ZIndex = Z
-			holder.Parent = valueRow
-			local hCorner = Instance.new("UICorner")
-			hCorner.CornerRadius = UDim.new(1, 0)
-			hCorner.Parent = holder
-			local hStroke = Instance.new("UIStroke")
-			hStroke.Color = Color3.fromRGB(90, 90, 90)
-			hStroke.Thickness = 0.5
-			hStroke.Parent = holder
-			local dot = Instance.new("Frame")
-			dot.AnchorPoint = Vector2.new(0.5, 0.5)
-			dot.Position = bind.Value and UDim2.new(1, -9, 0.5, 0) or UDim2.new(0, 9, 0.5, 0)
-			dot.Size = UDim2.new(0, 12, 0, 12)
-			dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-			dot.ZIndex = Z + 1
-			dot.Parent = holder
-			local dCorner = Instance.new("UICorner")
-			dCorner.CornerRadius = UDim.new(1, 0)
-			dCorner.Parent = dot
-			pcall(function()
-				local dShadow = Instance.new("UIShadow")
-				dShadow.Transparency = 0.2
-				dShadow.Parent = dot
-			end)
-			local function renderToggle()
-				local pos = bind.Value and UDim2.new(1, -9, 0.5, 0) or UDim2.new(0, 9, 0.5, 0)
-				tween(dot, "Fast", { Position = pos })
-				tween(holder, "Fast", { BackgroundColor3 = TC(bind.Value and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(24, 24, 24)) })
-			end
-			local hit = Instance.new("TextButton")
-			hit.BackgroundTransparency = 1
-			hit.Text = ""
-			hit.Size = UDim2.new(1, 0, 1, 0)
-			hit.ZIndex = Z + 2
-			hit.Parent = holder
-			hit.MouseButton1Click:Connect(function()
-				bind.Value = not bind.Value
-				renderToggle()
-				BindSystem.Touch(bind)
-			end)
-			themeRegisterDeep(holder)
-			themeApplyDeep(holder)
-		elseif element.Type == "ColorPicker" then
-			if bind.Value == nil then
-				bind.Value = BindSystem.PackColor(element.Color, element.Transparency)
-			end
-			local valueRow = makeRow(3, "Value")
-			local swatch = Instance.new("ImageButton")
-			swatch.Name = "ColorValue"
-			swatch.AutoButtonColor = false
-			swatch.ImageTransparency = 1
-			swatch.AnchorPoint = Vector2.new(1, 0.5)
-			swatch.Position = UDim2.new(1, 0, 0.5, 0)
-			swatch.Size = UDim2.new(0, 30, 0, 18)
-			swatch.ZIndex = Z + 1
-			swatch.Parent = valueRow
-			local sCorner = Instance.new("UICorner")
-			sCorner.CornerRadius = UDim.new(0, 6)
-			sCorner.Parent = swatch
-			local sStroke = Instance.new("UIStroke")
-			sStroke.Color = Color3.fromRGB(65, 65, 65)
-			sStroke.Thickness = 1
-			sStroke.Parent = swatch
-			-- checkerboard behind the swatch so a transparent bind colour reads as transparent
-			local checker = Instance.new("ImageLabel")
-			checker.Name = "Checkerboard"
-			checker.Image = "rbxassetid://107060544057249"
-			checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
-			checker.ScaleType = Enum.ScaleType.Tile
-			checker.TileSize = UDim2.new(0, 8, 0, 8)
-			checker.BackgroundTransparency = 1
-			checker.Size = UDim2.new(1, 0, 1, 0)
-			checker.ZIndex = Z
-			checker.Parent = swatch
-			local cCorner = Instance.new("UICorner")
-			cCorner.CornerRadius = UDim.new(0, 6)
-			cCorner.Parent = checker
-			local function renderSwatch()
-				local color, transparency = BindSystem.UnpackColor(bind.Value)
-				if color then
-					swatch.BackgroundColor3 = color
-					swatch.BackgroundTransparency = transparency
+				renderModes()
+				local inner = row:FindFirstChild("Frame")
+				local rowLabel = inner and inner:FindFirstChild("Name")
+				if rowLabel then
+					rowLabel.Text = BindSystem.Label(bind)
 				end
-			end
-			swatch.MouseButton1Click:Connect(function()
-				local color, transparency = BindSystem.UnpackColor(bind.Value)
-				local origin = screenPointFor(swatch.AbsolutePosition)
-				openColorPicker({
-					Color = color or element.Color,
-					Transparency = transparency or 0,
-					Cursor = Vector2.new(origin.X + swatch.AbsoluteSize.X + 10, origin.Y + swatch.AbsoluteSize.Y / 2),
-					OnChanged = function(newColor, newAlpha, committed)
-						bind.Value = BindSystem.PackColor(newColor, newAlpha)
-						renderSwatch()
-						if committed then ConfigHooks.Autosave() end
-					end,
-				})
 			end)
-			themeRegisterDeep(valueRow)
-			themeApplyDeep(valueRow)
-			-- after theming, so the chosen colour isn't re-tinted by TC()
-			renderSwatch()
-		else
-			local numeric = element.Type == "Slider" or element.Type == "NumberPicker"
-			local default = bind.Value
-			if default == nil then default = BindSystem.GetValue(element) end
-			local valueInput = BindSystem.MakeInputBox({ editor = editorPanel, activeInputs = editorActiveInputs }, 3,
-				"Value", numeric and "value" or "value / option", numeric,
-				default ~= nil and tostring(default) or nil)
-			valueInput.Options.OnChanged = function(text)
-				bind.Value = text
-				ConfigHooks.Autosave()
-			end
 		end
+		renderModes()
 	end
 
-	-- Delete ----------------------------------------------------------------------------------
-	local deleteRow = Instance.new("TextButton")
-	deleteRow.Name = "DeleteBind"
-	deleteRow.AutoButtonColor = false
-	deleteRow.BackgroundTransparency = 1
-	deleteRow.Size = UDim2.new(1, 0, 0, 22)
-	deleteRow.FontFace = FONT_BODY
-	deleteRow.TextSize = 13
-	deleteRow.TextXAlignment = Enum.TextXAlignment.Left
-	deleteRow.TextColor3 = Color3.fromRGB(196, 122, 122)
-	deleteRow.Text = "  Delete Bind"
-	deleteRow.LayoutOrder = 4
-	deleteRow.ZIndex = Z
-	deleteRow.Parent = editorPanel
-	deleteRow.MouseEnter:Connect(function()
-		tween(deleteRow, "Fast", { TextColor3 = Color3.fromRGB(224, 140, 140) })
-	end)
-	deleteRow.MouseLeave:Connect(function()
-		tween(deleteRow, "Out", { TextColor3 = TC(Color3.fromRGB(196, 122, 122)) })
-	end)
+	-- Value -------------------------------------------------------------------------------------
+	local toggleFrame = valueRow:WaitForChild("ToggleFrame")
+	if element.Type == "Button" then
+		valueRow.Visible = false
+	elseif element.Type == "Toggle" then
+		if bind.Value == nil then bind.Value = true end
+		local dot = toggleFrame.Dot
+		local function renderToggle(instant)
+			local info = instant and TweenInfo.new(0) or TweenInfo.new(0.13, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			tween(dot, info, { Position = bind.Value and UDim2.new(0.7, 0, 0.5, 0) or UDim2.new(0.3, 0, 0.5, 0) })
+			tween(toggleFrame, info, { BackgroundColor3 = TC(bind.Value and Color3.fromRGB(48, 48, 47) or Color3.fromRGB(24, 24, 24)) })
+		end
+		renderToggle(true)
+		local hit = Instance.new("TextButton")
+		hit.BackgroundTransparency = 1
+		hit.Text = ""
+		hit.Size = UDim2.new(1, 0, 1, 0)
+		hit.ZIndex = BIND_Z + 3
+		hit.Parent = toggleFrame
+		hit.MouseButton1Click:Connect(function()
+			bind.Value = not bind.Value
+			renderToggle()
+			BindSystem.Touch(bind)
+		end)
+	elseif element.Type == "ColorPicker" then
+		-- swap the authored toggle for a colour swatch in the same slot
+		toggleFrame.Visible = false
+		if bind.Value == nil then
+			bind.Value = BindSystem.PackColor(element.Color, element.Transparency)
+		end
+		local swatch = Instance.new("ImageButton")
+		swatch.Name = "ColorValue"
+		swatch.AutoButtonColor = false
+		swatch.ImageTransparency = 1
+		swatch.BackgroundTransparency = 1
+		swatch.AnchorPoint = Vector2.new(1, 0.5)
+		swatch.Position = UDim2.new(0.97, 0, 0.5, 0)
+		swatch.Size = UDim2.new(0, 36, 0, 20)
+		swatch.ZIndex = BIND_Z
+		swatch.Parent = valueRow
+		local sCorner = Instance.new("UICorner")
+		sCorner.CornerRadius = UDim.new(0, 6)
+		sCorner.Parent = swatch
+		local sStroke = Instance.new("UIStroke")
+		sStroke.Color = Color3.fromRGB(29, 29, 29)
+		sStroke.Thickness = 1
+		sStroke.Parent = swatch
+		-- children draw above their parent (ZIndexBehavior.Sibling), so checkerboard first,
+		-- then the colour as its own layer on top of it
+		local checker = Instance.new("ImageLabel")
+		checker.Image = "rbxassetid://107060544057249"
+		checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
+		checker.ScaleType = Enum.ScaleType.Tile
+		checker.TileSize = UDim2.new(0, 10, 0, 10)
+		checker.BackgroundTransparency = 1
+		checker.Size = UDim2.new(1, 0, 1, 0)
+		checker.ZIndex = BIND_Z + 1
+		checker.Parent = swatch
+		local cCorner = Instance.new("UICorner")
+		cCorner.CornerRadius = UDim.new(0, 6)
+		cCorner.Parent = checker
+		local fill = Instance.new("Frame")
+		fill.Size = UDim2.new(1, 0, 1, 0)
+		fill.BorderSizePixel = 0
+		fill.ZIndex = BIND_Z + 2
+		local fCorner = Instance.new("UICorner")
+		fCorner.CornerRadius = UDim.new(0, 6)
+		fCorner.Parent = fill
+		fill.Parent = swatch
+		local function renderSwatch()
+			local color, transparency = BindSystem.UnpackColor(bind.Value)
+			if color then
+				fill.BackgroundColor3 = color
+				fill.BackgroundTransparency = transparency
+			end
+		end
+		swatch.MouseButton1Click:Connect(function()
+			local color, transparency = BindSystem.UnpackColor(bind.Value)
+			local origin = screenPointFor(swatch.AbsolutePosition)
+			openColorPicker({
+				Color = color or element.Color,
+				Transparency = transparency or 0,
+				Cursor = Vector2.new(origin.X + swatch.AbsoluteSize.X + 10, origin.Y + swatch.AbsoluteSize.Y / 2),
+				OnChanged = function(newColor, newAlpha, committed)
+					bind.Value = BindSystem.PackColor(newColor, newAlpha)
+					renderSwatch()
+					if committed then ConfigHooks.Autosave() end
+				end,
+			})
+		end)
+		renderSwatch()
+	else
+		toggleFrame.Visible = false
+		local numeric = element.Type == "Slider" or element.Type == "NumberPicker"
+		local default = bind.Value
+		if default == nil then default = BindSystem.GetValue(element) end
+		BindSystem.MakeInputBox(valueRow, numeric, default ~= nil and tostring(default) or nil, function(text)
+			bind.Value = text
+			ConfigHooks.Autosave()
+		end)
+	end
+
+	-- Delete ------------------------------------------------------------------------------------
 	deleteRow.MouseButton1Click:Connect(function()
 		BindSystem.Remove(bind)
-		if refreshList then refreshList() end
-		local closer = getCloser()
-		if closer then closer() end
+		if context.refresh then context.refresh() end
+		if context.closeEditor then context.closeEditor() end
 	end)
 
-	themeRegisterDeep(editorPanel)
-	themeApplyDeep(editorPanel)
+	themeRegisterDeep(panel)
+	themeApplyDeep(panel)
+	if element.Type == "ColorPicker" then
+		local swatchFill = valueRow:FindFirstChild("ColorValue")
+		if swatchFill then
+			local fill = swatchFill:FindFirstChildOfClass("Frame")
+			local color, transparency = BindSystem.UnpackColor(bind.Value)
+			if fill and color then
+				fill.BackgroundColor3 = color
+				fill.BackgroundTransparency = transparency
+			end
+		end
+	end
 
-	-- open just to the right of the Binds panel, vertically centred on the row that was clicked
-	local panelOrigin = screenPointFor(bindsPanel.AbsolutePosition)
-	local rowOrigin = screenPointFor(rowFrame.AbsolutePosition)
+	-- open just right of the list, vertically centred on the row that was clicked
+	local listOrigin = screenPointFor(context.panel.AbsolutePosition)
+	local rowOrigin = screenPointFor(row.AbsolutePosition)
 	local anchorPoint = Vector2.new(
-		panelOrigin.X + bindsPanel.AbsoluteSize.X + 10,
-		rowOrigin.Y + rowFrame.AbsoluteSize.Y / 2
+		listOrigin.X + context.panel.AbsoluteSize.X + 8,
+		rowOrigin.Y + row.AbsoluteSize.Y / 2
 	)
 
 	local close
-	close = openFloatingAtCursor(editorPanel, anchorPoint, function()
-		if getCloser() == close then setCloser(nil) end
-		for _, input in ipairs(editorActiveInputs) do pcall(function() input:Destroy() end) end
-		fadeOut(editorPanel, 0.12)
-		if resetVisual then pcall(resetVisual) end
+	close = openFloatingAtCursor(panel, anchorPoint, function()
+		if context.closeEditor == close then
+			context.closeEditor = nil
+			context.editingBind = nil
+		end
+		fadeOut(panel, 0.12)
+		task.delay(0.18, function() panel:Destroy() end)
+		if setRowState and row.Parent then setRowState("rest") end
 	end)
-	setCloser(close)
-	popWindow(editorPanel)
-	fadeIn(editorPanel, 0.14)
+	context.closeEditor = close
+	popWindow(panel)
+	fadeIn(panel, 0.14)
 end
 
--- "Binds" — lists every existing bind on `element`, plus a "New Bind" row. Opened via right
--- click on any bindable element, at the cursor (left-middle edge lands on the click point).
+-- "Binds" — the list of binds attached to `element`, opened at the cursor on right click.
 BindSystem.OpenMenu = function(element, position)
 	if BindSystem.MenuOpen then return end
 	BindSystem.MenuOpen = true
 
-	local panel = BindSystem.BuildPanel("Binds", 240)
+	local panel = BindsPanelTemplate:Clone()
+	panel.Name = "Binds"
+	panel.Visible = true
 
-	-- static — never changes, just names the window
-	local title = BindSystem.MakeLabel(panel, "Binds", 14, Color3.fromRGB(220, 220, 220))
-	title.Size = UDim2.new(1, 0, 0, 16)
-	title.LayoutOrder = 0
+	local context = { Element = element, panel = panel, closeEditor = nil, editingBind = nil }
 
-	local editorCloser = nil
-	local function getCloser() return editorCloser end
-	local function setCloser(fn) editorCloser = fn end
+	local newBindRow = panel:WaitForChild("NewBind")
+	local splitter = panel:WaitForChild("Splitter")
 
-	-- which bind currently has the editor open — kept so a list rebuild (after a mode change,
-	-- a rebind, etc) can restore that row's pressed look instead of dropping back to rest
-	local editingBind = nil
-	local rowsByBind = {}
-
-	local renderBinds -- forward
-	local function selectBind(bind, rowFrame, resetVisual)
-		editingBind = bind
-		BindSystem.OpenEditor(panel, element, bind, rowFrame, function()
-			if editingBind == bind then editingBind = nil end
-			-- the row may have been destroyed by a rebuild while the editor was open
-			if resetVisual and rowFrame.Parent then resetVisual() end
-		end, renderBinds, getCloser, setCloser)
+	local function selectBind(bind, row, setRowState)
+		context.editingBind = bind
+		setRowState("press")
+		BindSystem.OpenEditor(context, bind, row, setRowState)
 	end
 
-	renderBinds = function()
+	context.refresh = function()
 		for _, child in ipairs(panel:GetChildren()) do
 			if child.Name == "BindRow" then
 				child:Destroy()
 			end
 		end
-		rowsByBind = {}
-		local binds = BindSystem.ForElement(element)
-		for index, bind in ipairs(binds) do
-			local rowFrame, apply = BindSystem.BuildRow(panel, 10 + index, bind, function(frame, resetVisual)
-				selectBind(bind, frame, resetVisual)
+		for index, bind in ipairs(BindSystem.ForElement(element)) do
+			local row = BindRowTemplate:Clone()
+			row.Name = "BindRow"
+			row.LayoutOrder = index
+			row.Visible = true
+			local rowLabel = row.Frame:FindFirstChild("Name")
+			if rowLabel then rowLabel.Text = BindSystem.Label(bind) end
+			BindSystem.PaintKeybind(row, bind.Key)
+			row.Parent = panel
+			themeRegisterDeep(row)
+			themeApplyDeep(row)
+
+			local setRowState = BindSystem.MakeRowState(row)
+			setRowState(bind == context.editingBind and "press" or "rest", true)
+			row.MouseEnter:Connect(function()
+				if context.editingBind ~= bind then setRowState("hover") end
 			end)
-			rowsByBind[bind] = rowFrame
-			if bind == editingBind then
-				apply("press")
-			end
+			row.MouseLeave:Connect(function()
+				if context.editingBind ~= bind then setRowState("rest") end
+			end)
+			row.MouseButton1Click:Connect(function()
+				selectBind(bind, row, setRowState)
+			end)
 		end
 	end
 
-	BindSystem.BuildSplitter(panel, 900)
-	BindSystem.BuildNewRow(panel, 901, function()
+	-- keep the authored splitter + "New Bind" below the generated rows
+	splitter.LayoutOrder = 900
+	newBindRow.LayoutOrder = 901
+	newBindRow.MouseEnter:Connect(function()
+		tween(newBindRow, "Fast", { BackgroundTransparency = 0.6 })
+	end)
+	newBindRow.MouseLeave:Connect(function()
+		tween(newBindRow, "Out", { BackgroundTransparency = 1 })
+	end)
+	newBindRow.MouseButton1Click:Connect(function()
 		local modes = BindSystem.ModesByType[element.Type] or { "Press" }
 		local newBind = BindSystem.Add({
 			Element = element,
@@ -6901,27 +6919,29 @@ BindSystem.OpenMenu = function(element, position)
 			Mode = modes[1],
 			Value = BindSystem.DefaultValueFor(element),
 		})
-		renderBinds()
-		local targetRow = rowsByBind[newBind]
-		if targetRow then
-			selectBind(newBind, targetRow)
+		context.editingBind = newBind
+		context.refresh()
+		for _, child in ipairs(panel:GetChildren()) do
+			if child.Name == "BindRow" and child.LayoutOrder == #BindSystem.ForElement(element) then
+				BindSystem.OpenEditor(context, newBind, child, BindSystem.MakeRowState(child))
+				break
+			end
 		end
 	end)
 
-	renderBinds()
+	context.refresh()
 	themeRegisterDeep(panel)
 	themeApplyDeep(panel)
 
 	openFloatingAtCursor(panel, position, function()
 		BindSystem.MenuOpen = false
-		local closer = getCloser()
-		if closer then closer() end
+		if context.closeEditor then context.closeEditor() end
 		fadeOut(panel, 0.12)
+		task.delay(0.18, function() panel:Destroy() end)
 	end)
 	popWindow(panel)
 	fadeIn(panel, 0.14)
 end
-
 
 ------------------------------------------------------------------------------------------------------------------------
 --  Interface reveal (after loading)
