@@ -3031,6 +3031,14 @@ local BIND_MENU = {
 	SplitterHeight = 2,
 }
 
+-- Насколько попап-окно смещается от курсора при открытии. Y — на сколько пикселей окно ниже
+-- курсора, X — на сколько правее. Действует на меню биндов, колор-пикер и контекстное меню
+-- конфигов. Если окно не влезает справа, оно уходит влево от курсора на тот же X.
+local POPUP_CURSOR_OFFSET = {
+	X = 1,
+	Y = 1,
+}
+
 local Templates = {}
 
 ;(function()
@@ -5307,16 +5315,14 @@ end
 
 -- Opens `content` just below and to the right of `cursor`, so the pointer sits slightly above
 -- and left of the window's top-left corner (clamped on-screen rather than running off the edge).
-local CURSOR_POPUP_OFFSET = Vector2.new(10, 10)
-
 -- `reserveRight` keeps room to the right for a companion window (the bind editor), so the pair
 -- flips to the cursor's left together instead of the editor hanging off-screen.
 local function openFloatingAtCursor(content: GuiObject, cursor: Vector2, onClose, anchor: Vector2?, reserveRight: number?)
 	anchor = anchor or Vector2.new(0, 0)
 	content.AnchorPoint = anchor
 	local viewport = ScreenGui.AbsoluteSize
-	local x = math.max(8, cursor.X + CURSOR_POPUP_OFFSET.X)
-	local y = math.max(8, cursor.Y + CURSOR_POPUP_OFFSET.Y)
+	local x = math.max(8, cursor.X + POPUP_CURSOR_OFFSET.X)
+	local y = math.max(8, cursor.Y + POPUP_CURSOR_OFFSET.Y)
 	local close, container = openFloating(content, Vector2.new(x, y), onClose)
 	task.defer(function()
 		if not content.Parent then return end
@@ -5326,7 +5332,7 @@ local function openFloatingAtCursor(content: GuiObject, cursor: Vector2, onClose
 		-- shoving it back rightwards — the window should retreat away from the screen edge.
 		local correctedX = x
 		if x + width > viewport.X - 8 then
-			correctedX = cursor.X - CURSOR_POPUP_OFFSET.X - content.AbsoluteSize.X
+			correctedX = cursor.X - POPUP_CURSOR_OFFSET.X - content.AbsoluteSize.X
 		end
 		correctedX = math.max(8, correctedX)
 		local minY = 8 + height * anchor.Y
