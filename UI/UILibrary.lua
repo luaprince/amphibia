@@ -425,6 +425,14 @@ local Themes = {
 		Hue = 32 / 360, GraySat = 0.13, ValueGain = 0.008,
 		Accent = Color3.fromRGB(196, 168, 130),
 	},
+	-- The only theme that flips the palette instead of tinting it: the whole interface is
+	-- authored dark, so `Invert` mirrors the grey ramp (chrome -> paper, text -> ink) and
+	-- deepens the saturated accents that would otherwise wash out on a light background.
+	Light = {
+		Hue = 214 / 360, GraySat = 0.07, ValueGain = 0,
+		Accent = Color3.fromRGB(96, 128, 118),
+		Invert = true,
+	},
 }
 
 local CurrentThemeName = "Default"
@@ -446,10 +454,22 @@ local function TC(color: Color3): Color3
 		return theme.Accent
 	end
 	local h, s, v = color:ToHSV()
-	if s < 0.09 then -- graphite / white ramp -> tint it
+	if s < 0.09 then -- graphite / white ramp
+		if theme.Invert then
+			-- mirror the ramp, then compress it so nothing lands on pure black or pure white:
+			-- near-black chrome becomes paper, near-white text becomes ink
+			local val = 0.11 + (1 - v) * 0.86
+			-- leave the paper end neutral and let only the dark end pick up the tint
+			return Color3.fromHSV(theme.Hue, theme.GraySat * (1 - val), val)
+		end
 		local sat = theme.GraySat * (1 - 0.72 * v)
 		local val = math.clamp(v + theme.ValueGain * (1 - v), 0, 1)
 		return Color3.fromHSV(theme.Hue, sat, val)
+	end
+	if theme.Invert then
+		-- semantic colours (danger reds, etc) are tuned for a dark backdrop and would glare on
+		-- paper — deepen them just enough to keep their meaning and their contrast
+		return Color3.fromHSV(h, math.min(1, s * 1.18), math.clamp(v * 0.7, 0, 1))
 	end
 	return color -- keep semantic colours (danger reds, hue slider, etc)
 end
@@ -501,8 +521,13 @@ local function themeApply(inst: Instance)
 	if not snapshot then
 		return
 	end
+	-- Drop shadows are the one thing an inverting theme must not flip: mirroring black to white
+	-- would turn every shadow into a glow and flatten the whole interface.
+	local theme = Themes[CurrentThemeName]
+	local keepShadow = theme and theme.Invert and inst:IsA("UIShadow")
 	for prop, original in pairs(snapshot) do
-		pcall(function() inst[prop] = TC(original) end)
+		local value = (keepShadow and prop == "Color") and original or TC(original)
+		pcall(function() inst[prop] = value end)
 	end
 end
 
@@ -5230,18 +5255,6 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	content.Visible = true
 	content.Parent = container
 
-	-- An invisible full-size button behind the content, so gaps between the popup's own
-	-- controls still absorb clicks and hover instead of leaking through to the menu underneath.
-	local blocker = Instance.new("TextButton")
-	blocker.Name = "Blocker"
-	blocker.Text = ""
-	blocker.AutoButtonColor = false
-	blocker.BackgroundTransparency = 1
-	blocker.Size = UDim2.new(1, 0, 1, 0)
-	blocker.ZIndex = -1
-	blocker.Active = true
-	blocker.Parent = content
-
 	local closed = false
 	local function close()
 		if closed then return end
@@ -5252,7 +5265,6 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 				break
 			end
 		end
-		if blocker then blocker:Destroy() end
 		if onClose then onClose() end
 		task.delay(0.18, function()
 			container:Destroy()
@@ -6928,8 +6940,13 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	local panel = BindEditorTemplate:Clone()
 	panel.Name = "KeybindRedacting"
 	panel.Visible = true
+	panel.Size = UDim2.new(0, 210, 0, 10)
+	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.Y end)
 	panel.ZIndex = BIND_Z + 10
 	panel.AnchorPoint = Vector2.new(0, 0)
+	-- sinks hover/clicks in the gaps between rows instead of letting them reach the menu
+	-- behind; a full-size child button cannot be used here because the panel auto-sizes
+	panel.Active = true
 
 	local keyRow = panel:WaitForChild("Key")
 	local modeRow = panel:WaitForChild("Mode")
@@ -6945,7 +6962,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	for _, fieldRow in ipairs({ keyRow, modeRow, valueRow, deleteRow }) do
 		fieldRow.Position = UDim2.new(0, 0, 0, 0)
 		-- widened from the authored 153: the label and the control were nearly touching
-		fieldRow.Size = UDim2.new(0, 200, 0, 30)
+		fieldRow.Size = UDim2.new(1, 0, 0, 30)
 		local fieldLabel = fieldRow:FindFirstChild("Name")
 		if fieldLabel and fieldRow ~= deleteRow then
 			-- pin the caption left and stop it from running under the control
@@ -7140,18 +7157,6 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 		if context.refresh then context.refresh() end
 	end)
 
-	-- the editor is parented by hand rather than through openFloating, so it needs its own
-	-- input blocker or hover leaks through the gaps between its rows
-	local editorBlocker = Instance.new("TextButton")
-	editorBlocker.Name = "Blocker"
-	editorBlocker.Text = ""
-	editorBlocker.AutoButtonColor = false
-	editorBlocker.BackgroundTransparency = 1
-	editorBlocker.Size = UDim2.new(1, 0, 1, 0)
-	editorBlocker.ZIndex = -1
-	editorBlocker.Active = true
-	editorBlocker.Parent = panel
-
 	themeRegisterDeep(panel)
 	themeApplyDeep(panel)
 	if context.renderSwatch then context.renderSwatch() end
@@ -7203,6 +7208,10 @@ BindSystem.BuildMenu = function(element, position)
 	local panel = BindsPanelTemplate:Clone()
 	panel.Name = "Binds"
 	panel.Visible = true
+	-- Fixed width, height still automatic. Every child is scale-width, and scale-sized children
+	-- contribute nothing to AutomaticSize, so leaving X automatic makes the panel collapse.
+	panel.Size = UDim2.new(0, 232, 0, 10)
+	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.Y end)
 	-- must sit above openFloating's full-screen catcher (ZIndex 40) or the catcher swallows
 	-- every click; the design's authored 20 was relative to a different parent
 	panel.ZIndex = BIND_Z
@@ -7329,7 +7338,7 @@ BindSystem.BuildMenu = function(element, position)
 		end
 		fadeOut(panel, 0.14)
 		task.delay(0.2, function() panel:Destroy() end)
-	end, nil, 210)
+	end, nil, 216)
 	context.container = container
 	popWindow(panel)
 	fadeIn(panel, 0.2)
