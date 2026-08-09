@@ -3014,7 +3014,7 @@ local CONFIG_MENU = {
 -- Значения применяются поверх GuiData в рантайме, так что править нужно здесь, а не в дизайне.
 local BIND_MENU = {
 	ListWidth = 232,
-	RowHeight = 10,         -- высота строки бинда в списке
+	RowHeight = 30,         -- высота строки бинда в списке
 	RowGap = 5,             -- зазор между строками списка
 	PadY = 5,               -- отступ списка сверху/снизу
 	PadX = 5,               -- отступ списка слева/справа
@@ -3023,7 +3023,7 @@ local BIND_MENU = {
 	KeySlot = 19,           -- квадрат клавиши / стрелки справа в строке (не делать больше RowHeight-8)
 
 	EditorWidth = 210,
-	EditorRowHeight = 10,   -- высота строк Key / Mode / Value / Delete Bind
+	EditorRowHeight = 30,   -- высота строк Key / Mode / Value / Delete Bind
 	EditorRowGap = 3,       -- зазор между строками редактора
 	EditorPadY = 5,         -- отступ редактора сверху/снизу
 	EditorGap = 6,          -- расстояние между списком и редактором
