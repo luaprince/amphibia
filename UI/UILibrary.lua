@@ -654,6 +654,10 @@ end
 
 local ActiveInput = nil
 
+-- True while the user is recording a keybind. Declared up here because handlers defined long
+-- before BindSystem exists (the menu-toggle hotkey, popup dismissal) have to respect it.
+local BindCaptureActive = false
+
 local INPUT_SINK_ACTION = "AmphibiaInputSink"
 local SINK_KEYS = {}
 do
@@ -3836,8 +3840,10 @@ makeDraggable(Header, Main)
 connect(UserInputService.InputBegan, function(input, gameProcessed)
 	if gameProcessed or ActiveInput then return end
 	if input.UserInputType == Enum.UserInputType.Keyboard then
+		-- never while the user is recording a keybind — that key belongs to the capture
 		local bindName = getSetting("General", "amphibiaOpen")
-		if bindName and input.KeyCode.Name == bindName and InterfaceRevealed then
+		if bindName and input.KeyCode.Name == bindName and InterfaceRevealed
+			and not BindCaptureActive then
 			setWindowOpen(not WindowOpen)
 		end
 	end
@@ -4125,33 +4131,59 @@ local BindSystem = {
 }
 
 -- Calls back with the resolved bind name; "None" clears; nil = cancelled with Escape.
+--
+-- While capturing, a full-screen modal swallows every click so the UI underneath cannot react
+-- — that's what makes binding the left mouse button possible at all, and it's why nothing else
+-- (menu toggle, other binds, popup dismissal) may fire until a key actually lands.
 local function captureBindKey(onDone) -- BINDHELPER
 	if BindSystem.CaptureActive then
 		return false
 	end
 	BindSystem.CaptureActive = true
+	BindCaptureActive = true
+
+	local blocker = Instance.new("TextButton")
+	blocker.Name = "BindCaptureBlocker"
+	blocker.Text = ""
+	blocker.AutoButtonColor = false
+	blocker.BackgroundTransparency = 1
+	blocker.Size = UDim2.new(1, 0, 1, 0)
+	blocker.ZIndex = 2000
+	blocker.Active = true
+	blocker.Modal = true
+	blocker.Parent = ScreenGui
+
 	local captureConnection
+	local function finish(resolvedName)
+		if captureConnection then captureConnection:Disconnect() end
+		blocker:Destroy()
+		-- release a frame later so the very input that ended capture can't leak through
+		task.delay(0.05, function()
+			BindSystem.CaptureActive = false
+			BindCaptureActive = false
+		end)
+		onDone(resolvedName)
+	end
+
 	captureConnection = UserInputService.InputBegan:Connect(function(input)
 		local resolvedName, cancelled = nil, false
 		if input.UserInputType == Enum.UserInputType.Keyboard then
 			if input.KeyCode == Enum.KeyCode.Escape then
 				cancelled = true
-			elseif input.KeyCode == Enum.KeyCode.Backspace then
+			elseif input.KeyCode == Enum.KeyCode.Backspace or input.KeyCode == Enum.KeyCode.Delete then
 				resolvedName = "None"
 			else
 				resolvedName = input.KeyCode.Name
 			end
+		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+			resolvedName = "MouseButton1"
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
 			resolvedName = "MouseButton2"
 		elseif input.UserInputType == Enum.UserInputType.MouseButton3 then
 			resolvedName = "MouseButton3"
 		end
 		if resolvedName or cancelled then
-			captureConnection:Disconnect()
-			task.delay(0.05, function()
-				BindSystem.CaptureActive = false
-			end)
-			onDone(resolvedName)
+			finish(resolvedName)
 		end
 	end)
 	return true
@@ -4163,6 +4195,8 @@ local function inputMatchesBind(input, bindName): boolean
 	end
 	if input.UserInputType == Enum.UserInputType.Keyboard then
 		return input.KeyCode.Name == bindName
+	elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+		return bindName == "MouseButton1"
 	elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
 		return bindName == "MouseButton2"
 	elseif input.UserInputType == Enum.UserInputType.MouseButton3 then
@@ -4245,22 +4279,48 @@ end
 -- down and restores whatever the element held before on release; Toggle applies Value on the
 -- first press and restores the pre-bind value on the next press. Button has no value to
 -- restore, so it's a simple fire-once-per-press action.
+-- Anyone showing bind state (the open Binds window) subscribes here so the indicator dot
+-- tracks activation live, even while the window is open.
+BindSystem.StateListeners = {}
+
+function BindSystem.NotifyState(bind)
+	for _, listener in ipairs(BindSystem.StateListeners) do
+		pcall(listener, bind)
+	end
+end
+
+function BindSystem.IsActive(bind): boolean
+	return bind.Active == true
+end
+
 function BindSystem.Execute(bind, pressed: boolean)
 	local element = bind.Element
 	if not element then return end
 	local elementType = element.Type
 	if elementType == "Button" then
 		if pressed and element.Press then element.Press() end
+		-- a Button bind has no lasting state; flash the dot so the press is still visible
+		bind.Active = pressed
+		BindSystem.NotifyState(bind)
+		if pressed then
+			task.delay(0.12, function()
+				bind.Active = false
+				BindSystem.NotifyState(bind)
+			end)
+		end
 		return
 	end
 	if bind.Mode == "Hold" then
 		if pressed then
 			bind.Revert = BindSystem.GetValue(element)
 			BindSystem.SetValue(element, bind.Value)
+			bind.Active = true
 		else
 			if bind.Revert ~= nil then BindSystem.SetValue(element, bind.Revert) end
 			bind.Revert = nil
+			bind.Active = false
 		end
+		BindSystem.NotifyState(bind)
 		return
 	end
 	-- "Toggle"
@@ -4274,6 +4334,7 @@ function BindSystem.Execute(bind, pressed: boolean)
 		BindSystem.SetValue(element, bind.Value)
 		bind.Active = true
 	end
+	BindSystem.NotifyState(bind)
 end
 
 function BindSystem.Add(bind)
@@ -4503,7 +4564,9 @@ function SectionClass:_mount(element, row, options)
 			local now = os.clock()
 			if now - lastMenuOpen < 0.25 then return end
 			lastMenuOpen = now
-			BindSystem.OpenMenu(element, input.Position)
+			-- mousePoint(), not input.Position: the ScreenGui ignores the topbar inset, so a raw
+			-- input position lands the popup ~36px above the actual cursor
+			BindSystem.OpenMenu(element, mousePoint())
 		end
 		-- InputBegan doesn't bubble, so hook the row AND everything inside it — right click must
 		-- work over sliders, chips and inputs, not only over the name label
@@ -4907,6 +4970,8 @@ function SectionClass:CreateSelector(options)
 	local element = {
 		Type = "Selector",
 		CurrentOption = options.CurrentOption or optionList[1],
+		-- exposed so the bind editor can offer the real choices instead of a free-text box
+		Options = optionList,
 	}
 	element.DefaultValue = element.CurrentOption
 
@@ -5165,6 +5230,18 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	content.Visible = true
 	content.Parent = container
 
+	-- An invisible full-size button behind the content, so gaps between the popup's own
+	-- controls still absorb clicks and hover instead of leaking through to the menu underneath.
+	local blocker = Instance.new("TextButton")
+	blocker.Name = "Blocker"
+	blocker.Text = ""
+	blocker.AutoButtonColor = false
+	blocker.BackgroundTransparency = 1
+	blocker.Size = UDim2.new(1, 0, 1, 0)
+	blocker.ZIndex = -1
+	blocker.Active = true
+	blocker.Parent = content
+
 	local closed = false
 	local function close()
 		if closed then return end
@@ -5175,14 +5252,20 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 				break
 			end
 		end
+		if blocker then blocker:Destroy() end
 		if onClose then onClose() end
 		task.delay(0.18, function()
 			container:Destroy()
 		end)
 	end
+	-- clicking away dismisses — unless a keybind is being recorded, where the click is the bind
+	local function dismiss()
+		if BindCaptureActive then return end
+		close()
+	end
 	table.insert(OpenPopups, close)
-	catcher.MouseButton1Click:Connect(close)
-	catcher.MouseButton2Click:Connect(close)
+	catcher.MouseButton1Click:Connect(dismiss)
+	catcher.MouseButton2Click:Connect(dismiss)
 	return close, container
 end
 
@@ -5190,7 +5273,9 @@ end
 -- and left of the window's top-left corner (clamped on-screen rather than running off the edge).
 local CURSOR_POPUP_OFFSET = Vector2.new(10, 10)
 
-local function openFloatingAtCursor(content: GuiObject, cursor: Vector2, onClose, anchor: Vector2?)
+-- `reserveRight` keeps room to the right for a companion window (the bind editor), so the pair
+-- flips to the cursor's left together instead of the editor hanging off-screen.
+local function openFloatingAtCursor(content: GuiObject, cursor: Vector2, onClose, anchor: Vector2?, reserveRight: number?)
 	anchor = anchor or Vector2.new(0, 0)
 	content.AnchorPoint = anchor
 	local viewport = ScreenGui.AbsoluteSize
@@ -5199,13 +5284,17 @@ local function openFloatingAtCursor(content: GuiObject, cursor: Vector2, onClose
 	local close, container = openFloating(content, Vector2.new(x, y), onClose)
 	task.defer(function()
 		if not content.Parent then return end
-		local width = content.AbsoluteSize.X
+		local width = content.AbsoluteSize.X + (reserveRight or 0)
 		local height = content.AbsoluteSize.Y
-		local minX = 8 + width * anchor.X
-		local maxX = math.max(minX, viewport.X - 8 - width * (1 - anchor.X))
+		-- If it doesn't fit to the right of the cursor, flip to the cursor's left rather than
+		-- shoving it back rightwards — the window should retreat away from the screen edge.
+		local correctedX = x
+		if x + width > viewport.X - 8 then
+			correctedX = cursor.X - CURSOR_POPUP_OFFSET.X - content.AbsoluteSize.X
+		end
+		correctedX = math.max(8, correctedX)
 		local minY = 8 + height * anchor.Y
 		local maxY = math.max(minY, viewport.Y - 8 - height * (1 - anchor.Y))
-		local correctedX = math.clamp(x, minX, maxX)
 		local correctedY = math.clamp(y, minY, maxY)
 		if correctedX ~= x or correctedY ~= y then
 			content.Position = UDim2.new(0, correctedX, 0, correctedY)
@@ -5846,7 +5935,7 @@ function SectionClass:CreateColorPicker(options)
 
 	local function onPreviewInput(input: InputObject)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			openPicker(Vector2.new(input.Position.X, input.Position.Y))
+			openPicker(mousePoint())
 		end
 	end
 	preview.InputBegan:Connect(onPreviewInput)
@@ -6506,11 +6595,25 @@ local function makeRightSlot(row)
 	local arrow = row:FindFirstChild("Arrow")
 	if not chip or not arrow then return chip, arrow end
 
+	-- The row's own horizontal UIListLayout made the slot's position depend on how long the
+	-- label was ("Hold" vs "Toggle"), so the chip drifted between rows. Lay the row out by hand
+	-- instead: label pinned left, slot pinned right, both independent of text width.
+	local layout = row:FindFirstChildOfClass("UIListLayout")
+	if layout then layout:Destroy() end
+	pcall(function() row.AutomaticSize = Enum.AutomaticSize.None end)
+	local inner = row:FindFirstChild("Frame")
+	if inner then
+		pcall(function() inner.AutomaticSize = Enum.AutomaticSize.X end)
+		inner.AnchorPoint = Vector2.new(0, 0.5)
+		inner.Position = UDim2.new(0, 0, 0.5, 0)
+	end
+
 	local slot = Instance.new("Frame")
 	slot.Name = "RightSlot"
 	slot.BackgroundTransparency = 1
+	slot.AnchorPoint = Vector2.new(1, 0.5)
+	slot.Position = UDim2.new(1, -4, 0.5, 0)
 	slot.Size = UDim2.new(0, 19, 0, 19)
-	slot.LayoutOrder = 3
 	slot.ZIndex = row.ZIndex
 	slot.Parent = row
 
@@ -6537,19 +6640,33 @@ BindSystem.PaintKeybind = function(row, key)
 	local hasKey = key ~= nil and key ~= "None"
 	if label then
 		label.Text = hasKey and keyDisplayName(key) or "_"
-		label.TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88))
+		label.TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(120, 120, 120))
+	end
+	if stroke then
+		-- same border colour bound or not; only the dashes tell them apart
+		stroke.Color = TC(Color3.fromRGB(65, 65, 65))
 	end
 	if dashes then
 		dashes.Enabled = not hasKey
 	end
+end
+
+-- The dot shows whether the bind is *currently firing*, not merely whether a key is set, and
+-- it has to keep up while the window is open.
+BindSystem.PaintDot = function(row, active, instant)
 	local inner = row:FindFirstChild("Frame")
 	local dot = inner and inner:FindFirstChild("Dot")
-	if dot then
-		bindTween(dot, BIND_SMOOTH, { BackgroundColor3 = TC(hasKey and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(58, 58, 58)) })
-		local dotShadow = dot:FindFirstChildOfClass("UIShadow")
-		if dotShadow then
-			bindTween(dotShadow, BIND_SMOOTH, { Transparency = hasKey and 0.16 or 1 })
-		end
+	if not dot then return end
+	local info = instant and TweenInfo.new(0) or BIND_SMOOTH
+	bindTween(dot, info, {
+		BackgroundColor3 = TC(active and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(58, 58, 58)),
+	})
+	local dotShadow = dot:FindFirstChildOfClass("UIShadow")
+	if dotShadow then
+		-- Enabled, not just Transparency: a tween can be caught mid-flight by the panel's
+		-- fade-in snapshot and leave a glow burning under a grey dot
+		dotShadow.Enabled = active
+		dotShadow.Transparency = 0.16
 	end
 end
 
@@ -6581,7 +6698,9 @@ end
 -- same easing, same hover colours — just smaller, and inside the authored SelectionsHolder.
 BindSystem.MakeSelector = function(holder, optionList, current, onPick)
 	for _, child in ipairs(holder:GetChildren()) do
-		if child:IsA("GuiObject") or child:IsA("UIListLayout") or child:IsA("UIPadding") then
+		-- the authored outline goes too: the sliding indicator is the only affordance needed
+		if child:IsA("GuiObject") or child:IsA("UIListLayout") or child:IsA("UIPadding")
+			or child:IsA("UIStroke") then
 			child:Destroy()
 		end
 	end
@@ -6810,12 +6929,31 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	panel.Name = "KeybindRedacting"
 	panel.Visible = true
 	panel.ZIndex = BIND_Z + 10
-	panel.AnchorPoint = Vector2.new(0, 0.5)
+	panel.AnchorPoint = Vector2.new(0, 0)
 
 	local keyRow = panel:WaitForChild("Key")
 	local modeRow = panel:WaitForChild("Mode")
 	local valueRow = panel:WaitForChild("Value")
 	local deleteRow = panel:WaitForChild("DeleteBind")
+
+	-- the authored padding is 0 on the left and 5 on the right, which reads lopsided; and the
+	-- rows carry small negative offsets that pull them out of the panel
+	local panelPadding = panel:FindFirstChildOfClass("UIPadding")
+	if panelPadding then
+		panelPadding.PaddingLeft = panelPadding.PaddingRight
+	end
+	for _, fieldRow in ipairs({ keyRow, modeRow, valueRow, deleteRow }) do
+		fieldRow.Position = UDim2.new(0, 0, 0, 0)
+		-- widened from the authored 153: the label and the control were nearly touching
+		fieldRow.Size = UDim2.new(0, 200, 0, 30)
+		local fieldLabel = fieldRow:FindFirstChild("Name")
+		if fieldLabel and fieldRow ~= deleteRow then
+			-- pin the caption left and stop it from running under the control
+			fieldLabel.Position = UDim2.new(0, 12, 0, 0)
+			fieldLabel.Size = UDim2.new(0, 60, 1, 0)
+			pcall(function() fieldLabel.TextTruncate = Enum.TextTruncate.AtEnd end)
+		end
+	end
 
 	-- Key ---------------------------------------------------------------------------------------
 	local keyChip = keyRow:WaitForChild("Frame")
@@ -6947,6 +7085,31 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 				})
 			end)
 			context.renderSwatch = renderSwatch
+		elseif type(element.Options) == "table" and #element.Options >= 2 and #element.Options <= 3 then
+			-- a couple of fixed choices reads far better as the same segmented control the
+			-- Mode row uses than as a box you have to type an exact option name into
+			local holder = valueRow:FindFirstChild("SelectionsHolder")
+			if not holder then
+				holder = Instance.new("Frame")
+				holder.Name = "SelectionsHolder"
+				holder.AnchorPoint = Vector2.new(1, 0.5)
+				holder.Position = UDim2.new(0.97, 0, 0.5, 0)
+				holder.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
+				holder.Size = UDim2.new(0, 81, 0, 22)
+				holder.ZIndex = BIND_Z + 1
+				holder.Parent = valueRow
+				local holderCorner = Instance.new("UICorner")
+				holderCorner.CornerRadius = UDim.new(0, 8)
+				holderCorner.Parent = holder
+				themeRegister(holder)
+				themeApply(holder)
+			end
+			local currentValue = bind.Value
+			if currentValue == nil then currentValue = BindSystem.GetValue(element) end
+			BindSystem.MakeSelector(holder, element.Options, tostring(currentValue or ""), function(picked)
+				bind.Value = picked
+				ConfigHooks.Autosave()
+			end)
 		else
 			local numeric = element.Type == "Slider" or element.Type == "NumberPicker"
 			local default = bind.Value
@@ -6977,19 +7140,31 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 		if context.refresh then context.refresh() end
 	end)
 
+	-- the editor is parented by hand rather than through openFloating, so it needs its own
+	-- input blocker or hover leaks through the gaps between its rows
+	local editorBlocker = Instance.new("TextButton")
+	editorBlocker.Name = "Blocker"
+	editorBlocker.Text = ""
+	editorBlocker.AutoButtonColor = false
+	editorBlocker.BackgroundTransparency = 1
+	editorBlocker.Size = UDim2.new(1, 0, 1, 0)
+	editorBlocker.ZIndex = -1
+	editorBlocker.Active = true
+	editorBlocker.Parent = panel
+
 	themeRegisterDeep(panel)
 	themeApplyDeep(panel)
 	if context.renderSwatch then context.renderSwatch() end
 
 	panel.Parent = context.container
 
-	-- sits just off the list's right edge, vertically centred on its row
+	-- flush against the list's right edge and level with its top, so the two windows read as
+	-- one object rather than two things floating near each other
 	local function place()
 		local listOrigin = screenPointFor(context.panel.AbsolutePosition)
-		local rowOrigin = screenPointFor(row.AbsolutePosition)
 		return Vector2.new(
 			listOrigin.X + context.panel.AbsoluteSize.X + 6,
-			rowOrigin.Y + row.AbsoluteSize.Y / 2)
+			listOrigin.Y)
 	end
 	local target = place()
 	panel.Position = UDim2.new(0, target.X - 10, 0, target.Y)
@@ -7037,6 +7212,15 @@ BindSystem.BuildMenu = function(element, position)
 	local newBindRow = panel:WaitForChild("NewBind")
 	local splitter = panel:WaitForChild("Splitter")
 
+	-- The panel's list layout centres its children, so a 0.95-scale title slid sideways every
+	-- time the panel's width changed. Full width + the authored left padding pins it still.
+	local title = panel:FindFirstChild("Title")
+	if title then
+		title.Size = UDim2.new(1, 0, 0, 15)
+		local titleLayout = title:FindFirstChildOfClass("UIListLayout")
+		if titleLayout then titleLayout:Destroy() end
+	end
+
 	local function selectBind(bind, row, setRowState)
 		if context.editingBind == bind then
 			if context.closeEditor then context.closeEditor() end
@@ -7070,6 +7254,7 @@ BindSystem.BuildMenu = function(element, position)
 
 			local setRowState = BindSystem.MakeRowState(row)
 			BindSystem.PaintKeybind(row, bind.Key)
+			BindSystem.PaintDot(row, BindSystem.IsActive(bind), true)
 			setRowState(bind == context.editingBind and "press" or "rest", true)
 			context.rows[bind] = { Row = row, SetState = setRowState }
 
@@ -7123,12 +7308,28 @@ BindSystem.BuildMenu = function(element, position)
 	themeRegisterDeep(panel)
 	themeApplyDeep(panel)
 
+	-- repaint dots as binds fire, so the window stays truthful while it's open
+	local stateListener = function(changed)
+		local entry = context.rows[changed]
+		if entry and entry.Row.Parent then
+			BindSystem.PaintDot(entry.Row, BindSystem.IsActive(changed), false)
+		end
+	end
+	table.insert(BindSystem.StateListeners, stateListener)
+
+	-- 210 ≈ the editor's width; keeps the pair from opening into the screen edge
 	local _, container = openFloatingAtCursor(panel, position, function()
 		BindSystem.MenuOpen = false
 		if context.closeEditor then context.closeEditor() end
+		for index, listener in ipairs(BindSystem.StateListeners) do
+			if listener == stateListener then
+				table.remove(BindSystem.StateListeners, index)
+				break
+			end
+		end
 		fadeOut(panel, 0.14)
 		task.delay(0.2, function() panel:Destroy() end)
-	end)
+	end, nil, 210)
 	context.container = container
 	popWindow(panel)
 	fadeIn(panel, 0.2)
@@ -7911,7 +8112,7 @@ refreshConfigs = function()
 		row.InputBegan:Connect(function(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
 			setSelectedConfig(config.Name)
-			openConfigContextMenu(config.Name, input.Position)
+			openConfigContextMenu(config.Name, mousePoint())
 		end)
 		row.MouseEnter:Connect(function()
 			if ConfigSystem.SelectedConfig ~= config.Name then
