@@ -15,7 +15,7 @@
 	Amphibia User Interface Library
 	by Less
 
-	Developer info: "A8.2"
+	Developer info: "A8.3"
 
 	Quick start:
 
