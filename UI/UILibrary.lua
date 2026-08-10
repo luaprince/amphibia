@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A10.0"
+		Developer info: "A10.1"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -3022,6 +3022,9 @@ local BIND_MENU = {
 	TitleHeight = 15,       -- строка заголовка "Binds"
 	NewBindHeight = 30,     -- строка "New Bind"
 	KeySlot = 19,           -- квадрат клавиши / стрелки справа в строке (не делать больше RowHeight-8)
+	LabelWidth = 60,        -- ширина подписи Key / Mode / Value в редакторе
+	FieldGap = 18,          -- минимальный зазор между подписью и её контролом
+	FieldInset = 12,        -- отступ подписи слева и контрола справа
 
 	EditorWidth = 210,
 	EditorRowHeight = 30,   -- высота строк Key / Mode / Value / Delete Bind
@@ -6564,6 +6567,7 @@ SearchUI.TypeLabels = {
 function WindowClass:ApplySearch(query: string)
 	self.SearchQuery = query
 	if query == nil or query == "" then
+		self.TopSearchResult = nil
 		SearchUI.Hide()
 		return
 	end
@@ -6575,6 +6579,8 @@ function WindowClass:ApplySearch(query: string)
 	end
 
 	local results = self:_collectSearchResults(query)
+	-- remembered so Enter can jump straight to it without touching the mouse
+	self.TopSearchResult = results[1]
 	SearchUI.Empty.Visible = #results == 0
 
 	for index, result in ipairs(results) do
@@ -6793,6 +6799,14 @@ do
 	SearchInput.Options.OnChanged = function(text)
 		if ActiveWindow then
 			ActiveWindow:ApplySearch(text)
+		end
+	end
+	-- Enter takes the top hit: the results are already ranked, so the first row is the one the
+	-- user almost always means.
+	SearchInput.Options.OnSubmit = function()
+		local window = ActiveWindow
+		if window and window.TopSearchResult then
+			window:_navigateToResult(window.TopSearchResult)
 		end
 	end
 
@@ -7096,7 +7110,7 @@ BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged, grow
 	local box = Instance.new("Frame")
 	box.Name = "ValueBox"
 	box.AnchorPoint = Vector2.new(1, 0.5)
-	box.Position = UDim2.new(0.97, 0, 0.5, 0)
+	box.Position = UDim2.new(1, -BIND_MENU.FieldInset, 0.5, 0)
 	box.Size = UDim2.new(0, 78, 0, 20)
 	box.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
 	box.ZIndex = BindSystem.Z + 1
@@ -7159,9 +7173,9 @@ BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged, grow
 		local function fit()
 			local needed = math.clamp(math.ceil(ruler.TextBounds.X) + 20, baseWidth, 220)
 			box.Size = UDim2.new(0, needed, 0, 20)
-			-- report the extra width; the editor widens every row so they stay flush and the
-			-- panel's AutomaticSize follows
-			grow(math.max(0, needed - baseWidth))
+			-- report the control's width; the editor sizes every row from it so the caption gap
+			-- stays constant and the panel's AutomaticSize follows
+			grow(needed)
 		end
 		ruler:GetPropertyChangedSignal("TextBounds"):Connect(fit)
 		local previousOnChanged = onChanged
@@ -7250,20 +7264,31 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 		editorSplitter.Size = UDim2.new(0.9, 0, 0, BIND_MENU.SplitterHeight)
 	end
 	local fieldRows = { keyRow, modeRow, valueRow, deleteRow }
-	context.widen = function(extra)
+	-- Every control is pinned to the row's right edge by a fixed pixel inset, so the row width
+	-- alone decides the gap. Widening for a long value therefore grows the window to the right
+	-- instead of eating into the caption, and the gap can never fall below FieldGap.
+	-- keyed so the widest control wins: sizing off one row alone would squeeze another
+	context.controlWidths = {}
+	context.widen = function(controlWidth, key)
+		if key then context.controlWidths[key] = controlWidth or 0 end
+		local widest = 0
+		for _, recorded in pairs(context.controlWidths) do
+			widest = math.max(widest, recorded)
+		end
+		local needed = BIND_MENU.FieldInset + BIND_MENU.LabelWidth + BIND_MENU.FieldGap
+			+ widest + BIND_MENU.FieldInset
+		local width = math.max(BIND_MENU.EditorWidth, needed)
 		for _, fieldRow in ipairs(fieldRows) do
-			fieldRow.Size = UDim2.new(0, BIND_MENU.EditorWidth + extra, 0, BIND_MENU.EditorRowHeight)
+			fieldRow.Size = UDim2.new(0, width, 0, BIND_MENU.EditorRowHeight)
 		end
 	end
 	for _, fieldRow in ipairs(fieldRows) do
 		fieldRow.Position = UDim2.new(0, 0, 0, 0)
-		-- widened from the authored 153: the label and the control were nearly touching
 		fieldRow.Size = UDim2.new(0, BIND_MENU.EditorWidth, 0, BIND_MENU.EditorRowHeight)
 		local fieldLabel = fieldRow:FindFirstChild("Name")
 		if fieldLabel and fieldRow ~= deleteRow then
-			-- pin the caption left and stop it from running under the control
-			fieldLabel.Position = UDim2.new(0, 12, 0, 0)
-			fieldLabel.Size = UDim2.new(0, 60, 1, 0)
+			fieldLabel.Position = UDim2.new(0, BIND_MENU.FieldInset, 0, 0)
+			fieldLabel.Size = UDim2.new(0, BIND_MENU.LabelWidth, 1, 0)
 			pcall(function() fieldLabel.TextTruncate = Enum.TextTruncate.AtEnd end)
 		end
 	end
@@ -7315,13 +7340,18 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	if #modes < 2 then
 		modeRow.Visible = false
 	else
-		BindSystem.MakeSelector(modeRow:WaitForChild("SelectionsHolder"), modes, bind.Mode, function(picked)
+		local modeHolder = modeRow:WaitForChild("SelectionsHolder")
+		modeHolder.AnchorPoint = Vector2.new(1, 0.5)
+		modeHolder.Position = UDim2.new(1, -BIND_MENU.FieldInset, 0.5, 0)
+		BindSystem.MakeSelector(modeHolder, modes, bind.Mode, function(picked)
 			bind.Mode = picked
 			BindSystem.Touch(bind)
 			local inner = row:FindFirstChild("Frame")
 			local rowLabel = inner and inner:FindFirstChild("Name")
 			if rowLabel then rowLabel.Text = BindSystem.Label(bind) end
 		end)
+		-- the selector sizes itself from its option text; fold that into the row width too
+		context.widen(modeHolder.Size.X.Offset, "mode")
 	end
 
 	-- Value -------------------------------------------------------------------------------------
@@ -7340,7 +7370,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 			swatch.AutoButtonColor = false
 			swatch.ImageTransparency = 1
 			swatch.AnchorPoint = Vector2.new(1, 0.5)
-			swatch.Position = UDim2.new(0.97, 0, 0.5, 0)
+			swatch.Position = UDim2.new(1, -BIND_MENU.FieldInset, 0.5, 0)
 			swatch.Size = UDim2.new(0, 22, 0, 22)
 			swatch.ZIndex = BindSystem.Z + 11
 			swatch.Parent = valueRow
@@ -7388,7 +7418,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 				holder = Instance.new("Frame")
 				holder.Name = "SelectionsHolder"
 				holder.AnchorPoint = Vector2.new(1, 0.5)
-				holder.Position = UDim2.new(0.97, 0, 0.5, 0)
+				holder.Position = UDim2.new(1, -BIND_MENU.FieldInset, 0.5, 0)
 				holder.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
 				holder.Size = UDim2.new(0, 81, 0, 22)
 				holder.ZIndex = BindSystem.Z + 1
@@ -7412,7 +7442,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 			BindSystem.MakeInputBox(valueRow, numeric, default ~= nil and tostring(default) or nil, function(text)
 				bind.Value = text
 				ConfigHooks.Autosave()
-			end, context.widen)
+			end, function(controlWidth) context.widen(controlWidth, "value") end)
 		end
 	end
 
