@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A9.7"
+		Developer info: "A9.8"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -425,29 +425,6 @@ local Themes = {
 		Hue = 32 / 360, GraySat = 0.13, ValueGain = 0.008,
 		Accent = Color3.fromRGB(196, 168, 130),
 	},
-	-- Единственная светлая тема, и она собрана вручную, а не отзеркалена. Зеркалирование
-	-- тёмной палитры даёт грязные середины, убивает тени и разваливает контраст текста,
-	-- поэтому здесь свой набор ступеней: холодная бумага вверху, графитовые чернила внизу.
-	-- Ramp читается как "яркость авторского цвета -> цвет в светлой теме".
-	Light = {
-		Light = true,
-		Accent = Color3.fromRGB(94, 126, 116),
-		Shadow = Color3.fromRGB(120, 132, 148),
-		Ramp = {
-			{ 0.00, Color3.fromRGB(255, 255, 255) }, -- самый глубокий слой -> белая карточка
-			{ 0.06, Color3.fromRGB(246, 247, 250) }, -- фон панели
-			{ 0.10, Color3.fromRGB(238, 240, 244) }, -- колодцы, поля ввода
-			{ 0.14, Color3.fromRGB(228, 231, 237) }, -- строки, наведение
-			{ 0.20, Color3.fromRGB(214, 219, 226) }, -- обводки
-			{ 0.28, Color3.fromRGB(196, 202, 211) }, -- обводки поконтрастнее
-			{ 0.38, Color3.fromRGB(146, 154, 165) }, -- отключённый текст
-			{ 0.50, Color3.fromRGB(108, 116, 127) }, -- подписи (3.1:1 к фону)
-			{ 0.62, Color3.fromRGB( 92, 100, 110) }, -- вторичный текст
-			{ 0.78, Color3.fromRGB( 62,  68,  76) },
-			{ 0.90, Color3.fromRGB( 38,  43,  49) },
-			{ 1.00, Color3.fromRGB( 20,  23,  27) }, -- основной текст
-		},
-	},
 }
 
 local CurrentThemeName = "Default"
@@ -457,19 +434,6 @@ local BASE_ACCENT = Color3.fromRGB(143, 168, 160)
 local function colorsClose(a: Color3, b: Color3, tolerance: number?)
 	tolerance = tolerance or 0.02
 	return math.abs(a.R - b.R) < tolerance and math.abs(a.G - b.G) < tolerance and math.abs(a.B - b.B) < tolerance
-end
-
--- Ступенчатая шкала: находит отрезок, в который попадает яркость, и смешивает его концы.
-local function rampColor(ramp, v: number): Color3
-	for index = 1, #ramp - 1 do
-		local low, high = ramp[index], ramp[index + 1]
-		if v <= high[1] then
-			local span = high[1] - low[1]
-			local t = span > 0 and (v - low[1]) / span or 0
-			return low[2]:Lerp(high[2], math.clamp(t, 0, 1))
-		end
-	end
-	return ramp[#ramp][2]
 end
 
 -- Maps an authored (Default-palette) colour into the active theme.
@@ -482,16 +446,6 @@ local function TC(color: Color3): Color3
 		return theme.Accent
 	end
 	local h, s, v = color:ToHSV()
-	if theme.Light then
-		-- порог выше обычного: у светлой темы нужно перекрасить и слегка подкрашенные серые,
-		-- иначе они остаются тёмными пятнами на бумаге
-		if s < 0.16 then
-			return rampColor(theme.Ramp, v)
-		end
-		-- цветные акценты (красный «удалить» и т.п.) на светлом фоне нужно притемнить и
-		-- приглушить, иначе они светятся и теряют контраст
-		return Color3.fromHSV(h, math.clamp(s * 0.86, 0, 1), math.clamp(0.40 + (1 - v) * 0.12, 0.28, 0.58))
-	end
 	if s < 0.09 then -- graphite / white ramp -> tint it
 		local sat = theme.GraySat * (1 - 0.72 * v)
 		local val = math.clamp(v + theme.ValueGain * (1 - v), 0, 1)
@@ -559,13 +513,8 @@ local function themeApply(inst: Instance)
 	if not snapshot then
 		return
 	end
-	-- Тени в тёмной теме наполовину светлое свечение (точка тоггла, слайдер), наполовину
-	-- чёрный дроп (меню). Ни то ни другое на бумаге не работает, а единый серый выглядел
-	-- грязно — поэтому в светлой теме тени просто выключены.
-	local theme = Themes[CurrentThemeName]
-	if inst:IsA("UIShadow") then
-		pcall(function() inst.Enabled = not (theme and theme.Light) end)
-	end
+	-- Только цвета. UIShadow.Enabled трогать нельзя: часть теней выключена автором (табы), а
+	-- часть переключается на ходу (точка бинда), и перетирание этого флага зажигало их обратно.
 	for prop, original in pairs(snapshot) do
 		pcall(function() inst[prop] = TC(original) end)
 	end
@@ -3131,32 +3080,51 @@ function Helpers.BuildCheckerboard(parent, zIndex: number, cornerRadius: number?
 	local rows = math.ceil(height / cell) + 1
 	local radius = cornerRadius or 0
 
-	-- ClipsDescendants clips to the rectangle, not to the rounded outline, so a dark cell in a
-	-- corner would keep its square edge and break the rounding. Testing all four corners of a
-	-- cell was too strict (it ate whole rows along the edges) and testing the centre was too
-	-- loose (corner cells poked out square). Test the one corner facing away from the middle:
-	-- that is the only point that can escape the outline.
-	local function fitsInsideRounded(x, y)
-		if radius <= 0 then return true end
-		local px = (x + cell * 0.5 < width * 0.5) and x or (x + cell)
-		local py = (y + cell * 0.5 < height * 0.5) and y or (y + cell)
-		local nearestX = math.clamp(px, radius, width - radius)
-		local nearestY = math.clamp(py, radius, height - radius)
-		local dx, dy = px - nearestX, py - nearestY
-		return dx * dx + dy * dy <= radius * radius + 0.001
+	-- No cell is dropped any more — dropping them left visible bites out of the pattern.
+	-- Instead a cell that overlaps one of the board's rounded corners gets that same corner
+	-- rounded on itself, by however much of the radius it still sits inside. Cells past the arc
+	-- get 0 and stay square, so the staircase follows the outline exactly.
+	local function cornerRadii(x, y)
+		if radius <= 0 then return nil end
+		local right, bottom = width - (x + cell), height - (y + cell)
+		local topLeft     = math.clamp(radius - math.max(x, y), 0, cell)
+		local topRight    = math.clamp(radius - math.max(right, y), 0, cell)
+		local bottomLeft  = math.clamp(radius - math.max(x, bottom), 0, cell)
+		local bottomRight = math.clamp(radius - math.max(right, bottom), 0, cell)
+		if topLeft <= 0 and topRight <= 0 and bottomLeft <= 0 and bottomRight <= 0 then
+			return nil
+		end
+		return topLeft, topRight, bottomLeft, bottomRight
 	end
 
 	for row = 0, rows - 1 do
 		for column = 0, columns - 1 do
-			if (row + column) % 2 == 1 and fitsInsideRounded(column * cell, row * cell) then
+			if (row + column) % 2 == 1 then
+				local x, y = column * cell, row * cell
 				local square = Instance.new("Frame")
 				square.Name = "C"
 				square.BackgroundColor3 = COLOR_PICKER.CheckerDark
 				square.BorderSizePixel = 0
-				square.Position = UDim2.new(0, column * cell, 0, row * cell)
+				square.Position = UDim2.new(0, x, 0, y)
 				square.Size = UDim2.new(0, cell, 0, cell)
 				square.ZIndex = zIndex
 				square.Parent = board
+
+				local topLeft, topRight, bottomLeft, bottomRight = cornerRadii(x, y)
+				if topLeft then
+					local squareCorner = Instance.new("UICorner")
+					-- per-corner radii where the engine has them, one shared radius otherwise
+					local ok = pcall(function()
+						squareCorner.TopLeftRadius = UDim.new(0, topLeft)
+						squareCorner.TopRightRadius = UDim.new(0, topRight)
+						squareCorner.BottomLeftRadius = UDim.new(0, bottomLeft)
+						squareCorner.BottomRightRadius = UDim.new(0, bottomRight)
+					end)
+					if not ok then
+						squareCorner.CornerRadius = UDim.new(0, math.max(topLeft, topRight, bottomLeft, bottomRight))
+					end
+					squareCorner.Parent = square
+				end
 			end
 		end
 	end
