@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A9.5"
+		Developer info: "A9.6"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -425,13 +425,28 @@ local Themes = {
 		Hue = 32 / 360, GraySat = 0.13, ValueGain = 0.008,
 		Accent = Color3.fromRGB(196, 168, 130),
 	},
-	-- The only theme that flips the palette instead of tinting it: the whole interface is
-	-- authored dark, so `Invert` mirrors the grey ramp (chrome -> paper, text -> ink) and
-	-- deepens the saturated accents that would otherwise wash out on a light background.
+	-- Единственная светлая тема, и она собрана вручную, а не отзеркалена. Зеркалирование
+	-- тёмной палитры даёт грязные середины, убивает тени и разваливает контраст текста,
+	-- поэтому здесь свой набор ступеней: холодная бумага вверху, графитовые чернила внизу.
+	-- Ramp читается как "яркость авторского цвета -> цвет в светлой теме".
 	Light = {
-		Hue = 214 / 360, GraySat = 0.07, ValueGain = 0,
-		Accent = Color3.fromRGB(96, 128, 118),
-		Invert = true,
+		Light = true,
+		Accent = Color3.fromRGB(94, 126, 116),
+		Shadow = Color3.fromRGB(120, 132, 148),
+		Ramp = {
+			{ 0.00, Color3.fromRGB(255, 255, 255) }, -- самый глубокий слой -> белая карточка
+			{ 0.06, Color3.fromRGB(246, 247, 250) }, -- фон панели
+			{ 0.10, Color3.fromRGB(238, 240, 244) }, -- колодцы, поля ввода
+			{ 0.14, Color3.fromRGB(228, 231, 237) }, -- строки, наведение
+			{ 0.20, Color3.fromRGB(214, 219, 226) }, -- обводки
+			{ 0.28, Color3.fromRGB(196, 202, 211) }, -- обводки поконтрастнее
+			{ 0.38, Color3.fromRGB(146, 154, 165) }, -- отключённый текст
+			{ 0.50, Color3.fromRGB(108, 116, 127) }, -- подписи (3.1:1 к фону)
+			{ 0.62, Color3.fromRGB( 92, 100, 110) }, -- вторичный текст
+			{ 0.78, Color3.fromRGB( 62,  68,  76) },
+			{ 0.90, Color3.fromRGB( 38,  43,  49) },
+			{ 1.00, Color3.fromRGB( 20,  23,  27) }, -- основной текст
+		},
 	},
 }
 
@@ -444,6 +459,19 @@ local function colorsClose(a: Color3, b: Color3, tolerance: number?)
 	return math.abs(a.R - b.R) < tolerance and math.abs(a.G - b.G) < tolerance and math.abs(a.B - b.B) < tolerance
 end
 
+-- Ступенчатая шкала: находит отрезок, в который попадает яркость, и смешивает его концы.
+local function rampColor(ramp, v: number): Color3
+	for index = 1, #ramp - 1 do
+		local low, high = ramp[index], ramp[index + 1]
+		if v <= high[1] then
+			local span = high[1] - low[1]
+			local t = span > 0 and (v - low[1]) / span or 0
+			return low[2]:Lerp(high[2], math.clamp(t, 0, 1))
+		end
+	end
+	return ramp[#ramp][2]
+end
+
 -- Maps an authored (Default-palette) colour into the active theme.
 local function TC(color: Color3): Color3
 	local theme = Themes[CurrentThemeName]
@@ -454,22 +482,20 @@ local function TC(color: Color3): Color3
 		return theme.Accent
 	end
 	local h, s, v = color:ToHSV()
-	if s < 0.09 then -- graphite / white ramp
-		if theme.Invert then
-			-- mirror the ramp, then compress it so nothing lands on pure black or pure white:
-			-- near-black chrome becomes paper, near-white text becomes ink
-			local val = 0.11 + (1 - v) * 0.86
-			-- leave the paper end neutral and let only the dark end pick up the tint
-			return Color3.fromHSV(theme.Hue, theme.GraySat * (1 - val), val)
+	if theme.Light then
+		-- порог выше обычного: у светлой темы нужно перекрасить и слегка подкрашенные серые,
+		-- иначе они остаются тёмными пятнами на бумаге
+		if s < 0.16 then
+			return rampColor(theme.Ramp, v)
 		end
+		-- цветные акценты (красный «удалить» и т.п.) на светлом фоне нужно притемнить и
+		-- приглушить, иначе они светятся и теряют контраст
+		return Color3.fromHSV(h, math.clamp(s * 0.86, 0, 1), math.clamp(0.40 + (1 - v) * 0.12, 0.28, 0.58))
+	end
+	if s < 0.09 then -- graphite / white ramp -> tint it
 		local sat = theme.GraySat * (1 - 0.72 * v)
 		local val = math.clamp(v + theme.ValueGain * (1 - v), 0, 1)
 		return Color3.fromHSV(theme.Hue, sat, val)
-	end
-	if theme.Invert then
-		-- semantic colours (danger reds, etc) are tuned for a dark backdrop and would glare on
-		-- paper — deepen them just enough to keep their meaning and their contrast
-		return Color3.fromHSV(h, math.min(1, s * 1.18), math.clamp(v * 0.7, 0, 1))
 	end
 	return color -- keep semantic colours (danger reds, hue slider, etc)
 end
@@ -521,12 +547,15 @@ local function themeApply(inst: Instance)
 	if not snapshot then
 		return
 	end
-	-- Drop shadows are the one thing an inverting theme must not flip: mirroring black to white
-	-- would turn every shadow into a glow and flatten the whole interface.
+	-- Тени нельзя пропускать через шкалу. В тёмной теме половина из них — светлое свечение
+	-- (точка тоггла, слайдер), и на бумаге оно просто исчезает; чёрная тень меню, наоборот,
+	-- получается слишком тяжёлой. Поэтому в светлой теме у всех теней один мягкий холодный
+	-- цвет — так они читаются как настоящая тень на бумаге.
 	local theme = Themes[CurrentThemeName]
-	local keepShadow = theme and theme.Invert and inst:IsA("UIShadow")
+	local shadowColor = theme and theme.Light and theme.Shadow
+	local isShadow = shadowColor and inst:IsA("UIShadow")
 	for prop, original in pairs(snapshot) do
-		local value = (keepShadow and prop == "Color") and original or TC(original)
+		local value = (isShadow and prop == "Color") and shadowColor or TC(original)
 		pcall(function() inst[prop] = value end)
 	end
 end
@@ -3083,22 +3112,17 @@ function Helpers.BuildCheckerboard(parent, width: number, height: number, zIndex
 	local rows = math.ceil(height / cell)
 	local radius = cornerRadius or 0
 
-	-- ClipsDescendants clips to the rectangle, not to the rounded outline, so a dark cell
-	-- sitting in a corner keeps its square edge and the rounding visibly breaks there. Only
-	-- draw cells that fit entirely inside the rounded shape; the rounded light background
-	-- shows through at the corners instead.
+	-- ClipsDescendants clips to the rectangle, not to the rounded outline, so a dark cell in a
+	-- corner would keep its square edge and break the rounding. Testing all four of a cell's
+	-- corners was too strict and ate whole rows near the edges; test the centre instead, which
+	-- follows the arc closely once the cells are small.
 	local function fitsInsideRounded(x, y)
 		if radius <= 0 then return true end
-		for _, corner in ipairs({ { x, y }, { x + cell, y }, { x, y + cell }, { x + cell, y + cell } }) do
-			local px, py = corner[1], corner[2]
-			local nearestX = math.clamp(px, radius, width - radius)
-			local nearestY = math.clamp(py, radius, height - radius)
-			local dx, dy = px - nearestX, py - nearestY
-			if dx * dx + dy * dy > radius * radius + 0.001 then
-				return false
-			end
-		end
-		return true
+		local px, py = x + cell * 0.5, y + cell * 0.5
+		local nearestX = math.clamp(px, radius, width - radius)
+		local nearestY = math.clamp(py, radius, height - radius)
+		local dx, dy = px - nearestX, py - nearestY
+		return dx * dx + dy * dy <= radius * radius + 0.001
 	end
 
 	for row = 0, rows - 1 do
@@ -5370,6 +5394,52 @@ end
 -- sibling rather than being its child: a full-size child would feed back into the window's
 -- AutomaticSize and inflate it. Using only AbsolutePosition/AbsoluteSize keeps it exact — no
 -- mouse coordinates, so no topbar-inset guesswork.
+-- Roblox keeps drawing a faint rail down the whole scroll path even with the end-cap images
+-- blanked, so the native bar is switched off entirely and we draw the thumb ourselves. Sized in
+-- ratios of `host` so it stays correct under the menu's UIScale, and being an ordinary Frame it
+-- fades in and out with its window like everything else.
+function Helpers.AttachScrollbar(scroller: ScrollingFrame, host: GuiObject, zIndex: number)
+	scroller.ScrollBarThickness = 0
+
+	local thumb = Instance.new("Frame")
+	thumb.Name = "Scrollbar"
+	thumb.AnchorPoint = Vector2.new(1, 0)
+	thumb.BackgroundColor3 = Color3.fromRGB(46, 46, 46)
+	thumb.BorderSizePixel = 0
+	thumb.Visible = false
+	thumb.ZIndex = zIndex
+	thumb.Parent = host
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent = thumb
+	themeRegister(thumb)
+	themeApply(thumb)
+
+	local function update()
+		local hostHeight = host.AbsoluteSize.Y
+		local view = scroller.AbsoluteWindowSize.Y
+		local canvas = scroller.AbsoluteCanvasSize.Y
+		if hostHeight <= 0 or view <= 0 or canvas <= view + 1 then
+			thumb.Visible = false
+			return
+		end
+		thumb.Visible = true
+		local topRatio = (scroller.AbsolutePosition.Y - host.AbsolutePosition.Y) / hostHeight
+		local viewRatio = view / hostHeight
+		local thumbRatio = math.max(viewRatio * (view / canvas), 0.06)
+		local maxScroll = canvas - view
+		local progress = maxScroll > 0 and math.clamp(scroller.CanvasPosition.Y / maxScroll, 0, 1) or 0
+		thumb.Size = UDim2.new(0, 3, thumbRatio, 0)
+		thumb.Position = UDim2.new(1, -4, topRatio + (viewRatio - thumbRatio) * progress, 0)
+	end
+
+	update()
+	for _, property in ipairs({ "CanvasPosition", "AbsoluteCanvasSize", "AbsoluteWindowSize", "AbsolutePosition" }) do
+		scroller:GetPropertyChangedSignal(property):Connect(update)
+	end
+	return thumb, update
+end
+
 function Helpers.AddPopupShield(container: Instance, window: GuiObject)
 	local shield = Instance.new("ImageButton")
 	shield.Name = "Shield"
@@ -5622,19 +5692,13 @@ function SectionClass:CreateDropdown(options)
 		list.Size = UDim2.new(1, 0, 1, 0)
 		list.CanvasSize = UDim2.new(0, 0, 0, contentHeight)
 		list.ScrollingDirection = Enum.ScrollingDirection.Y
-		list.ScrollBarThickness = (contentHeight > viewHeight) and 2 or 0
-		list.ScrollBarImageColor3 = Color3.fromRGB(46, 46, 46)
-		list.ScrollBarImageTransparency = 0
-		pcall(function()
-			list.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
-			list.MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
-			list.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
-		end)
+		list.ScrollBarThickness = 0
 		list.ClipsDescendants = true
 		list.Active = true
 		list.ZIndex = window.ZIndex
 		pcall(function() list.VerticalScrollBarInset = Enum.ScrollBarInset.None end)
 		list.Parent = window
+		Helpers.AttachScrollbar(list, window, window.ZIndex + 2)
 
 		local listLayout = Instance.new("UIListLayout")
 		listLayout.FillDirection = Enum.FillDirection.Vertical
@@ -6371,20 +6435,12 @@ SearchUI.Results.BackgroundTransparency = 1
 SearchUI.Results.Position = UDim2.new(0, 8, 0, 8)
 SearchUI.Results.Size = UDim2.new(1, -16, 1, -16)
 SearchUI.Results.CanvasSize = UDim2.new(0, 0, 0, 0)
-SearchUI.Results.ScrollBarThickness = 2
--- same grey as the panel's outline, and only the thumb: the default top/bottom images are end
--- caps that read as a track running the whole height, so all three use the plain middle slice
-SearchUI.Results.ScrollBarImageColor3 = Color3.fromRGB(46, 46, 46)
-SearchUI.Results.ScrollBarImageTransparency = 0
-pcall(function()
-	SearchUI.Results.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
-	SearchUI.Results.MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
-	SearchUI.Results.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
-end)
+SearchUI.Results.ScrollBarThickness = 0
 pcall(function() SearchUI.Results.VerticalScrollBarInset = Enum.ScrollBarInset.None end)
 SearchUI.Results.ZIndex = 31
 SearchUI.Results.Parent = SearchUI.Panel
 pcall(function() SearchUI.Results.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
+Helpers.AttachScrollbar(SearchUI.Results, SearchUI.Panel, 32)
 do
 	local layout = Instance.new("UIListLayout")
 	layout.FillDirection = Enum.FillDirection.Vertical
