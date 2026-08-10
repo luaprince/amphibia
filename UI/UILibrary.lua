@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A9.6"
+		Developer info: "A9.7"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -515,6 +515,8 @@ local COLOR_PROPS = {
 	UIShadow = { "Color" },
 }
 
+local THEME_ATTR = "_amphTheme_"
+
 local function themeRegister(inst: Instance)
 	local props = COLOR_PROPS[inst.ClassName]
 	if not props then
@@ -527,9 +529,19 @@ local function themeRegister(inst: Instance)
 	end
 	for _, prop in ipairs(props) do
 		if snapshot[prop] == nil then
-			local ok, value = pcall(function() return inst[prop] end)
-			if ok and typeof(value) == "Color3" then
-				snapshot[prop] = value
+			-- The authored colour is kept as an attribute so it survives :Clone(). Without it a
+			-- clone taken from an already-themed template snapshots the *themed* colour as its
+			-- authored one and gets tinted a second time, drifting further every reopen.
+			local stored = inst:GetAttribute(THEME_ATTR .. prop)
+			if stored == nil then
+				local ok, value = pcall(function() return inst[prop] end)
+				if ok and typeof(value) == "Color3" then
+					stored = value
+					pcall(function() inst:SetAttribute(THEME_ATTR .. prop, value) end)
+				end
+			end
+			if typeof(stored) == "Color3" then
+				snapshot[prop] = stored
 			end
 		end
 	end
@@ -547,16 +559,15 @@ local function themeApply(inst: Instance)
 	if not snapshot then
 		return
 	end
-	-- Тени нельзя пропускать через шкалу. В тёмной теме половина из них — светлое свечение
-	-- (точка тоггла, слайдер), и на бумаге оно просто исчезает; чёрная тень меню, наоборот,
-	-- получается слишком тяжёлой. Поэтому в светлой теме у всех теней один мягкий холодный
-	-- цвет — так они читаются как настоящая тень на бумаге.
+	-- Тени в тёмной теме наполовину светлое свечение (точка тоггла, слайдер), наполовину
+	-- чёрный дроп (меню). Ни то ни другое на бумаге не работает, а единый серый выглядел
+	-- грязно — поэтому в светлой теме тени просто выключены.
 	local theme = Themes[CurrentThemeName]
-	local shadowColor = theme and theme.Light and theme.Shadow
-	local isShadow = shadowColor and inst:IsA("UIShadow")
+	if inst:IsA("UIShadow") then
+		pcall(function() inst.Enabled = not (theme and theme.Light) end)
+	end
 	for prop, original in pairs(snapshot) do
-		local value = (isShadow and prop == "Color") and shadowColor or TC(original)
-		pcall(function() inst[prop] = value end)
+		pcall(function() inst[prop] = TC(original) end)
 	end
 end
 
@@ -3079,13 +3090,13 @@ local POPUP_CURSOR_OFFSET = {
 -- ширины).
 local COLOR_PICKER = {
 	HexPrefixX = 66,
-	HexTextX = 113,
-	HexTextRightPad = 60,
+	HexTextX = 82,        -- левый край значения; 113 наезжало на правый отступ и текст прижимало вправо
+	HexTextRightPad = 43, -- оставляет место под проценты справа (~52px под шесть символов)
 	-- Шахматка под прозрачным цветом рисуется фреймами, а не картинкой, поэтому её можно
 	-- править прямо здесь. CheckerCell — сторона клетки в пикселях (меньше = мельче сетка),
 	-- CheckerLight/CheckerDark — два её оттенка. Оттенки намеренно средне-серые: так шахматка
 	-- одинаково читается и на тёмной, и на светлой теме.
-	CheckerCell = 5,
+	CheckerCell = 3,
 	CheckerLight = Color3.fromRGB(150, 150, 150),
 	CheckerDark = Color3.fromRGB(105, 105, 105),
 }
@@ -3093,7 +3104,13 @@ local COLOR_PICKER = {
 -- Строит шахматку из фреймов внутри `parent`. `width`/`height` — размер в локальных пикселях
 -- (не Absolute: так сетка корректно масштабируется вместе с UIScale меню). Рисуются только
 -- тёмные клетки поверх светлой подложки — вдвое меньше инстансов.
-function Helpers.BuildCheckerboard(parent, width: number, height: number, zIndex: number, cornerRadius: number?)
+function Helpers.BuildCheckerboard(parent, zIndex: number, cornerRadius: number?)
+	-- Size is read off the parent rather than passed in: hardcoded numbers silently stopped
+	-- matching whenever a swatch was resized, leaving the board smaller than the square.
+	local width = parent.Size.X.Offset
+	local height = parent.Size.Y.Offset
+	if width <= 0 then width = parent.AbsoluteSize.X end
+	if height <= 0 then height = parent.AbsoluteSize.Y end
 	local board = Instance.new("Frame")
 	board.Name = "Checkerboard"
 	board.BackgroundColor3 = COLOR_PICKER.CheckerLight
@@ -3108,17 +3125,21 @@ function Helpers.BuildCheckerboard(parent, width: number, height: number, zIndex
 	end
 
 	local cell = math.max(1, COLOR_PICKER.CheckerCell)
-	local columns = math.ceil(width / cell)
-	local rows = math.ceil(height / cell)
+	-- one row/column of overscan, trimmed by ClipsDescendants — guarantees full coverage even
+	-- if the measured size is a fraction short
+	local columns = math.ceil(width / cell) + 1
+	local rows = math.ceil(height / cell) + 1
 	local radius = cornerRadius or 0
 
 	-- ClipsDescendants clips to the rectangle, not to the rounded outline, so a dark cell in a
-	-- corner would keep its square edge and break the rounding. Testing all four of a cell's
-	-- corners was too strict and ate whole rows near the edges; test the centre instead, which
-	-- follows the arc closely once the cells are small.
+	-- corner would keep its square edge and break the rounding. Testing all four corners of a
+	-- cell was too strict (it ate whole rows along the edges) and testing the centre was too
+	-- loose (corner cells poked out square). Test the one corner facing away from the middle:
+	-- that is the only point that can escape the outline.
 	local function fitsInsideRounded(x, y)
 		if radius <= 0 then return true end
-		local px, py = x + cell * 0.5, y + cell * 0.5
+		local px = (x + cell * 0.5 < width * 0.5) and x or (x + cell)
+		local py = (y + cell * 0.5 < height * 0.5) and y or (y + cell)
 		local nearestX = math.clamp(px, radius, width - radius)
 		local nearestY = math.clamp(py, radius, height - radius)
 		local dx, dy = px - nearestX, py - nearestY
@@ -6104,7 +6125,7 @@ function SectionClass:CreateColorPicker(options)
 	do
 		preview.BackgroundTransparency = 1
 
-		Helpers.BuildCheckerboard(preview, 30, 30, 1, 8)
+		Helpers.BuildCheckerboard(preview, 1, 8)
 
 		colorFill = Instance.new("Frame")
 		colorFill.Name = "ColorFill"
@@ -7081,7 +7102,8 @@ BindSystem.MakeSelector = function(holder, optionList, current, onPick)
 	return holder
 end
 
-BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged)
+-- `grow` (optional) is the panel that should widen when the typed value outgrows the box.
+BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged, grow)
 	local box = Instance.new("Frame")
 	box.Name = "ValueBox"
 	box.AnchorPoint = Vector2.new(1, 0.5)
@@ -7130,6 +7152,34 @@ BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged)
 	focusCatcher.MouseButton1Click:Connect(function()
 		input:Focus()
 	end)
+	if grow then
+		-- SmoothInput draws its own glyphs, so measure with a hidden label of the same face
+		local ruler = Instance.new("TextLabel")
+		ruler.Name = "Ruler"
+		ruler.Visible = false
+		ruler.BackgroundTransparency = 1
+		ruler.FontFace = FONT_MONO
+		ruler.TextSize = 13
+		ruler.Text = ""
+		ruler.Parent = box
+
+		local baseWidth = 78
+		local function fit()
+			local needed = math.clamp(math.ceil(ruler.TextBounds.X) + 20, baseWidth, 220)
+			box.Size = UDim2.new(0, needed, 0, 20)
+			grow.Size = UDim2.new(0, BIND_MENU.EditorWidth + math.max(0, needed - baseWidth), 0, 10)
+		end
+		ruler:GetPropertyChangedSignal("TextBounds"):Connect(fit)
+		local previousOnChanged = onChanged
+		onChanged = function(text)
+			ruler.Text = text
+			fit()
+			if previousOnChanged then previousOnChanged(text) end
+		end
+		input.Options.OnChanged = onChanged
+		ruler.Text = defaultText or ""
+		task.defer(fit)
+	end
 	if defaultText and defaultText ~= "" then
 		input:SetText(defaultText, true)
 	end
@@ -7296,7 +7346,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 			sStroke.Parent = swatch
 			-- children draw above their parent (ZIndexBehavior.Sibling): checkerboard first,
 			-- then the colour as its own layer on top
-			Helpers.BuildCheckerboard(swatch, 38, 20, BindSystem.Z + 12, 6)
+			Helpers.BuildCheckerboard(swatch, BindSystem.Z + 12, 6)
 			local fill = Instance.new("Frame")
 			fill.Name = "Fill"
 			fill.Size = UDim2.new(1, 0, 1, 0)
@@ -7366,7 +7416,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 			BindSystem.MakeInputBox(valueRow, numeric, default ~= nil and tostring(default) or nil, function(text)
 				bind.Value = text
 				ConfigHooks.Autosave()
-			end)
+			end, panel)
 		end
 	end
 
