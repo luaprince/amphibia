@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A9.9"
+		Developer info: "A10.0"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -672,6 +672,10 @@ local ActiveInput = nil
 -- before BindSystem exists (the menu-toggle hotkey, popup dismissal) have to respect it.
 local BindCaptureActive = false
 
+-- True while one of the library's own windows is being dragged, so a mouse bind cannot fire
+-- from the same press that started the drag.
+local UIDragging = false
+
 local INPUT_SINK_ACTION = "AmphibiaInputSink"
 local SINK_KEYS = {}
 do
@@ -1325,11 +1329,13 @@ local function makeDraggable(dragZone: GuiObject, target: GuiObject, onDragEnd)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
+			UIDragging = true
 			dragStart = input.Position
 			startPosition = target.Position
 			input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then
 					dragging = false
+					UIDragging = false
 					if onDragEnd then onDragEnd(target.Position) end
 				end
 			end)
@@ -3893,6 +3899,10 @@ function KeybindsUI.SetMode(mode: string)
 	end
 end
 
+-- Active makes the frame sink input, so Roblox flags clicks on it as game-processed and the
+-- bind dispatcher (which already ignores those) will not fire a mouse bind while it is dragged.
+KeybindsListFrame.Active = true
+
 -- The keybinds overlay remembers where the user parked it, across sessions.
 function Helpers.SerializeUDim2(value: UDim2): string
 	return ("%f,%d,%f,%d"):format(value.X.Scale, value.X.Offset, value.Y.Scale, value.Y.Offset)
@@ -3908,11 +3918,22 @@ end
 do
 	local saved = Helpers.DeserializeUDim2(getSetting("General", "keybindsPos"))
 	if saved then
-		-- clamp back on-screen in case the viewport shrank since it was saved
-		local viewport = ScreenGui.AbsoluteSize
-		local x = math.clamp(saved.X.Offset, 0, math.max(0, viewport.X - 60))
-		local y = math.clamp(saved.Y.Offset, 0, math.max(0, viewport.Y - 40))
-		KeybindsListFrame.Position = UDim2.new(saved.X.Scale, x, saved.Y.Scale, y)
+		-- Restore verbatim. The old version clamped the offset against ScreenGui.AbsoluteSize,
+		-- which is still zero this early in start-up, so every position collapsed to the left
+		-- edge. Pull it back on screen only once there is a real viewport to measure against,
+		-- and only if it actually ended up outside it.
+		KeybindsListFrame.Position = saved
+		task.defer(function()
+			local viewport = ScreenGui.AbsoluteSize
+			if viewport.X <= 0 or viewport.Y <= 0 then return end
+			local origin = screenPointFor(KeybindsListFrame.AbsolutePosition)
+			local size = KeybindsListFrame.AbsoluteSize
+			local x = math.clamp(origin.X, 0, math.max(0, viewport.X - size.X))
+			local y = math.clamp(origin.Y, 0, math.max(0, viewport.Y - size.Y))
+			if math.abs(x - origin.X) > 0.5 or math.abs(y - origin.Y) > 0.5 then
+				KeybindsListFrame.Position = UDim2.new(0, x, 0, y)
+			end
+		end)
 	end
 end
 
@@ -4440,6 +4461,32 @@ function BindSystem.IsActive(bind): boolean
 	return bind.Active == true
 end
 
+-- Two binds on the same element used to each keep their own "value before I fired" copy, so
+-- overlapping them left the element stuck on whatever the second one captured. The pre-bind
+-- value is now recorded once per element and only restored when the last holder lets go.
+BindSystem.Baselines = setmetatable({}, { __mode = "k" })
+
+function BindSystem.AcquireBaseline(element)
+	local entry = BindSystem.Baselines[element]
+	if not entry then
+		entry = { Value = BindSystem.GetValue(element), Holders = 0 }
+		BindSystem.Baselines[element] = entry
+	end
+	entry.Holders += 1
+end
+
+function BindSystem.ReleaseBaseline(element)
+	local entry = BindSystem.Baselines[element]
+	if not entry then return end
+	entry.Holders -= 1
+	if entry.Holders <= 0 then
+		BindSystem.Baselines[element] = nil
+		if entry.Value ~= nil then
+			BindSystem.SetValue(element, entry.Value)
+		end
+	end
+end
+
 function BindSystem.Execute(bind, pressed: boolean)
 	local element = bind.Element
 	if not element then return end
@@ -4459,13 +4506,14 @@ function BindSystem.Execute(bind, pressed: boolean)
 	end
 	if bind.Mode == "Hold" then
 		if pressed then
-			bind.Revert = BindSystem.GetValue(element)
-			BindSystem.SetValue(element, bind.Value)
-			bind.Active = true
-		else
-			if bind.Revert ~= nil then BindSystem.SetValue(element, bind.Revert) end
-			bind.Revert = nil
+			if not bind.Active then
+				bind.Active = true
+				BindSystem.AcquireBaseline(element)
+				BindSystem.SetValue(element, bind.Value)
+			end
+		elseif bind.Active then
 			bind.Active = false
+			BindSystem.ReleaseBaseline(element)
 		end
 		BindSystem.NotifyState(bind)
 		return
@@ -4473,13 +4521,12 @@ function BindSystem.Execute(bind, pressed: boolean)
 	-- "Toggle"
 	if not pressed then return end
 	if bind.Active then
-		if bind.Revert ~= nil then BindSystem.SetValue(element, bind.Revert) end
-		bind.Revert = nil
 		bind.Active = false
+		BindSystem.ReleaseBaseline(element)
 	else
-		bind.Revert = BindSystem.GetValue(element)
-		BindSystem.SetValue(element, bind.Value)
 		bind.Active = true
+		BindSystem.AcquireBaseline(element)
+		BindSystem.SetValue(element, bind.Value)
 	end
 	BindSystem.NotifyState(bind)
 end
@@ -4543,22 +4590,44 @@ function BindSystem.LoadSerialized(list)
 			table.remove(BindSystem.Binds, index)
 		end
 	end
+	BindSystem.Pending = {}
 	for _, saved in ipairs(list) do
 		local element = saved.f and AmphibiaLibrary.Elements[saved.f]
 		if element and BindSystem.IsBindable(element) then
-			BindSystem.Add({
-				Element = element,
-				Key = tostring(saved.k or "None"),
-				Mode = tostring(saved.m or (BindSystem.ModesByType[element.Type] or {})[1] or "Press"),
-				Value = saved.v,
-			})
+			BindSystem.Restore(element, saved)
+		elseif saved.f then
+			-- The element does not exist yet: configs load before the caller has finished
+			-- building its tabs, so anything defined later would silently lose its binds.
+			-- Flags already had this deferral (PendingFlags); binds now do too.
+			table.insert(BindSystem.Pending, saved)
 		end
 	end
 	BindSystem.Changed()
 end
 
+function BindSystem.Restore(element, saved)
+	BindSystem.Add({
+		Element = element,
+		Key = tostring(saved.k or "None"),
+		Mode = tostring(saved.m or (BindSystem.ModesByType[element.Type] or {})[1] or "Press"),
+		Value = saved.v,
+	})
+end
+
+-- Drains anything that was waiting for this element to come into existence.
+function BindSystem.ResolvePending(element)
+	local pending = BindSystem.Pending
+	if not pending or not element.Flag or not BindSystem.IsBindable(element) then return end
+	for index = #pending, 1, -1 do
+		if pending[index].f == element.Flag then
+			local saved = table.remove(pending, index)
+			BindSystem.Restore(element, saved)
+		end
+	end
+end
+
 connect(UserInputService.InputBegan, function(input, gameProcessed)
-	if gameProcessed or ActiveInput or BindSystem.CaptureActive then return end
+	if gameProcessed or ActiveInput or BindSystem.CaptureActive or UIDragging then return end
 	for _, bind in ipairs(BindSystem.Binds) do
 		if inputMatchesBind(input, bind.Key) then
 			task.spawn(BindSystem.Execute, bind, true)
@@ -7074,10 +7143,13 @@ BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged, grow
 	end)
 	if grow then
 		-- SmoothInput draws its own glyphs, so measure with a hidden label of the same face
+		-- Roblox does not compute TextBounds for an invisible label, which is why the editor
+		-- never resized. Keep it visible but with nothing to see: no size, fully transparent.
 		local ruler = Instance.new("TextLabel")
 		ruler.Name = "Ruler"
-		ruler.Visible = false
 		ruler.BackgroundTransparency = 1
+		ruler.TextTransparency = 1
+		ruler.Size = UDim2.new(0, 0, 0, 0)
 		ruler.FontFace = FONT_MONO
 		ruler.TextSize = 13
 		ruler.Text = ""
@@ -7909,6 +7981,7 @@ ConfigHooks.Autosave = function()
 end
 
 ConfigHooks.OnElementRegistered = function(element)
+	BindSystem.ResolvePending(element)
 	local pending = ConfigSystem.PendingFlags
 	if pending and element.Flag and pending[element.Flag] ~= nil and element.LoadSaveValue then
 		local value = pending[element.Flag]
