@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A9.1"
+		Developer info: "A9.3"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -165,6 +165,7 @@ local settingsTable = {
 		amphibiaOpen = { Type = "bind", Value = "K", Name = "Amphibia Keybind" },
 		theme = { Type = "input", Value = "Default", Name = "Theme" },
 		lastConfig = { Type = "input", Value = "", Name = "Last loaded config" },
+		keybindsPos = { Type = "input", Value = "", Name = "Keybinds list position" },
 	},
 	System = {
 		usageAnalytics = { Type = "toggle", Value = true, Name = "Anonymised Analytics" },
@@ -1327,7 +1328,7 @@ end)
 --  Dragging helper
 ------------------------------------------------------------------------------------------------------------------------
 
-local function makeDraggable(dragZone: GuiObject, target: GuiObject)
+local function makeDraggable(dragZone: GuiObject, target: GuiObject, onDragEnd)
 	local dragging = false
 	local dragStart, startPosition
 
@@ -1340,6 +1341,7 @@ local function makeDraggable(dragZone: GuiObject, target: GuiObject)
 			input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then
 					dragging = false
+					if onDragEnd then onDragEnd(target.Position) end
 				end
 			end)
 		end
@@ -3040,14 +3042,58 @@ local POPUP_CURSOR_OFFSET = {
 
 -- Колор-пикер. HexPrefixX/HexTextX — положение "#" и самого значения в строке HEX, в пикселях
 -- от левого края холдера (в дизайне они заданы в долях, из-за чего разъезжались при смене
--- ширины). CheckerTile — размер клетки шахматки под прозрачным цветом: меньше значение —
--- мельче и плотнее клетка.
+-- ширины).
 local COLOR_PICKER = {
 	HexPrefixX = 66,
-	HexTextX = 120,
+	HexTextX = 113,
 	HexTextRightPad = 60,
-	CheckerTile = 0.1,
+	-- Шахматка под прозрачным цветом рисуется фреймами, а не картинкой, поэтому её можно
+	-- править прямо здесь. CheckerCell — сторона клетки в пикселях (меньше = мельче сетка),
+	-- CheckerLight/CheckerDark — два её оттенка. Оттенки намеренно средне-серые: так шахматка
+	-- одинаково читается и на тёмной, и на светлой теме.
+	CheckerCell = 5,
+	CheckerLight = Color3.fromRGB(150, 150, 150),
+	CheckerDark = Color3.fromRGB(105, 105, 105),
 }
+
+-- Строит шахматку из фреймов внутри `parent`. `width`/`height` — размер в локальных пикселях
+-- (не Absolute: так сетка корректно масштабируется вместе с UIScale меню). Рисуются только
+-- тёмные клетки поверх светлой подложки — вдвое меньше инстансов.
+local function buildCheckerboard(parent, width: number, height: number, zIndex: number, cornerRadius: number?)
+	local board = Instance.new("Frame")
+	board.Name = "Checkerboard"
+	board.BackgroundColor3 = COLOR_PICKER.CheckerLight
+	board.BorderSizePixel = 0
+	board.Size = UDim2.new(1, 0, 1, 0)
+	board.ClipsDescendants = true
+	board.ZIndex = zIndex
+	if cornerRadius and cornerRadius > 0 then
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, cornerRadius)
+		corner.Parent = board
+	end
+
+	local cell = math.max(1, COLOR_PICKER.CheckerCell)
+	local columns = math.ceil(width / cell)
+	local rows = math.ceil(height / cell)
+	for row = 0, rows - 1 do
+		for column = 0, columns - 1 do
+			if (row + column) % 2 == 1 then
+				local square = Instance.new("Frame")
+				square.Name = "C"
+				square.BackgroundColor3 = COLOR_PICKER.CheckerDark
+				square.BorderSizePixel = 0
+				square.Position = UDim2.new(0, column * cell, 0, row * cell)
+				square.Size = UDim2.new(0, cell, 0, cell)
+				square.ZIndex = zIndex
+				square.Parent = board
+			end
+		end
+	end
+
+	board.Parent = parent
+	return board
+end
 
 local Templates = {}
 
@@ -3841,7 +3887,35 @@ function KeybindsUI.SetMode(mode: string)
 	end
 end
 
-makeDraggable(KeybindsListFrame.Title, KeybindsListFrame)
+-- The keybinds overlay remembers where the user parked it, across sessions.
+local function serializeUDim2(value: UDim2): string
+	return ("%f,%d,%f,%d"):format(value.X.Scale, value.X.Offset, value.Y.Scale, value.Y.Offset)
+end
+
+local function deserializeUDim2(text: string): UDim2?
+	if type(text) ~= "string" or text == "" then return nil end
+	local xs, xo, ys, yo = text:match("^(-?[%d%.]+),(-?%d+),(-?[%d%.]+),(-?%d+)$")
+	if not xs then return nil end
+	return UDim2.new(tonumber(xs) or 0, tonumber(xo) or 0, tonumber(ys) or 0, tonumber(yo) or 0)
+end
+
+do
+	local saved = deserializeUDim2(getSetting("General", "keybindsPos"))
+	if saved then
+		-- clamp back on-screen in case the viewport shrank since it was saved
+		local viewport = ScreenGui.AbsoluteSize
+		local x = math.clamp(saved.X.Offset, 0, math.max(0, viewport.X - 60))
+		local y = math.clamp(saved.Y.Offset, 0, math.max(0, viewport.Y - 40))
+		KeybindsListFrame.Position = UDim2.new(saved.X.Scale, x, saved.Y.Scale, y)
+	end
+end
+
+makeDraggable(KeybindsListFrame.Title, KeybindsListFrame, function(finalPosition)
+	settingsTable.General.keybindsPos = settingsTable.General.keybindsPos
+		or { Type = "input", Value = "", Name = "Keybinds list position" }
+	settingsTable.General.keybindsPos.Value = serializeUDim2(finalPosition)
+	saveSettings()
+end)
 
 ------------------------------------------------------------------------------------------------------------------------
 --  Window visibility (minimise / restore / keybind toggle)
@@ -5312,9 +5386,23 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 			container:Destroy()
 		end)
 	end
-	-- clicking away dismisses — unless a keybind is being recorded, where the click is the bind
+	-- Clicking away dismisses. Rather than trusting hit-testing (a Frame's `Active` does not
+	-- reliably stop a click from reaching the catcher underneath, which is why clicking blank
+	-- space inside a popup used to close it), decide from geometry: if the cursor is inside any
+	-- window living in this container, the click was *inside* and must be ignored.
 	local function dismiss()
 		if BindCaptureActive then return end
+		local point = mousePoint()
+		for _, child in ipairs(container:GetChildren()) do
+			if child ~= catcher and child:IsA("GuiObject") and child.Visible then
+				local origin = screenPointFor(child.AbsolutePosition)
+				local size = child.AbsoluteSize
+				if point.X >= origin.X and point.X <= origin.X + size.X
+					and point.Y >= origin.Y and point.Y <= origin.Y + size.Y then
+					return
+				end
+			end
+		end
 		close()
 	end
 	table.insert(OpenPopups, close)
@@ -5907,19 +5995,7 @@ function SectionClass:CreateColorPicker(options)
 	do
 		preview.BackgroundTransparency = 1
 
-		local checker = Instance.new("ImageLabel")
-		checker.Name = "Checkerboard"
-		checker.Image = "rbxassetid://107060544057249"
-		checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
-		checker.ScaleType = Enum.ScaleType.Tile
-		checker.TileSize = UDim2.new(0, COLOR_PICKER.CheckerTile, 0, COLOR_PICKER.CheckerTile)
-		checker.BackgroundTransparency = 1
-		checker.Size = UDim2.new(1, 0, 1, 0)
-		checker.ZIndex = 1
-		local checkerCorner = Instance.new("UICorner")
-		checkerCorner.CornerRadius = UDim.new(0, 8)
-		checkerCorner.Parent = checker
-		checker.Parent = preview
+		buildCheckerboard(preview, 30, 30, 1, 8)
 
 		colorFill = Instance.new("Frame")
 		colorFill.Name = "ColorFill"
@@ -7112,18 +7188,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 			sStroke.Parent = swatch
 			-- children draw above their parent (ZIndexBehavior.Sibling): checkerboard first,
 			-- then the colour as its own layer on top
-			local checker = Instance.new("ImageLabel")
-			checker.Image = "rbxassetid://107060544057249"
-			checker.ImageColor3 = Color3.fromRGB(122, 122, 122)
-			checker.ScaleType = Enum.ScaleType.Tile
-			checker.TileSize = UDim2.new(0, COLOR_PICKER.CheckerTile, 0, COLOR_PICKER.CheckerTile)
-			checker.BackgroundTransparency = 1
-			checker.Size = UDim2.new(1, 0, 1, 0)
-			checker.ZIndex = BIND_Z + 12
-			checker.Parent = swatch
-			local cCorner = Instance.new("UICorner")
-			cCorner.CornerRadius = UDim.new(0, 6)
-			cCorner.Parent = checker
+			buildCheckerboard(swatch, 38, 20, BIND_Z + 12, 6)
 			local fill = Instance.new("Frame")
 			fill.Name = "Fill"
 			fill.Size = UDim2.new(1, 0, 1, 0)
