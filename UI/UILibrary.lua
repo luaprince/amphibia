@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A10.1"
+		Developer info: "A10.2"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -624,6 +624,9 @@ local FONT_SERIF_BOLD = ft("rbxassetid://12187368093", 700, "Normal")
 local FONT_SERIF_ITALIC = ft("rbxassetid://12187368093", 400, "Italic")
 local FONT_BODY = ft("rbxassetid://12187365364", 400, "Normal")
 local FONT_MONO = ft("rbxasset://fonts/families/RobotoMono.json", 400, "Normal")
+-- RobotoMono's advance width as a fraction of the text size; lets monospaced fields be measured
+-- without waiting on the engine to lay a label out.
+local MONO_ADVANCE = 0.6
 
 local UIShadowSupported = (function()
 	local ok, inst = pcall(Instance.new, "UIShadow")
@@ -3023,7 +3026,7 @@ local BIND_MENU = {
 	NewBindHeight = 30,     -- строка "New Bind"
 	KeySlot = 19,           -- квадрат клавиши / стрелки справа в строке (не делать больше RowHeight-8)
 	LabelWidth = 60,        -- ширина подписи Key / Mode / Value в редакторе
-	FieldGap = 18,          -- минимальный зазор между подписью и её контролом
+	FieldGap = 24,          -- минимальный зазор между подписью и её контролом
 	FieldInset = 12,        -- отступ подписи слева и контрола справа
 
 	EditorWidth = 210,
@@ -7157,36 +7160,25 @@ BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged, grow
 	end)
 	if grow then
 		-- SmoothInput draws its own glyphs, so measure with a hidden label of the same face
-		-- Roblox does not compute TextBounds for an invisible label, which is why the editor
-		-- never resized. Keep it visible but with nothing to see: no size, fully transparent.
-		local ruler = Instance.new("TextLabel")
-		ruler.Name = "Ruler"
-		ruler.BackgroundTransparency = 1
-		ruler.TextTransparency = 1
-		ruler.Size = UDim2.new(0, 0, 0, 0)
-		ruler.FontFace = FONT_MONO
-		ruler.TextSize = 13
-		ruler.Text = ""
-		ruler.Parent = box
-
+		-- Measured arithmetically rather than from a probe label: TextBounds only updates once
+		-- the engine has laid the label out, so the first measurement was routinely zero and the
+		-- box never grew. The field is monospaced, so character count alone gives the width.
 		local baseWidth = 78
-		local function fit()
-			local needed = math.clamp(math.ceil(ruler.TextBounds.X) + 20, baseWidth, 220)
+		local function fit(text)
+			local glyphs = utf8.len(text or "") or #(text or "")
+			local needed = math.clamp(math.ceil(glyphs * 13 * MONO_ADVANCE) + 22, baseWidth, 220)
 			box.Size = UDim2.new(0, needed, 0, 20)
 			-- report the control's width; the editor sizes every row from it so the caption gap
 			-- stays constant and the panel's AutomaticSize follows
 			grow(needed)
 		end
-		ruler:GetPropertyChangedSignal("TextBounds"):Connect(fit)
 		local previousOnChanged = onChanged
 		onChanged = function(text)
-			ruler.Text = text
-			fit()
+			fit(text)
 			if previousOnChanged then previousOnChanged(text) end
 		end
 		input.Options.OnChanged = onChanged
-		ruler.Text = defaultText or ""
-		task.defer(fit)
+		fit(defaultText)
 	end
 	if defaultText and defaultText ~= "" then
 		input:SetText(defaultText, true)
