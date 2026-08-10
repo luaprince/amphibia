@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A9.3"
+		Developer info: "A9.4"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -3076,9 +3076,29 @@ local function buildCheckerboard(parent, width: number, height: number, zIndex: 
 	local cell = math.max(1, COLOR_PICKER.CheckerCell)
 	local columns = math.ceil(width / cell)
 	local rows = math.ceil(height / cell)
+	local radius = cornerRadius or 0
+
+	-- ClipsDescendants clips to the rectangle, not to the rounded outline, so a dark cell
+	-- sitting in a corner keeps its square edge and the rounding visibly breaks there. Only
+	-- draw cells that fit entirely inside the rounded shape; the rounded light background
+	-- shows through at the corners instead.
+	local function fitsInsideRounded(x, y)
+		if radius <= 0 then return true end
+		for _, corner in ipairs({ { x, y }, { x + cell, y }, { x, y + cell }, { x + cell, y + cell } }) do
+			local px, py = corner[1], corner[2]
+			local nearestX = math.clamp(px, radius, width - radius)
+			local nearestY = math.clamp(py, radius, height - radius)
+			local dx, dy = px - nearestX, py - nearestY
+			if dx * dx + dy * dy > radius * radius + 0.001 then
+				return false
+			end
+		end
+		return true
+	end
+
 	for row = 0, rows - 1 do
 		for column = 0, columns - 1 do
-			if (row + column) % 2 == 1 then
+			if (row + column) % 2 == 1 and fitsInsideRounded(column * cell, row * cell) then
 				local square = Instance.new("Frame")
 				square.Name = "C"
 				square.BackgroundColor3 = COLOR_PICKER.CheckerDark
@@ -3308,7 +3328,7 @@ end)()
 
 local FADE_PROPS = {
 	Frame = { "BackgroundTransparency" },
-	ScrollingFrame = { "BackgroundTransparency" },
+	ScrollingFrame = { "BackgroundTransparency", "ScrollBarImageTransparency" },
 	TextLabel = { "BackgroundTransparency", "TextTransparency" },
 	TextButton = { "BackgroundTransparency", "TextTransparency" },
 	TextBox = { "BackgroundTransparency", "TextTransparency" },
@@ -5340,6 +5360,32 @@ end
 --  Floating overlay windows (dropdown lists, colour picker)
 ------------------------------------------------------------------------------------------------------------------------
 
+-- A real button pinned over `window`. Buttons reliably swallow clicks, so anything landing on
+-- the window never reaches the dismiss catcher beneath it. It mirrors the window's rect as a
+-- sibling rather than being its child: a full-size child would feed back into the window's
+-- AutomaticSize and inflate it. Using only AbsolutePosition/AbsoluteSize keeps it exact — no
+-- mouse coordinates, so no topbar-inset guesswork.
+local function addPopupShield(container: Instance, window: GuiObject)
+	local shield = Instance.new("ImageButton")
+	shield.Name = "Shield"
+	shield.BackgroundTransparency = 1
+	shield.ImageTransparency = 1
+	shield.AutoButtonColor = false
+	shield.ZIndex = 1 -- above the catcher (0), below every window (41+)
+	shield.Parent = container
+
+	local function sync()
+		if not window.Parent then return end
+		local origin = window.AbsolutePosition - container.AbsolutePosition
+		shield.Position = UDim2.new(0, origin.X, 0, origin.Y)
+		shield.Size = UDim2.new(0, window.AbsoluteSize.X, 0, window.AbsoluteSize.Y)
+	end
+	sync()
+	window:GetPropertyChangedSignal("AbsolutePosition"):Connect(sync)
+	window:GetPropertyChangedSignal("AbsoluteSize"):Connect(sync)
+	return shield
+end
+
 -- Creates a fullscreen catcher + positions `content` (scaled to match the window scale). Returns close().
 local function openFloating(content: GuiObject, position: Vector2, onClose)
 	local container = Instance.new("Frame")
@@ -5354,7 +5400,8 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	catcher.BackgroundTransparency = 1
 	catcher.ImageTransparency = 1
 	catcher.Size = UDim2.new(1, 0, 1, 0)
-	catcher.ZIndex = 40
+	-- lowest in the container so the shield can sit between it and the windows
+	catcher.ZIndex = 0
 	catcher.AutoButtonColor = false
 	catcher.Parent = container
 
@@ -5370,6 +5417,7 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	content.Position = UDim2.new(0, position.X, 0, position.Y)
 	content.Visible = true
 	content.Parent = container
+	addPopupShield(container, content)
 
 	local closed = false
 	local function close()
@@ -5386,23 +5434,10 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 			container:Destroy()
 		end)
 	end
-	-- Clicking away dismisses. Rather than trusting hit-testing (a Frame's `Active` does not
-	-- reliably stop a click from reaching the catcher underneath, which is why clicking blank
-	-- space inside a popup used to close it), decide from geometry: if the cursor is inside any
-	-- window living in this container, the click was *inside* and must be ignored.
+	-- Clicks that land on a window are absorbed by its shield, so reaching the catcher at all
+	-- already means the click was outside every window.
 	local function dismiss()
 		if BindCaptureActive then return end
-		local point = mousePoint()
-		for _, child in ipairs(container:GetChildren()) do
-			if child ~= catcher and child:IsA("GuiObject") and child.Visible then
-				local origin = screenPointFor(child.AbsolutePosition)
-				local size = child.AbsoluteSize
-				if point.X >= origin.X and point.X <= origin.X + size.X
-					and point.Y >= origin.Y and point.Y <= origin.Y + size.Y then
-					return
-				end
-			end
-		end
 		close()
 	end
 	table.insert(OpenPopups, close)
@@ -5583,8 +5618,13 @@ function SectionClass:CreateDropdown(options)
 		list.CanvasSize = UDim2.new(0, 0, 0, contentHeight)
 		list.ScrollingDirection = Enum.ScrollingDirection.Y
 		list.ScrollBarThickness = (contentHeight > viewHeight) and 2 or 0
-		list.ScrollBarImageColor3 = Color3.fromRGB(88, 88, 88)
-		list.ScrollBarImageTransparency = 0.35
+		list.ScrollBarImageColor3 = Color3.fromRGB(46, 46, 46)
+		list.ScrollBarImageTransparency = 0
+		pcall(function()
+			list.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+			list.MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+			list.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+		end)
 		list.ClipsDescendants = true
 		list.Active = true
 		list.ZIndex = window.ZIndex
@@ -6327,8 +6367,15 @@ SearchUI.Results.Position = UDim2.new(0, 8, 0, 8)
 SearchUI.Results.Size = UDim2.new(1, -16, 1, -16)
 SearchUI.Results.CanvasSize = UDim2.new(0, 0, 0, 0)
 SearchUI.Results.ScrollBarThickness = 2
-SearchUI.Results.ScrollBarImageColor3 = Color3.fromRGB(88, 88, 88)
-SearchUI.Results.ScrollBarImageTransparency = 0.35
+-- same grey as the panel's outline, and only the thumb: the default top/bottom images are end
+-- caps that read as a track running the whole height, so all three use the plain middle slice
+SearchUI.Results.ScrollBarImageColor3 = Color3.fromRGB(46, 46, 46)
+SearchUI.Results.ScrollBarImageTransparency = 0
+pcall(function()
+	SearchUI.Results.TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+	SearchUI.Results.MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+	SearchUI.Results.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+end)
 pcall(function() SearchUI.Results.VerticalScrollBarInset = Enum.ScrollBarInset.None end)
 SearchUI.Results.ZIndex = 31
 SearchUI.Results.Parent = SearchUI.Panel
@@ -7286,6 +7333,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	if context.renderSwatch then context.renderSwatch() end
 
 	panel.Parent = context.container
+	local editorShield = addPopupShield(context.container, panel)
 
 	-- flush against the list's right edge and level with its top, so the two windows read as
 	-- one object rather than two things floating near each other
@@ -7319,6 +7367,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 		closed = true
 		context.closeEditor = nil
 		context.editingBind = nil
+		editorShield:Destroy()
 		fadeOut(panel, 0.14, true)
 		tween(scale, BIND_SWIFT, { Scale = 0.96 })
 		if setRowState and row.Parent then setRowState("rest") end
