@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A9.4"
+		Developer info: "A9.5"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -2921,21 +2921,23 @@ end
 -- Every popup opened through openFloating (dropdowns, colour picker, bind menus, context
 -- menus) registers its close() here, so the whole stack can be torn down together — e.g. when
 -- the main menu is minimized, nothing should be left floating on screen.
-local OpenPopups = {}
-local function closeAllPopups()
-	local popups = OpenPopups
-	OpenPopups = {}
+local Helpers = {}
+Helpers.OpenPopups = {}
+function Helpers.CloseAllPopups()
+	local popups = Helpers.OpenPopups
+	Helpers.OpenPopups = {}
 	for _, close in ipairs(popups) do
 		pcall(close)
 	end
 end
 
-local LoadingScreen = ScreensFolder:WaitForChild("LoadingScreen")
-local EnterKeyScreen = ScreensFolder:WaitForChild("EnterKeyScreen")
-local ConfirmScreen = ScreensFolder:WaitForChild("ConfirmScreen")
-local DestructiveConfirmScreen = ScreensFolder:WaitForChild("DestructiveConfirmScreen")
-local InputboxScreen = ScreensFolder:WaitForChild("InputboxScreen")
-local InputboxErrorScreen = ScreensFolder:WaitForChild("InputboxErrorScreen")
+local Screens = {}
+Screens.Loading = ScreensFolder:WaitForChild("LoadingScreen")
+Screens.EnterKey = ScreensFolder:WaitForChild("EnterKeyScreen")
+Screens.Confirm = ScreensFolder:WaitForChild("ConfirmScreen")
+Screens.DestructiveConfirm = ScreensFolder:WaitForChild("DestructiveConfirmScreen")
+Screens.Inputbox = ScreensFolder:WaitForChild("InputboxScreen")
+Screens.InputboxError = ScreensFolder:WaitForChild("InputboxErrorScreen")
 
 local ColorPickerWindow = OtherFolder:WaitForChild("ColorPicker")
 ColorPickerWindow.Active = true
@@ -2947,23 +2949,24 @@ local ConfigDropdownMenu = OtherFolder:WaitForChild("ConfigDropdownMenu")
 -- Authored bind windows. Bind1Pressed / Bind2Hovered / Bind3 / Bind4None in the design are
 -- state examples of one row: Bind4None is kept as the live template (it carries the dashed
 -- "no key" gradient on its chip, which the others don't), the rest are dropped.
-local BindsPanelTemplate = OtherFolder:WaitForChild("Keybinds")
-local BindEditorTemplate = OtherFolder:WaitForChild("KeybindRedacting")
-local BindRowTemplate = BindsPanelTemplate:WaitForChild("Bind4None"):Clone()
-BindRowTemplate.Name = "BindRow"
+local BindAssets = {}
+BindAssets.Panel = OtherFolder:WaitForChild("Keybinds")
+BindAssets.Editor = OtherFolder:WaitForChild("KeybindRedacting")
+BindAssets.Row = BindAssets.Panel:WaitForChild("Bind4None"):Clone()
+BindAssets.Row.Name = "BindRow"
 -- the dashed border the design puts on an unbound key chip, reused by the editor's Key field
-local BindKeyDashTemplate = (function()
-	local chip = BindRowTemplate:FindFirstChild("Keybind")
+BindAssets.Dash = (function()
+	local chip = BindAssets.Row:FindFirstChild("Keybind")
 	local stroke = chip and chip:FindFirstChildOfClass("UIStroke")
 	local gradient = stroke and stroke:FindFirstChildOfClass("UIGradient")
 	return gradient and gradient:Clone() or nil
 end)()
 for _, exampleName in ipairs({ "Bind1Pressed", "Bind2Hovered", "Bind3", "Bind4None" }) do
-	local example = BindsPanelTemplate:FindFirstChild(exampleName)
+	local example = BindAssets.Panel:FindFirstChild(exampleName)
 	if example then example:Destroy() end
 end
-BindsPanelTemplate.Visible = false
-BindEditorTemplate.Visible = false
+BindAssets.Panel.Visible = false
+BindAssets.Editor.Visible = false
 
 local ConfigPage = Pages:WaitForChild("TabConfig")
 local PageTemplateSource = Pages:WaitForChild("TabPlayer")
@@ -2989,12 +2992,14 @@ end
 --  Template extraction — pull the showcase elements out as blueprints, then clear the example content.
 ------------------------------------------------------------------------------------------------------------------------
 
-local DROPDOWN_GAP = 6      	  -- фиксированный отступ от нижней грани чипа
-local DROPDOWN_FLIP = false 	  -- true — разворачивать вверх, если не влезает вниз
-local DROPDOWN_MAX_HEIGHT = 220   -- полная высота окна, ≈ 7 пунктов
-local DROPDOWN_ITEM_HEIGHT = 25
-local DROPDOWN_ITEM_GAP = 5
-local DROPDOWN_PADDING = 12       -- UIPadding окна: 6 сверху + 6 снизу
+local DROPDOWN = {
+	Gap = 6,            -- фиксированный отступ от нижней грани чипа
+	Flip = false,       -- true — разворачивать вверх, если не влезает вниз
+	MaxHeight = 220,    -- полная высота окна, ≈ 7 пунктов
+	ItemHeight = 25,
+	ItemGap = 5,
+	Padding = 12,       -- UIPadding окна: 6 сверху + 6 снизу
+}
 
 local CONFIG_MENU = {
 	Width = 153,
@@ -3059,7 +3064,7 @@ local COLOR_PICKER = {
 -- Строит шахматку из фреймов внутри `parent`. `width`/`height` — размер в локальных пикселях
 -- (не Absolute: так сетка корректно масштабируется вместе с UIScale меню). Рисуются только
 -- тёмные клетки поверх светлой подложки — вдвое меньше инстансов.
-local function buildCheckerboard(parent, width: number, height: number, zIndex: number, cornerRadius: number?)
+function Helpers.BuildCheckerboard(parent, width: number, height: number, zIndex: number, cornerRadius: number?)
 	local board = Instance.new("Frame")
 	board.Name = "Checkerboard"
 	board.BackgroundColor3 = COLOR_PICKER.CheckerLight
@@ -3408,7 +3413,7 @@ local function primeFade(root: GuiObject)
 	fadeTargets(root) -- capture originals while authored values are intact
 end
 
-for _, screen in ipairs({ LoadingScreen, EnterKeyScreen, ConfirmScreen, DestructiveConfirmScreen, InputboxScreen, InputboxErrorScreen }) do
+for _, screen in ipairs({ Screens.Loading, Screens.EnterKey, Screens.Confirm, Screens.DestructiveConfirm, Screens.Inputbox, Screens.InputboxError }) do
 	primeFade(screen)
 end
 primeFade(Main)
@@ -3552,7 +3557,7 @@ local DefaultConfirmIcons = {}
 
 -- yields; returns true when confirmed
 local function showConfirm(options)
-	local screen = options.Destructive and DestructiveConfirmScreen or ConfirmScreen
+	local screen = options.Destructive and Screens.DestructiveConfirm or Screens.Confirm
 	local window = screen:WaitForChild("ConfirmWindow")
 	window.Label.Text = options.Title or "Are you sure?"
 	pcall(function() window.Desc.RichText = true end)
@@ -3591,7 +3596,7 @@ end
 
 -- yields; returns entered text or nil when cancelled
 local function showInputPrompt(options)
-	local screen = InputboxScreen
+	local screen = Screens.Inputbox
 	local window = screen:WaitForChild("InputboxWindow")
 	window.Label.Text = options.Title or "Enter value"
 	pcall(function() window.Desc.RichText = true end)
@@ -3908,11 +3913,11 @@ function KeybindsUI.SetMode(mode: string)
 end
 
 -- The keybinds overlay remembers where the user parked it, across sessions.
-local function serializeUDim2(value: UDim2): string
+function Helpers.SerializeUDim2(value: UDim2): string
 	return ("%f,%d,%f,%d"):format(value.X.Scale, value.X.Offset, value.Y.Scale, value.Y.Offset)
 end
 
-local function deserializeUDim2(text: string): UDim2?
+function Helpers.DeserializeUDim2(text: string): UDim2?
 	if type(text) ~= "string" or text == "" then return nil end
 	local xs, xo, ys, yo = text:match("^(-?[%d%.]+),(-?%d+),(-?[%d%.]+),(-?%d+)$")
 	if not xs then return nil end
@@ -3920,7 +3925,7 @@ local function deserializeUDim2(text: string): UDim2?
 end
 
 do
-	local saved = deserializeUDim2(getSetting("General", "keybindsPos"))
+	local saved = Helpers.DeserializeUDim2(getSetting("General", "keybindsPos"))
 	if saved then
 		-- clamp back on-screen in case the viewport shrank since it was saved
 		local viewport = ScreenGui.AbsoluteSize
@@ -3933,7 +3938,7 @@ end
 makeDraggable(KeybindsListFrame.Title, KeybindsListFrame, function(finalPosition)
 	settingsTable.General.keybindsPos = settingsTable.General.keybindsPos
 		or { Type = "input", Value = "", Name = "Keybinds list position" }
-	settingsTable.General.keybindsPos.Value = serializeUDim2(finalPosition)
+	settingsTable.General.keybindsPos.Value = Helpers.SerializeUDim2(finalPosition)
 	saveSettings()
 end)
 
@@ -3954,7 +3959,7 @@ local function setWindowOpen(open: boolean, instant: boolean?)
 	if not open then
 		-- minimizing the menu should never leave a keybind/colour-picker/dropdown/context menu
 		-- floating on screen with no window underneath it
-		closeAllPopups()
+		Helpers.CloseAllPopups()
 	end
 	if instant then
 		Main.Visible = open
@@ -4036,9 +4041,9 @@ local function writeSavedKey(key: string)
 	end
 end
 
--- Yields until a valid key has been entered. Assumes EnterKeyScreen is already visible.
+-- Yields until a valid key has been entered. Assumes Screens.EnterKey is already visible.
 local function runKeySystem(keySettings)
-	local screen = EnterKeyScreen
+	local screen = Screens.EnterKey
 	local welcomeText = screen.WelcomeText
 	local welcomeDesc = screen.WelcomeDesc
 	local inputBg = screen.KeyInputBG
@@ -4226,7 +4231,7 @@ end
 
 local function runLoading(title: string?, description: string?, minTime: number?)
 	minTime = math.max(minTime or 2.4, 0.8)
-	local screen = LoadingScreen
+	local screen = Screens.Loading
 	screen.LoadingTitle.Text = title or "Just a moment…"
 	screen.LoadingDesc.Text = description or "Setting things up — this won't take long."
 	local fill = screen.LoadingLine.Fill
@@ -5365,7 +5370,7 @@ end
 -- sibling rather than being its child: a full-size child would feed back into the window's
 -- AutomaticSize and inflate it. Using only AbsolutePosition/AbsoluteSize keeps it exact — no
 -- mouse coordinates, so no topbar-inset guesswork.
-local function addPopupShield(container: Instance, window: GuiObject)
+function Helpers.AddPopupShield(container: Instance, window: GuiObject)
 	local shield = Instance.new("ImageButton")
 	shield.Name = "Shield"
 	shield.BackgroundTransparency = 1
@@ -5417,15 +5422,15 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	content.Position = UDim2.new(0, position.X, 0, position.Y)
 	content.Visible = true
 	content.Parent = container
-	addPopupShield(container, content)
+	Helpers.AddPopupShield(container, content)
 
 	local closed = false
 	local function close()
 		if closed then return end
 		closed = true
-		for index, registered in ipairs(OpenPopups) do
+		for index, registered in ipairs(Helpers.OpenPopups) do
 			if registered == close then
-				table.remove(OpenPopups, index)
+				table.remove(Helpers.OpenPopups, index)
 				break
 			end
 		end
@@ -5440,7 +5445,7 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 		if BindCaptureActive then return end
 		close()
 	end
-	table.insert(OpenPopups, close)
+	table.insert(Helpers.OpenPopups, close)
 	catcher.MouseButton1Click:Connect(dismiss)
 	catcher.MouseButton2Click:Connect(dismiss)
 	return close, container
@@ -5602,9 +5607,9 @@ function SectionClass:CreateDropdown(options)
 		end
 
 		local count = math.max(#element.Options, 1)
-		local contentHeight = count * DROPDOWN_ITEM_HEIGHT + (count - 1) * DROPDOWN_ITEM_GAP
-		local viewHeight = math.min(contentHeight, DROPDOWN_MAX_HEIGHT - DROPDOWN_PADDING)
-		local windowHeight = viewHeight + DROPDOWN_PADDING
+		local contentHeight = count * DROPDOWN.ItemHeight + (count - 1) * DROPDOWN.ItemGap
+		local viewHeight = math.min(contentHeight, DROPDOWN.MaxHeight - DROPDOWN.Padding)
+		local windowHeight = viewHeight + DROPDOWN.Padding
 
 		pcall(function() window.AutomaticSize = Enum.AutomaticSize.None end)
 		window.Size = UDim2.new(0, width, 0, windowHeight)
@@ -5636,7 +5641,7 @@ function SectionClass:CreateDropdown(options)
 		listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 		listLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 		listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-		listLayout.Padding = UDim.new(0, DROPDOWN_ITEM_GAP)
+		listLayout.Padding = UDim.new(0, DROPDOWN.ItemGap)
 		listLayout.Parent = list
 
 		local itemButtons = {}
@@ -5655,7 +5660,7 @@ function SectionClass:CreateDropdown(options)
 			item.LayoutOrder = index
 			item.ZIndex = 42
 			pcall(function() item.AutomaticSize = Enum.AutomaticSize.None end)
-			item.Size = UDim2.new(1, -4, 0, DROPDOWN_ITEM_HEIGHT)
+			item.Size = UDim2.new(1, -4, 0, DROPDOWN.ItemHeight)
 			nameLabel(item).Text = optionName
 			nameLabel(item).Position = UDim2.new(0, 0, 0, 0)
 			pcall(function() nameLabel(item).TextTruncate = Enum.TextTruncate.AtEnd end)
@@ -5702,10 +5707,10 @@ function SectionClass:CreateDropdown(options)
 			anchor.X + selectedFrame.AbsoluteSize.X - windowWidth,
 			8, math.max(8, viewport.X - windowWidth - 8))
 
-		local y = anchor.Y + chipHeight + DROPDOWN_GAP * scaleNow
+		local y = anchor.Y + chipHeight + DROPDOWN.Gap * scaleNow
 		local opensUpward = false
-		if DROPDOWN_FLIP and y + exactHeight > viewport.Y - 8 then
-			y = anchor.Y - exactHeight - DROPDOWN_GAP * scaleNow
+		if DROPDOWN.Flip and y + exactHeight > viewport.Y - 8 then
+			y = anchor.Y - exactHeight - DROPDOWN.Gap * scaleNow
 			opensUpward = true
 		end
 
@@ -5829,7 +5834,7 @@ local ColorPickerBusy = false
 --   opts.Cursor                           where to open (left-middle edge lands here)
 --   opts.OnChanged(color, alpha, committed)
 --   opts.OnClosed()
-local function openColorPickerWindow(opts)
+local function pickerWindow(opts)
 	local window = ColorPickerWindow
 	local square = window.ColorPicker
 	local squareKnob = square.Knob
@@ -6002,7 +6007,7 @@ end
 local function openColorPicker(opts)
 	if ColorPickerBusy then return end
 	ColorPickerBusy = true
-	local ok, err = pcall(openColorPickerWindow, opts)
+	local ok, err = pcall(pickerWindow, opts)
 	if not ok then
 		ColorPickerBusy = false
 		warn("[ Amphibia Interface ] Color picker failed to open: " .. tostring(err))
@@ -6035,7 +6040,7 @@ function SectionClass:CreateColorPicker(options)
 	do
 		preview.BackgroundTransparency = 1
 
-		buildCheckerboard(preview, 30, 30, 1, 8)
+		Helpers.BuildCheckerboard(preview, 30, 30, 1, 8)
 
 		colorFill = Instance.new("Frame")
 		colorFill.Name = "ColorFill"
@@ -6750,17 +6755,17 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 
 BindSystem.MenuOpen = false
-local BIND_Z = 45
+BindSystem.Z = 45
 
-local BIND_SMOOTH = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-local BIND_SWIFT = TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-local BIND_GLIDE = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+BindSystem.EaseSmooth = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+BindSystem.EaseSwift = TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+BindSystem.EaseGlide = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
 -- Authored state values, read straight off the design's example rows:
 --   rest   (Bind3/Bind4None) bg 1    name 0.4  nameStroke 0.7   arrow hidden      keybind shown
 --   hover  (Bind2Hovered)    bg 0.6  name 0.4  nameStroke 0.7   arrow 0.2         keybind faded out
 --   press  (Bind1Pressed)    bg 0    name 0.15 nameStroke 0.45  arrow 0.2         keybind hidden
-local BIND_ROW_STATES = {
+BindSystem.RowStates = {
 	rest  = { Bg = 1,   Name = 0.4,  Stroke = 0.7,  Arrow = 1,   HideChip = false },
 	hover = { Bg = 0.6, Name = 0.4,  Stroke = 0.7,  Arrow = 0.2, HideChip = true  },
 	press = { Bg = 0,   Name = 0.15, Stroke = 0.45, Arrow = 0.2, HideChip = true  },
@@ -6768,13 +6773,13 @@ local BIND_ROW_STATES = {
 
 ------------------------------------------------------------------------------------ small helpers
 
-local function bindTween(object, info, goal)
+function BindSystem.Tween(object, info, goal)
 	if object then tween(object, info, goal) end
 end
 
 -- The row's chip and arrow both live in a fixed-width slot so crossfading one into the other
 -- never changes the row's width — the layout would otherwise pop while both are visible.
-local function makeRightSlot(row)
+function BindSystem.MakeRightSlot(row)
 	local chip = row:FindFirstChild("Keybind")
 	local arrow = row:FindFirstChild("Arrow")
 	if not chip or not arrow then return chip, arrow end
@@ -6841,8 +6846,8 @@ BindSystem.PaintDot = function(row, active, instant)
 	local inner = row:FindFirstChild("Frame")
 	local dot = inner and inner:FindFirstChild("Dot")
 	if not dot then return end
-	local info = instant and TweenInfo.new(0) or BIND_SMOOTH
-	bindTween(dot, info, {
+	local info = instant and TweenInfo.new(0) or BindSystem.EaseSmooth
+	BindSystem.Tween(dot, info, {
 		BackgroundColor3 = TC(active and Color3.fromRGB(143, 168, 160) or Color3.fromRGB(58, 58, 58)),
 	})
 	local dotShadow = dot:FindFirstChildOfClass("UIShadow")
@@ -6856,7 +6861,7 @@ end
 
 -- Drives one row between rest / hover / press using the authored values above.
 BindSystem.MakeRowState = function(row)
-	local chip, arrow = makeRightSlot(row)
+	local chip, arrow = BindSystem.MakeRightSlot(row)
 	local inner = row:FindFirstChild("Frame")
 	local nameLabel = inner and inner:FindFirstChild("Name")
 	local nameStroke = nameLabel and nameLabel:FindFirstChildOfClass("UIStroke")
@@ -6864,17 +6869,17 @@ BindSystem.MakeRowState = function(row)
 	local chipLabel = chip and chip:FindFirstChild("TextLabel")
 
 	return function(stateName, instant)
-		local state = BIND_ROW_STATES[stateName]
-		local info = instant and TweenInfo.new(0) or BIND_SMOOTH
-		bindTween(row, info, { BackgroundTransparency = state.Bg })
-		bindTween(nameLabel, info, { TextTransparency = state.Name })
-		bindTween(nameStroke, info, { Transparency = state.Stroke })
-		bindTween(arrow, info, { ImageTransparency = state.Arrow })
+		local state = BindSystem.RowStates[stateName]
+		local info = instant and TweenInfo.new(0) or BindSystem.EaseSmooth
+		BindSystem.Tween(row, info, { BackgroundTransparency = state.Bg })
+		BindSystem.Tween(nameLabel, info, { TextTransparency = state.Name })
+		BindSystem.Tween(nameStroke, info, { Transparency = state.Stroke })
+		BindSystem.Tween(arrow, info, { ImageTransparency = state.Arrow })
 		-- chip and arrow crossfade inside a fixed slot, so nothing reflows mid-animation
 		local hide = state.HideChip
-		bindTween(chip, info, { BackgroundTransparency = hide and 1 or 0 })
-		bindTween(chipStroke, info, { Transparency = hide and 1 or 0 })
-		bindTween(chipLabel, info, { TextTransparency = hide and 1 or 0 })
+		BindSystem.Tween(chip, info, { BackgroundTransparency = hide and 1 or 0 })
+		BindSystem.Tween(chipStroke, info, { Transparency = hide and 1 or 0 })
+		BindSystem.Tween(chipLabel, info, { TextTransparency = hide and 1 or 0 })
 	end
 end
 
@@ -6946,13 +6951,13 @@ BindSystem.MakeSelector = function(holder, optionList, current, onPick)
 	local function render(instant)
 		for optionName, entry in pairs(optionEntries) do
 			local selected = optionName == current
-			bindTween(entry.Label, instant and TweenInfo.new(0) or BIND_SMOOTH,
+			BindSystem.Tween(entry.Label, instant and TweenInfo.new(0) or BindSystem.EaseSmooth,
 				{ TextColor3 = TC(selected and COLOR_SELECTED or COLOR_IDLE) })
 		end
 		local active = optionEntries[current]
 		if active then
 			indicator.Visible = true
-			bindTween(indicator, instant and TweenInfo.new(0) or BIND_GLIDE, {
+			BindSystem.Tween(indicator, instant and TweenInfo.new(0) or BindSystem.EaseGlide, {
 				Position = UDim2.new(0, active.X, 0.5, 0),
 				Size = UDim2.new(0, active.Width, 0, HEIGHT),
 			})
@@ -6985,10 +6990,10 @@ BindSystem.MakeSelector = function(holder, optionList, current, onPick)
 		button.Parent = holder
 
 		button.MouseEnter:Connect(function()
-			if current ~= optionName then bindTween(optionLabel, BIND_SWIFT, { TextColor3 = TC(COLOR_HOVER) }) end
+			if current ~= optionName then BindSystem.Tween(optionLabel, BindSystem.EaseSwift, { TextColor3 = TC(COLOR_HOVER) }) end
 		end)
 		button.MouseLeave:Connect(function()
-			if current ~= optionName then bindTween(optionLabel, BIND_SMOOTH, { TextColor3 = TC(COLOR_IDLE) }) end
+			if current ~= optionName then BindSystem.Tween(optionLabel, BindSystem.EaseSmooth, { TextColor3 = TC(COLOR_IDLE) }) end
 		end)
 		button.MouseButton1Click:Connect(function()
 			if current == optionName then return end
@@ -7027,7 +7032,7 @@ BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged)
 	box.Position = UDim2.new(0.97, 0, 0.5, 0)
 	box.Size = UDim2.new(0, 78, 0, 20)
 	box.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
-	box.ZIndex = BIND_Z + 1
+	box.ZIndex = BindSystem.Z + 1
 	box.Parent = parent
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 4)
@@ -7051,20 +7056,20 @@ BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged)
 		AllowedPattern = numeric and "%d%.%-" or nil,
 		PaddingLeft = 7,
 		PaddingRight = 7,
-		ZIndex = BIND_Z + 2,
+		ZIndex = BindSystem.Z + 2,
 	})
 	input.Options.OnFocus = function()
-		bindTween(stroke, BIND_SWIFT, { Color = TC(Color3.fromRGB(70, 70, 70)) })
+		BindSystem.Tween(stroke, BindSystem.EaseSwift, { Color = TC(Color3.fromRGB(70, 70, 70)) })
 	end
 	input.Options.OnBlur = function()
-		bindTween(stroke, BIND_SMOOTH, { Color = TC(Color3.fromRGB(29, 29, 29)) })
+		BindSystem.Tween(stroke, BindSystem.EaseSmooth, { Color = TC(Color3.fromRGB(29, 29, 29)) })
 	end
 	input.Options.OnChanged = onChanged
 	local focusCatcher = Instance.new("TextButton")
 	focusCatcher.BackgroundTransparency = 1
 	focusCatcher.Text = ""
 	focusCatcher.Size = UDim2.new(1, 0, 1, 0)
-	focusCatcher.ZIndex = BIND_Z + 1
+	focusCatcher.ZIndex = BindSystem.Z + 1
 	focusCatcher.Parent = box
 	focusCatcher.MouseButton1Click:Connect(function()
 		input:Focus()
@@ -7077,7 +7082,7 @@ end
 
 -- Value only means something for elements that carry one. A Toggle bind just flips the toggle
 -- (or holds it), and a Button bind just fires it — neither needs a value, so the row is dropped.
-local function bindHasValue(element)
+function BindSystem.HasValue(element)
 	local t = element.Type
 	return t == "Slider" or t == "NumberPicker" or t == "Input"
 		or t == "Selector" or t == "Dropdown" or t == "ColorPicker"
@@ -7109,12 +7114,12 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	if context.closeEditor then context.closeEditor() end
 
 	local element = context.Element
-	local panel = BindEditorTemplate:Clone()
+	local panel = BindAssets.Editor:Clone()
 	panel.Name = "KeybindRedacting"
 	panel.Visible = true
 	panel.Size = UDim2.new(0, BIND_MENU.EditorWidth, 0, 10)
 	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.Y end)
-	panel.ZIndex = BIND_Z + 10
+	panel.ZIndex = BindSystem.Z + 10
 	panel.AnchorPoint = Vector2.new(0, 0)
 	-- sinks hover/clicks in the gaps between rows instead of letting them reach the menu
 	-- behind; a full-size child button cannot be used here because the panel auto-sizes
@@ -7160,27 +7165,27 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	local keyChipStroke = keyChip:FindFirstChildOfClass("UIStroke")
 	-- the empty chip gets the same dashed gradient the bind row uses for "no key"
 	local keyDashes = keyChipStroke and keyChipStroke:FindFirstChildOfClass("UIGradient")
-	if keyChipStroke and not keyDashes and BindKeyDashTemplate then
-		keyDashes = BindKeyDashTemplate:Clone()
+	if keyChipStroke and not keyDashes and BindAssets.Dash then
+		keyDashes = BindAssets.Dash:Clone()
 		keyDashes.Parent = keyChipStroke
 	end
 	local function renderKey()
 		local hasKey = bind.Key and bind.Key ~= "None"
 		keyChipLabel.Text = hasKey and keyDisplayName(bind.Key) or "_"
-		bindTween(keyChipLabel, BIND_SWIFT, { TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88)) })
+		BindSystem.Tween(keyChipLabel, BindSystem.EaseSwift, { TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88)) })
 		if keyDashes then keyDashes.Enabled = not hasKey end
 	end
 	renderKey()
 	keyRow.MouseEnter:Connect(function()
-		bindTween(keyRow, BIND_SWIFT, { BackgroundTransparency = 0.94 })
+		BindSystem.Tween(keyRow, BindSystem.EaseSwift, { BackgroundTransparency = 0.94 })
 	end)
 	keyRow.MouseLeave:Connect(function()
-		bindTween(keyRow, BIND_SMOOTH, { BackgroundTransparency = 1 })
+		BindSystem.Tween(keyRow, BindSystem.EaseSmooth, { BackgroundTransparency = 1 })
 	end)
 	keyRow.MouseButton1Click:Connect(function()
 		keyChipLabel.Text = "..."
 		if keyDashes then keyDashes.Enabled = false end
-		bindTween(keyChipStroke, BIND_SWIFT, { Color = TC(Color3.fromRGB(80, 80, 80)) })
+		BindSystem.Tween(keyChipStroke, BindSystem.EaseSwift, { Color = TC(Color3.fromRGB(80, 80, 80)) })
 		captureBindKey(function(newKey)
 			if newKey then
 				bind.Key = newKey
@@ -7188,7 +7193,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 				if row.Parent then BindSystem.PaintKeybind(row, bind.Key) end
 			end
 			if keyChipLabel.Parent then renderKey() end
-			bindTween(keyChipStroke, BIND_SMOOTH, { Color = TC(Color3.fromRGB(29, 29, 29)) })
+			BindSystem.Tween(keyChipStroke, BindSystem.EaseSmooth, { Color = TC(Color3.fromRGB(29, 29, 29)) })
 		end)
 	end)
 
@@ -7208,7 +7213,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 
 	-- Value -------------------------------------------------------------------------------------
 	local toggleFrame = valueRow:FindFirstChild("ToggleFrame")
-	if not bindHasValue(element) then
+	if not BindSystem.HasValue(element) then
 		valueRow.Visible = false
 	else
 		if toggleFrame then toggleFrame.Visible = false end
@@ -7224,7 +7229,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 			swatch.AnchorPoint = Vector2.new(1, 0.5)
 			swatch.Position = UDim2.new(0.97, 0, 0.5, 0)
 			swatch.Size = UDim2.new(0, 38, 0, 20)
-			swatch.ZIndex = BIND_Z + 11
+			swatch.ZIndex = BindSystem.Z + 11
 			swatch.Parent = valueRow
 			local sCorner = Instance.new("UICorner")
 			sCorner.CornerRadius = UDim.new(0, 6)
@@ -7235,12 +7240,12 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 			sStroke.Parent = swatch
 			-- children draw above their parent (ZIndexBehavior.Sibling): checkerboard first,
 			-- then the colour as its own layer on top
-			buildCheckerboard(swatch, 38, 20, BIND_Z + 12, 6)
+			Helpers.BuildCheckerboard(swatch, 38, 20, BindSystem.Z + 12, 6)
 			local fill = Instance.new("Frame")
 			fill.Name = "Fill"
 			fill.Size = UDim2.new(1, 0, 1, 0)
 			fill.BorderSizePixel = 0
-			fill.ZIndex = BIND_Z + 13
+			fill.ZIndex = BindSystem.Z + 13
 			local fCorner = Instance.new("UICorner")
 			fCorner.CornerRadius = UDim.new(0, 6)
 			fCorner.Parent = fill
@@ -7253,10 +7258,10 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 				end
 			end
 			swatch.MouseEnter:Connect(function()
-				bindTween(sStroke, BIND_SWIFT, { Color = TC(Color3.fromRGB(70, 70, 70)) })
+				BindSystem.Tween(sStroke, BindSystem.EaseSwift, { Color = TC(Color3.fromRGB(70, 70, 70)) })
 			end)
 			swatch.MouseLeave:Connect(function()
-				bindTween(sStroke, BIND_SMOOTH, { Color = TC(Color3.fromRGB(29, 29, 29)) })
+				BindSystem.Tween(sStroke, BindSystem.EaseSmooth, { Color = TC(Color3.fromRGB(29, 29, 29)) })
 			end)
 			swatch.MouseButton1Click:Connect(function()
 				local color, transparency = BindSystem.UnpackColor(bind.Value)
@@ -7284,7 +7289,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 				holder.Position = UDim2.new(0.97, 0, 0.5, 0)
 				holder.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
 				holder.Size = UDim2.new(0, 81, 0, 22)
-				holder.ZIndex = BIND_Z + 1
+				holder.ZIndex = BindSystem.Z + 1
 				holder.Parent = valueRow
 				local holderCorner = Instance.new("UICorner")
 				holderCorner.CornerRadius = UDim.new(0, 8)
@@ -7313,14 +7318,14 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	local deleteLabel = deleteRow:FindFirstChild("Name")
 	local deleteIcon = deleteRow:FindFirstChild("Icon")
 	deleteRow.MouseEnter:Connect(function()
-		bindTween(deleteRow, BIND_SWIFT, { BackgroundTransparency = 0.94 })
-		bindTween(deleteLabel, BIND_SWIFT, { TextColor3 = Color3.fromRGB(224, 140, 140) })
-		bindTween(deleteIcon, BIND_SWIFT, { ImageColor3 = Color3.fromRGB(224, 140, 140) })
+		BindSystem.Tween(deleteRow, BindSystem.EaseSwift, { BackgroundTransparency = 0.94 })
+		BindSystem.Tween(deleteLabel, BindSystem.EaseSwift, { TextColor3 = Color3.fromRGB(224, 140, 140) })
+		BindSystem.Tween(deleteIcon, BindSystem.EaseSwift, { ImageColor3 = Color3.fromRGB(224, 140, 140) })
 	end)
 	deleteRow.MouseLeave:Connect(function()
-		bindTween(deleteRow, BIND_SMOOTH, { BackgroundTransparency = 1 })
-		bindTween(deleteLabel, BIND_SMOOTH, { TextColor3 = TC(Color3.fromRGB(196, 122, 122)) })
-		bindTween(deleteIcon, BIND_SMOOTH, { ImageColor3 = TC(Color3.fromRGB(196, 122, 122)) })
+		BindSystem.Tween(deleteRow, BindSystem.EaseSmooth, { BackgroundTransparency = 1 })
+		BindSystem.Tween(deleteLabel, BindSystem.EaseSmooth, { TextColor3 = TC(Color3.fromRGB(196, 122, 122)) })
+		BindSystem.Tween(deleteIcon, BindSystem.EaseSmooth, { ImageColor3 = TC(Color3.fromRGB(196, 122, 122)) })
 	end)
 	deleteRow.MouseButton1Click:Connect(function()
 		BindSystem.Remove(bind)
@@ -7333,7 +7338,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	if context.renderSwatch then context.renderSwatch() end
 
 	panel.Parent = context.container
-	local editorShield = addPopupShield(context.container, panel)
+	local editorShield = Helpers.AddPopupShield(context.container, panel)
 
 	-- flush against the list's right edge and level with its top, so the two windows read as
 	-- one object rather than two things floating near each other
@@ -7345,12 +7350,12 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	end
 	local target = place()
 	panel.Position = UDim2.new(0, target.X - 10, 0, target.Y)
-	tween(panel, BIND_GLIDE, { Position = UDim2.new(0, target.X, 0, target.Y) })
+	tween(panel, BindSystem.EaseGlide, { Position = UDim2.new(0, target.X, 0, target.Y) })
 	-- AutomaticSize settles a frame later; re-seat once it has a real width
 	task.defer(function()
 		if panel.Parent then
 			local settled = place()
-			tween(panel, BIND_SWIFT, { Position = UDim2.new(0, settled.X, 0, settled.Y) })
+			tween(panel, BindSystem.EaseSwift, { Position = UDim2.new(0, settled.X, 0, settled.Y) })
 		end
 	end)
 
@@ -7369,7 +7374,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 		context.editingBind = nil
 		editorShield:Destroy()
 		fadeOut(panel, 0.14, true)
-		tween(scale, BIND_SWIFT, { Scale = 0.96 })
+		tween(scale, BindSystem.EaseSwift, { Scale = 0.96 })
 		if setRowState and row.Parent then setRowState("rest") end
 		task.delay(0.16, function() panel:Destroy() end)
 	end
@@ -7378,7 +7383,7 @@ end
 ------------------------------------------------------------------------------------ list window
 
 BindSystem.BuildMenu = function(element, position)
-	local panel = BindsPanelTemplate:Clone()
+	local panel = BindAssets.Panel:Clone()
 	panel.Name = "Binds"
 	panel.Visible = true
 	-- Fixed width, height still automatic. Every child is scale-width, and scale-sized children
@@ -7398,7 +7403,7 @@ BindSystem.BuildMenu = function(element, position)
 	end
 	-- must sit above openFloating's full-screen catcher (ZIndex 40) or the catcher swallows
 	-- every click; the design's authored 20 was relative to a different parent
-	panel.ZIndex = BIND_Z
+	panel.ZIndex = BindSystem.Z
 
 	local context = { Element = element, panel = panel, closeEditor = nil, editingBind = nil }
 
@@ -7433,11 +7438,11 @@ BindSystem.BuildMenu = function(element, position)
 		end
 		context.rows = {}
 		for index, bind in ipairs(BindSystem.ForElement(element)) do
-			local row = BindRowTemplate:Clone()
+			local row = BindAssets.Row:Clone()
 			row.Name = "BindRow"
 			row.LayoutOrder = index
 			row.Visible = true
-			row.ZIndex = BIND_Z
+			row.ZIndex = BindSystem.Z
 			row.Size = UDim2.new(1, 0, 0, BIND_MENU.RowHeight)
 			local inner = row:FindFirstChild("Frame")
 			local rowLabel = inner and inner:FindFirstChild("Name")
@@ -7472,12 +7477,12 @@ BindSystem.BuildMenu = function(element, position)
 	local newBindLabel = newBindRow:FindFirstChild("Frame")
 	newBindLabel = newBindLabel and newBindLabel:FindFirstChild("Name")
 	newBindRow.MouseEnter:Connect(function()
-		bindTween(newBindRow, BIND_SWIFT, { BackgroundTransparency = 0.6 })
-		bindTween(newBindLabel, BIND_SWIFT, { TextTransparency = 0 })
+		BindSystem.Tween(newBindRow, BindSystem.EaseSwift, { BackgroundTransparency = 0.6 })
+		BindSystem.Tween(newBindLabel, BindSystem.EaseSwift, { TextTransparency = 0 })
 	end)
 	newBindRow.MouseLeave:Connect(function()
-		bindTween(newBindRow, BIND_SMOOTH, { BackgroundTransparency = 1 })
-		bindTween(newBindLabel, BIND_SMOOTH, { TextTransparency = 0.18 })
+		BindSystem.Tween(newBindRow, BindSystem.EaseSmooth, { BackgroundTransparency = 1 })
+		BindSystem.Tween(newBindLabel, BindSystem.EaseSmooth, { TextTransparency = 0.18 })
 	end)
 	newBindRow.MouseButton1Click:Connect(function()
 		local modes = BindSystem.ModesByType[element.Type] or { "Press" }
@@ -7567,7 +7572,7 @@ local function revealInterface(window)
 		scales[section] = sectionScale
 	end
 
-	fadeOut(LoadingScreen, 0.35)
+	fadeOut(Screens.Loading, 0.35)
 	task.wait(0.2)
 
 	InterfaceRevealed = true
@@ -7658,7 +7663,7 @@ local ConfigSystem = {
 
 ;(function()
 
-local function collectFlags(): { [string]: any }
+function ConfigSystem.CollectFlags(): { [string]: any }
 	local flags = {}
 	for flagName, element in pairs(AmphibiaLibrary.Elements) do
 		if element.GetSaveValue then
@@ -7671,7 +7676,7 @@ local function collectFlags(): { [string]: any }
 	return flags
 end
 
-local function applyFlags(flags: { [string]: any })
+function ConfigSystem.ApplyFlags(flags: { [string]: any })
 	for flagName, value in pairs(flags) do
 		local element = AmphibiaLibrary.Elements[flagName]
 		if element and element.LoadSaveValue then
@@ -7680,13 +7685,13 @@ local function applyFlags(flags: { [string]: any })
 	end
 end
 
-local function configPath(name: string): string
+function ConfigSystem.PathFor(name: string): string
 	return ConfigSystem.Dir .. "/" .. name .. ConfigurationExtension
 end
 
-local function readConfig(name: string)
-	if not FS.isfile(configPath(name)) then return nil end
-	local raw = FS.read(configPath(name))
+function ConfigSystem.Read(name: string)
+	if not FS.isfile(ConfigSystem.PathFor(name)) then return nil end
+	local raw = FS.read(ConfigSystem.PathFor(name))
 	if not raw then return nil end
 	local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
 	if ok and type(decoded) == "table" then
@@ -7697,10 +7702,10 @@ local function readConfig(name: string)
 	return nil
 end
 
-local function writeConfig(name: string, data)
+function ConfigSystem.Write(name: string, data)
 	local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
 	if ok then
-		return FS.write(configPath(name), json)
+		return FS.write(ConfigSystem.PathFor(name), json)
 	end
 	return false
 end
@@ -7714,9 +7719,9 @@ end
 ConfigSystem.Index = {}            -- name -> { Created = number, Modified = number? }
 ConfigSystem.RecentlyWritten = {}  -- name -> os.clock() of our last write
 ConfigSystem.RecentlyDeleted = {}  -- name -> os.clock() of our last delete
-local FS_GRACE = 2.5
+ConfigSystem.FsGrace = 2.5
 
-local function indexWrite(name: string, meta)
+function ConfigSystem.IndexWrite(name: string, meta)
 	ConfigSystem.Index[name] = {
 		Created = (meta and meta.created) or (ConfigSystem.Index[name] and ConfigSystem.Index[name].Created) or os.time(),
 		Modified = meta and meta.modified,
@@ -7725,26 +7730,26 @@ local function indexWrite(name: string, meta)
 	ConfigSystem.RecentlyDeleted[name] = nil
 end
 
-local function indexDelete(name: string)
+function ConfigSystem.IndexDelete(name: string)
 	ConfigSystem.Index[name] = nil
 	ConfigSystem.RecentlyDeleted[name] = os.clock()
 	ConfigSystem.RecentlyWritten[name] = nil
 end
 
 -- disk write + index update in one place
-local writeConfigRaw = writeConfig
-writeConfig = function(name, data)
-	local ok = writeConfigRaw(name, data)
-	indexWrite(name, data and data.meta)
+ConfigSystem.WriteRaw = ConfigSystem.Write
+ConfigSystem.Write = function(name, data)
+	local ok = ConfigSystem.WriteRaw(name, data)
+	ConfigSystem.IndexWrite(name, data and data.meta)
 	return ok
 end
 
-local function deleteConfigFile(name: string)
-	FS.delete(configPath(name))
-	indexDelete(name)
+function ConfigSystem.DeleteFile(name: string)
+	FS.delete(ConfigSystem.PathFor(name))
+	ConfigSystem.IndexDelete(name)
 end
 
-local function listConfigs(): { { Name: string, Created: number? } }
+function ConfigSystem.List(): { { Name: string, Created: number? } }
 	local out = {}
 	for name, meta in pairs(ConfigSystem.Index) do
 		table.insert(out, { Name = name, Created = meta.Created })
@@ -7760,7 +7765,7 @@ end
 
 local refreshConfigs -- forward
 
-local function reconcileConfigsWithDisk()
+function ConfigSystem.Reconcile()
 	local ok, files = pcall(FS.list, ConfigSystem.Dir)
 	if not ok or type(files) ~= "table" then
 		return
@@ -7776,16 +7781,16 @@ local function reconcileConfigsWithDisk()
 	local changed = false
 	-- new files discovered on disk
 	for name in pairs(onDisk) do
-		local graceDeleted = ConfigSystem.RecentlyDeleted[name] and now - ConfigSystem.RecentlyDeleted[name] < FS_GRACE
+		local graceDeleted = ConfigSystem.RecentlyDeleted[name] and now - ConfigSystem.RecentlyDeleted[name] < ConfigSystem.FsGrace
 		if not ConfigSystem.Index[name] and not graceDeleted then
-			local data = readConfig(name)
+			local data = ConfigSystem.Read(name)
 			if data then
 				local created = data.meta and data.meta.created
 				if not created then
 					created = os.time()
 					data.meta = data.meta or {}
 					data.meta.created = created
-					pcall(writeConfigRaw, name, data) -- best-effort backfill; index keeps it either way
+					pcall(ConfigSystem.WriteRaw, name, data) -- best-effort backfill; index keeps it either way
 				end
 				ConfigSystem.Index[name] = { Created = created, Modified = data.meta and data.meta.modified }
 			else
@@ -7800,7 +7805,7 @@ local function reconcileConfigsWithDisk()
 		table.insert(knownNames, name)
 	end
 	for _, name in ipairs(knownNames) do
-		local graceWritten = ConfigSystem.RecentlyWritten[name] and now - ConfigSystem.RecentlyWritten[name] < FS_GRACE
+		local graceWritten = ConfigSystem.RecentlyWritten[name] and now - ConfigSystem.RecentlyWritten[name] < ConfigSystem.FsGrace
 		if not onDisk[name] and not graceWritten then
 			ConfigSystem.Index[name] = nil
 			changed = true
@@ -7808,31 +7813,31 @@ local function reconcileConfigsWithDisk()
 	end
 	-- prune stale grace stamps
 	for name, stamp in pairs(ConfigSystem.RecentlyWritten) do
-		if now - stamp > FS_GRACE * 2 then ConfigSystem.RecentlyWritten[name] = nil end
+		if now - stamp > ConfigSystem.FsGrace * 2 then ConfigSystem.RecentlyWritten[name] = nil end
 	end
 	for name, stamp in pairs(ConfigSystem.RecentlyDeleted) do
-		if now - stamp > FS_GRACE * 2 then ConfigSystem.RecentlyDeleted[name] = nil end
+		if now - stamp > ConfigSystem.FsGrace * 2 then ConfigSystem.RecentlyDeleted[name] = nil end
 	end
 	if changed and refreshConfigs then
 		refreshConfigs()
 	end
 end
 
-local function scheduleReconcile()
-	task.delay(0.7, reconcileConfigsWithDisk)
+function ConfigSystem.ScheduleReconcile()
+	task.delay(0.7, ConfigSystem.Reconcile)
 end
 
-local VALID_CONFIG_NAME = "^[%w%-%_ %.]+$"
+ConfigSystem.ValidName = "^[%w%-%_ %.]+$"
 
-local function validateConfigName(text: string, allowExisting: string?)
+function ConfigSystem.ValidateName(text: string, allowExisting: string?)
 	if text == "" then return false end
-	if not text:match(VALID_CONFIG_NAME) then
+	if not text:match(ConfigSystem.ValidName) then
 		return "Only letters, numbers, spaces, - _ . allowed."
 	end
 	if #text > 32 then
 		return "Name is too long."
 	end
-	if text ~= allowExisting and FS.isfile(configPath(text)) then
+	if text ~= allowExisting and FS.isfile(ConfigSystem.PathFor(text)) then
 		return "That name already exists."
 	end
 	return true
@@ -7840,19 +7845,19 @@ end
 
 -- autosave -----------------------------------------------------------------------------------------------------------
 
-local autosaveScheduled = false
+ConfigSystem.AutosaveScheduled = false
 ConfigHooks.Autosave = function()
 	if not ConfigSystem.AutosaveEnabled or not ConfigSystem.AutosaveFile then
 		return
 	end
-	if autosaveScheduled then
+	if ConfigSystem.AutosaveScheduled then
 		ConfigSystem.AutosavePending = true
 		return
 	end
-	autosaveScheduled = true
+	ConfigSystem.AutosaveScheduled = true
 	task.delay(0.8, function()
-		autosaveScheduled = false
-		local payload = { meta = { autosave = true, modified = os.time() }, flags = collectFlags(), binds = BindSystem.Serialize() }
+		ConfigSystem.AutosaveScheduled = false
+		local payload = { meta = { autosave = true, modified = os.time() }, flags = ConfigSystem.CollectFlags(), binds = BindSystem.Serialize() }
 		local ok, json = pcall(function() return HttpService:JSONEncode(payload) end)
 		if ok then
 			FS.write(ConfigSystem.AutosaveFile, json)
@@ -7873,7 +7878,7 @@ ConfigHooks.OnElementRegistered = function(element)
 	end
 end
 
-local function loadAutosave()
+function ConfigSystem.LoadAutosave()
 	if not ConfigSystem.AutosaveFile or not FS.isfile(ConfigSystem.AutosaveFile) then
 		return
 	end
@@ -7882,20 +7887,21 @@ local function loadAutosave()
 	local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
 	if ok and type(decoded) == "table" and type(decoded.flags) == "table" then
 		ConfigSystem.PendingFlags = decoded.flags
-		applyFlags(decoded.flags)
+		ConfigSystem.ApplyFlags(decoded.flags)
 		BindSystem.LoadSerialized(decoded.binds)
 	end
 end
 
 -- config page UI -----------------------------------------------------------------------------------------------------
 
-local ConfigsBg = ConfigPage.ConfigsBg
-local ButtonsBg = ConfigPage.ButtonsBg
-local ConfigScroller = ConfigsBg.ScrollingFrame
-local ConfigTitle = nameLabel(ConfigsBg)
-local ConfigInfo = ConfigTitle and ConfigTitle:FindFirstChild("Info")
-local NoConfigsHolder = ConfigsBg.NoConfigsFrameHolder
-local ConfigSearchFrame = ConfigsBg.SearchFrame
+local ConfigUI = {}
+ConfigUI.Bg = ConfigPage.ConfigsBg
+ConfigUI.ButtonsBg = ConfigPage.ButtonsBg
+ConfigUI.Scroller = ConfigUI.Bg.ScrollingFrame
+ConfigUI.Title = nameLabel(ConfigUI.Bg)
+ConfigUI.Info = ConfigUI.Title and ConfigUI.Title:FindFirstChild("Info")
+ConfigUI.NoConfigs = ConfigUI.Bg.NoConfigsFrameHolder
+ConfigUI.SearchFrame = ConfigUI.Bg.SearchFrame
 
 
 local function setSelectedConfig(name: string?)
@@ -7927,10 +7933,10 @@ end
 
 -- actions ------------------------------------------------------------------------------------------------------------
 
-local TrashIconImage do
+ConfigUI.TrashIcon = nil do
 	local deleteButton = ConfigDropdownMenu:FindFirstChild("DeleteButton")
 	local icon = deleteButton and deleteButton:FindFirstChild("Icon")
-	TrashIconImage = icon and icon.Image or nil
+	ConfigUI.TrashIcon = icon and icon.Image or nil
 end
 
 local ConfigActions = {}
@@ -7943,12 +7949,12 @@ function ConfigActions.saveNew()
 			ConfirmText = "Create",
 			Placeholder = "my-config",
 			MaxLength = 32,
-			Validate = function(text) return validateConfigName(text) end,
+			Validate = function(text) return ConfigSystem.ValidateName(text) end,
 		})
 		if not name then return end
-		writeConfig(name, { meta = { created = os.time(), modified = os.time() }, flags = collectFlags(), binds = BindSystem.Serialize() })
+		ConfigSystem.Write(name, { meta = { created = os.time(), modified = os.time() }, flags = ConfigSystem.CollectFlags(), binds = BindSystem.Serialize() })
 		refreshConfigs()
-		scheduleReconcile()
+		ConfigSystem.ScheduleReconcile()
 		setSelectedConfig(name)
 		markLoadedConfig(name)
 		AmphibiaLibrary:Notify({ Color = "Green", Content = ("Config '%s' created."):format(name), Duration = 3 })
@@ -7961,12 +7967,12 @@ function ConfigActions.load(name: string?)
 		AmphibiaLibrary:Notify({ Color = "Yellow", Content = "Select a config first.", Duration = 3 })
 		return
 	end
-	local data = readConfig(name)
+	local data = ConfigSystem.Read(name)
 	if not data then
 		AmphibiaLibrary:Notify({ Color = "Red", Content = "That config could not be read.", Duration = 4 })
 		return
 	end
-	applyFlags(data.flags)
+	ConfigSystem.ApplyFlags(data.flags)
 	BindSystem.LoadSerialized(data.binds)
 	markLoadedConfig(name)
 	settingsTable.General.lastConfig.Value = name
@@ -7987,13 +7993,13 @@ function ConfigActions.overwrite(name: string?)
 			ConfirmText = "Overwrite",
 		})
 		if not confirmed then return end
-		local existing = readConfig(name) or { meta = { created = os.time() } }
-		existing.flags = collectFlags()
+		local existing = ConfigSystem.Read(name) or { meta = { created = os.time() } }
+		existing.flags = ConfigSystem.CollectFlags()
 		existing.binds = BindSystem.Serialize()
 		existing.meta.modified = os.time()
-		writeConfig(name, existing)
+		ConfigSystem.Write(name, existing)
 		refreshConfigs()
-		scheduleReconcile()
+		ConfigSystem.ScheduleReconcile()
 		setSelectedConfig(name)
 		AmphibiaLibrary:Notify({ Color = "Green", Content = ("Config '%s' overwritten."):format(name), Duration = 3 })
 	end)
@@ -8012,16 +8018,16 @@ function ConfigActions.rename(name: string?)
 			ConfirmText = "Rename",
 			Default = name,
 			MaxLength = 32,
-			Validate = function(text) return validateConfigName(text, name) end,
+			Validate = function(text) return ConfigSystem.ValidateName(text, name) end,
 		})
 		if not newName or newName == name then return end
-		local data = readConfig(name)
+		local data = ConfigSystem.Read(name)
 		if data then
-			writeConfig(newName, data)
-			deleteConfigFile(name)
+			ConfigSystem.Write(newName, data)
+			ConfigSystem.DeleteFile(name)
 			if ConfigSystem.LoadedConfig == name then ConfigSystem.LoadedConfig = newName end
 			refreshConfigs()
-			scheduleReconcile()
+			ConfigSystem.ScheduleReconcile()
 			setSelectedConfig(newName)
 			markLoadedConfig(ConfigSystem.LoadedConfig)
 			AmphibiaLibrary:Notify({ Color = "Green", Content = "Config renamed.", Duration = 3 })
@@ -8037,21 +8043,21 @@ function ConfigActions.duplicate(name: string?)
 		AmphibiaLibrary:Notify({ Color = "Yellow", Content = "Select a config first.", Duration = 3 })
 		return
 	end
-	local data = readConfig(name)
+	local data = ConfigSystem.Read(name)
 	if not data then
 		AmphibiaLibrary:Notify({ Color = "Red", Content = "That config could not be read — try again in a moment.", Duration = 4 })
 		return
 	end
 	local copyName = name .. " copy"
 	local counter = 2
-	while ConfigSystem.Index[copyName] or FS.isfile(configPath(copyName)) do
+	while ConfigSystem.Index[copyName] or FS.isfile(ConfigSystem.PathFor(copyName)) do
 		copyName = ("%s copy %d"):format(name, counter)
 		counter += 1
 	end
 	data.meta = { created = os.time(), modified = os.time() }
-	writeConfig(copyName, data)
+	ConfigSystem.Write(copyName, data)
 	refreshConfigs()
-	scheduleReconcile()
+	ConfigSystem.ScheduleReconcile()
 	setSelectedConfig(copyName)
 	markLoadedConfig(ConfigSystem.LoadedConfig)
 	AmphibiaLibrary:Notify({ Color = "Green", Content = ("Duplicated as '%s'."):format(copyName), Duration = 3 })
@@ -8061,11 +8067,11 @@ function ConfigActions.exportCode(name: string?)
 	name = name or ConfigSystem.SelectedConfig
 	local flags, binds
 	if name then
-		local data = readConfig(name)
+		local data = ConfigSystem.Read(name)
 		flags = data and data.flags
 		binds = data and data.binds
 	end
-	flags = flags or collectFlags()
+	flags = flags or ConfigSystem.CollectFlags()
 	binds = binds or BindSystem.Serialize()
 	local ok, json = pcall(function() return HttpService:JSONEncode({ flags = flags, binds = binds }) end)
 	if not ok then return end
@@ -8104,12 +8110,12 @@ function ConfigActions.importCode()
 			ConfirmText = "Save",
 			Placeholder = "imported-config",
 			MaxLength = 32,
-			Validate = function(text) return validateConfigName(text) end,
+			Validate = function(text) return ConfigSystem.ValidateName(text) end,
 		})
 		if not name then return end
-		writeConfig(name, { meta = { created = os.time(), modified = os.time(), imported = true }, flags = decoded.flags, binds = decoded.binds })
+		ConfigSystem.Write(name, { meta = { created = os.time(), modified = os.time(), imported = true }, flags = decoded.flags, binds = decoded.binds })
 		refreshConfigs()
-		scheduleReconcile()
+		ConfigSystem.ScheduleReconcile()
 		setSelectedConfig(name)
 		AmphibiaLibrary:Notify({ Color = "Green", Content = ("Config '%s' imported."):format(name), Duration = 3 })
 	end)
@@ -8148,10 +8154,10 @@ function ConfigActions.delete(name: string?)
 			Description = ("<b>%s</b> will be <font color=\"#C97F7F\">removed permanently</font>. This can't be undone."):format(name),
 			ConfirmText = "Delete",
 			Destructive = true,
-			Icon = TrashIconImage,
+			Icon = ConfigUI.TrashIcon,
 		})
 		if not confirmed then return end
-		deleteConfigFile(name)
+		ConfigSystem.DeleteFile(name)
 		if ConfigSystem.SelectedConfig == name then ConfigSystem.SelectedConfig = nil end
 		if ConfigSystem.LoadedConfig == name then
 			ConfigSystem.LoadedConfig = nil
@@ -8159,7 +8165,7 @@ function ConfigActions.delete(name: string?)
 			saveSettings()
 		end
 		refreshConfigs()
-		scheduleReconcile()
+		ConfigSystem.ScheduleReconcile()
 		AmphibiaLibrary:Notify({ Color = "Green", Content = ("Config '%s' deleted."):format(name), Duration = 3 })
 	end)
 end
@@ -8257,14 +8263,14 @@ end
 -- list rendering -----------------------------------------------------------------------------------------------------
 
 refreshConfigs = function()
-	for _, child in ipairs(ConfigScroller:GetChildren()) do
+	for _, child in ipairs(ConfigUI.Scroller:GetChildren()) do
 		if child:IsA("GuiObject") then
 			child:Destroy()
 		end
 	end
 	ConfigSystem.Rows = {}
 
-	local configs = listConfigs()
+	local configs = ConfigSystem.List()
 	local query = string.lower(ConfigSystem.SearchQuery or "")
 	local shown = 0
 
@@ -8290,7 +8296,7 @@ refreshConfigs = function()
 		row.Created.Text = timeAgo(config.Created)
 		themeRegisterDeep(row)
 		themeApplyDeep(row)
-		local stale = ConfigScroller:FindFirstChild("Config_" .. config.Name)
+		local stale = ConfigUI.Scroller:FindFirstChild("Config_" .. config.Name)
 		if stale then
 			stale:Destroy()
 		end
@@ -8321,13 +8327,13 @@ refreshConfigs = function()
 			end
 		end)
 
-		row.Parent = ConfigScroller
+		row.Parent = ConfigUI.Scroller
 		ConfigSystem.Rows[config.Name] = row
 	end
 
-	NoConfigsHolder.Visible = shown == 0
-	if ConfigInfo then
-		ConfigInfo.Text = #configs == 1 and "1 config" or (#configs .. " configs")
+	ConfigUI.NoConfigs.Visible = shown == 0
+	if ConfigUI.Info then
+		ConfigUI.Info.Text = #configs == 1 and "1 config" or (#configs .. " configs")
 	end
 	setSelectedConfig(ConfigSystem.SelectedConfig)
 	markLoadedConfig(ConfigSystem.LoadedConfig)
@@ -8366,7 +8372,7 @@ do
 	local idleAppliers = {}
 
 	for _, binding in ipairs(buttonBindings) do
-		local button = ButtonsBg:FindFirstChild(binding.Button)
+		local button = ConfigUI.ButtonsBg:FindFirstChild(binding.Button)
 		if not button then continue end
 		local style = PANEL_STYLE[binding.Style]
 		local buttonLabel = nameLabel(button)
@@ -8419,10 +8425,10 @@ end
 -- config search ------------------------------------------------------------------------------------------------------
 
 do
-	ConfigSearchFrame.Text.Visible = false
-	local stroke = ConfigSearchFrame:FindFirstChildOfClass("UIStroke")
+	ConfigUI.SearchFrame.Text.Visible = false
+	local stroke = ConfigUI.SearchFrame:FindFirstChildOfClass("UIStroke")
 	local configSearch = SmoothInput.new({
-		Parent = ConfigSearchFrame,
+		Parent = ConfigUI.SearchFrame,
 		Font = FONT_BODY,
 		TextSize = 14,
 		TextColor = Color3.fromRGB(170, 170, 170),
@@ -8443,7 +8449,7 @@ do
 	configSearch.Options.OnBlur = function()
 		if stroke then tween(stroke, "Out", { Color = TC(Color3.fromRGB(45, 45, 45)) }) end
 	end
-	ConfigSearchFrame.InputButton.MouseButton1Click:Connect(function()
+	ConfigUI.SearchFrame.InputButton.MouseButton1Click:Connect(function()
 		configSearch:Focus()
 	end)
 end
@@ -8482,7 +8488,7 @@ function WindowClass:CreateConfigTab(options)
 	end)
 
 	self.OnConfigTabOpened = function()
-		reconcileConfigsWithDisk()
+		ConfigSystem.Reconcile()
 		refreshConfigs()
 	end
 	table.insert(self.Tabs, tab)
@@ -8493,14 +8499,14 @@ function WindowClass:CreateConfigTab(options)
 end
 
 function WindowClass:LoadConfiguration()
-	loadAutosave()
+	ConfigSystem.LoadAutosave()
 end
 
 function WindowClass:SaveConfiguration()
 	ConfigHooks.Autosave()
 end
 
-ConfigSystem.LoadAutosave = loadAutosave
+ConfigSystem.LoadAutosave = ConfigSystem.LoadAutosave
 end)()
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -8559,8 +8565,8 @@ function AmphibiaLibrary:CreateWindow(settings)
 		local keySystemEnabled = settings.KeySystem == true
 		local keySettings = settings.KeySettings or {}
 
-		LoadingScreen.Visible = not keySystemEnabled
-		EnterKeyScreen.Visible = keySystemEnabled
+		Screens.Loading.Visible = not keySystemEnabled
+		Screens.EnterKey.Visible = keySystemEnabled
 
 		ScreenGui.Enabled = true
 		Main.Visible = true
@@ -8573,8 +8579,8 @@ function AmphibiaLibrary:CreateWindow(settings)
 
 		if keySystemEnabled then
 			runKeySystem(keySettings)
-			LoadingScreen.Visible = true
-			fadeOut(EnterKeyScreen, 0.3)
+			Screens.Loading.Visible = true
+			fadeOut(Screens.EnterKey, 0.3)
 		end
 
 		task.spawn(function()
