@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A9.8"
+		Developer info: "A9.9"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -3041,96 +3041,64 @@ local COLOR_PICKER = {
 	HexPrefixX = 66,
 	HexTextX = 82,        -- левый край значения; 113 наезжало на правый отступ и текст прижимало вправо
 	HexTextRightPad = 43, -- оставляет место под проценты справа (~52px под шесть символов)
-	-- Шахматка под прозрачным цветом рисуется фреймами, а не картинкой, поэтому её можно
-	-- править прямо здесь. CheckerCell — сторона клетки в пикселях (меньше = мельче сетка),
-	-- CheckerLight/CheckerDark — два её оттенка. Оттенки намеренно средне-серые: так шахматка
-	-- одинаково читается и на тёмной, и на светлой теме.
-	CheckerCell = 3,
-	CheckerLight = Color3.fromRGB(150, 150, 150),
-	CheckerDark = Color3.fromRGB(105, 105, 105),
+	-- Шахматка под прозрачным цветом — готовая текстура из дизайна, растянутая на весь
+	-- квадрат. CheckerMaxVisible — насколько она видна при полностью прозрачном цвете
+	-- (0.5 = как в исходнике); при непрозрачном цвете картинка прячется полностью.
+	CheckerImage = "rbxassetid://15777977183",
+	CheckerMaxVisible = 0.5,
 }
 
 -- Строит шахматку из фреймов внутри `parent`. `width`/`height` — размер в локальных пикселях
 -- (не Absolute: так сетка корректно масштабируется вместе с UIScale меню). Рисуются только
 -- тёмные клетки поверх светлой подложки — вдвое меньше инстансов.
 function Helpers.BuildCheckerboard(parent, zIndex: number, cornerRadius: number?)
-	-- Size is read off the parent rather than passed in: hardcoded numbers silently stopped
-	-- matching whenever a swatch was resized, leaving the board smaller than the square.
-	local width = parent.Size.X.Offset
-	local height = parent.Size.Y.Offset
-	if width <= 0 then width = parent.AbsoluteSize.X end
-	if height <= 0 then height = parent.AbsoluteSize.Y end
-	local board = Instance.new("Frame")
+	local board = Instance.new("ImageLabel")
 	board.Name = "Checkerboard"
-	board.BackgroundColor3 = COLOR_PICKER.CheckerLight
+	board.Image = COLOR_PICKER.CheckerImage
+	board.ScaleType = Enum.ScaleType.Stretch
+	board.BackgroundTransparency = 1
+	board.ImageTransparency = 1
 	board.BorderSizePixel = 0
 	board.Size = UDim2.new(1, 0, 1, 0)
-	board.ClipsDescendants = true
 	board.ZIndex = zIndex
 	if cornerRadius and cornerRadius > 0 then
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, cornerRadius)
 		corner.Parent = board
 	end
-
-	local cell = math.max(1, COLOR_PICKER.CheckerCell)
-	-- one row/column of overscan, trimmed by ClipsDescendants — guarantees full coverage even
-	-- if the measured size is a fraction short
-	local columns = math.ceil(width / cell) + 1
-	local rows = math.ceil(height / cell) + 1
-	local radius = cornerRadius or 0
-
-	-- No cell is dropped any more — dropping them left visible bites out of the pattern.
-	-- Instead a cell that overlaps one of the board's rounded corners gets that same corner
-	-- rounded on itself, by however much of the radius it still sits inside. Cells past the arc
-	-- get 0 and stay square, so the staircase follows the outline exactly.
-	local function cornerRadii(x, y)
-		if radius <= 0 then return nil end
-		local right, bottom = width - (x + cell), height - (y + cell)
-		local topLeft     = math.clamp(radius - math.max(x, y), 0, cell)
-		local topRight    = math.clamp(radius - math.max(right, y), 0, cell)
-		local bottomLeft  = math.clamp(radius - math.max(x, bottom), 0, cell)
-		local bottomRight = math.clamp(radius - math.max(right, bottom), 0, cell)
-		if topLeft <= 0 and topRight <= 0 and bottomLeft <= 0 and bottomRight <= 0 then
-			return nil
-		end
-		return topLeft, topRight, bottomLeft, bottomRight
-	end
-
-	for row = 0, rows - 1 do
-		for column = 0, columns - 1 do
-			if (row + column) % 2 == 1 then
-				local x, y = column * cell, row * cell
-				local square = Instance.new("Frame")
-				square.Name = "C"
-				square.BackgroundColor3 = COLOR_PICKER.CheckerDark
-				square.BorderSizePixel = 0
-				square.Position = UDim2.new(0, x, 0, y)
-				square.Size = UDim2.new(0, cell, 0, cell)
-				square.ZIndex = zIndex
-				square.Parent = board
-
-				local topLeft, topRight, bottomLeft, bottomRight = cornerRadii(x, y)
-				if topLeft then
-					local squareCorner = Instance.new("UICorner")
-					-- per-corner radii where the engine has them, one shared radius otherwise
-					local ok = pcall(function()
-						squareCorner.TopLeftRadius = UDim.new(0, topLeft)
-						squareCorner.TopRightRadius = UDim.new(0, topRight)
-						squareCorner.BottomLeftRadius = UDim.new(0, bottomLeft)
-						squareCorner.BottomRightRadius = UDim.new(0, bottomRight)
-					end)
-					if not ok then
-						squareCorner.CornerRadius = UDim.new(0, math.max(topLeft, topRight, bottomLeft, bottomRight))
-					end
-					squareCorner.Parent = square
-				end
-			end
-		end
-	end
-
 	board.Parent = parent
 	return board
+end
+
+-- Turns a square button into a colour swatch: checkerboard underneath, the colour on top.
+-- Children always draw above their parent under ZIndexBehavior.Sibling, so the colour has to be
+-- its own layer rather than the button's own background.
+function Helpers.DressColorSwatch(button: GuiObject, cornerRadius: number, zIndex: number)
+	button.BackgroundTransparency = 1
+	local checker = Helpers.BuildCheckerboard(button, zIndex, cornerRadius)
+	local fill = Instance.new("Frame")
+	fill.Name = "ColorFill"
+	fill.Size = UDim2.new(1, 0, 1, 0)
+	fill.BorderSizePixel = 0
+	fill.ZIndex = zIndex + 1
+	local fillCorner = Instance.new("UICorner")
+	fillCorner.CornerRadius = UDim.new(0, cornerRadius)
+	fillCorner.Parent = fill
+	fill.Parent = button
+	return checker, fill
+end
+
+-- The checkerboard fades in as the colour becomes see-through and disappears once it is solid.
+function Helpers.PaintColorSwatch(checker, fill, color: Color3, alpha: number, animate: boolean?)
+	alpha = math.clamp(alpha or 0, 0, 1)
+	fill.BackgroundColor3 = color
+	fill.BackgroundTransparency = alpha
+	local target = 1 - alpha * COLOR_PICKER.CheckerMaxVisible
+	if animate then
+		tween(checker, "Fast", { ImageTransparency = target })
+	else
+		checker.ImageTransparency = target
+	end
 end
 
 local Templates = {}
@@ -6089,22 +6057,7 @@ function SectionClass:CreateColorPicker(options)
 	-- ScreenGui uses ZIndexBehavior.Sibling, where a child always draws above its parent no
 	-- matter its ZIndex — so the colour has to be its own sibling *above* the checkerboard
 	-- rather than the button's own background, otherwise the checkerboard hides it.
-	local colorFill
-	do
-		preview.BackgroundTransparency = 1
-
-		Helpers.BuildCheckerboard(preview, 1, 8)
-
-		colorFill = Instance.new("Frame")
-		colorFill.Name = "ColorFill"
-		colorFill.Size = UDim2.new(1, 0, 1, 0)
-		colorFill.BorderSizePixel = 0
-		colorFill.ZIndex = 2
-		local fillCorner = Instance.new("UICorner")
-		fillCorner.CornerRadius = UDim.new(0, 8)
-		fillCorner.Parent = colorFill
-		colorFill.Parent = preview
-	end
+	local previewChecker, colorFill = Helpers.DressColorSwatch(preview, 8, 1)
 
 	local function toHex(color: Color3): string
 		return ("%02X%02X%02X"):format(
@@ -6114,8 +6067,7 @@ function SectionClass:CreateColorPicker(options)
 	end
 
 	local function renderRow()
-		colorFill.BackgroundColor3 = element.Color
-		colorFill.BackgroundTransparency = element.Transparency
+		Helpers.PaintColorSwatch(previewChecker, colorFill, element.Color, element.Transparency, true)
 		hexValueLabel.Text = toHex(element.Color)
 	end
 
@@ -7070,7 +7022,7 @@ BindSystem.MakeSelector = function(holder, optionList, current, onPick)
 	return holder
 end
 
--- `grow` (optional) is the panel that should widen when the typed value outgrows the box.
+-- `grow` (optional) is called with the extra width needed when the typed value outgrows the box.
 BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged, grow)
 	local box = Instance.new("Frame")
 	box.Name = "ValueBox"
@@ -7135,7 +7087,9 @@ BindSystem.MakeInputBox = function(parent, numeric, defaultText, onChanged, grow
 		local function fit()
 			local needed = math.clamp(math.ceil(ruler.TextBounds.X) + 20, baseWidth, 220)
 			box.Size = UDim2.new(0, needed, 0, 20)
-			grow.Size = UDim2.new(0, BIND_MENU.EditorWidth + math.max(0, needed - baseWidth), 0, 10)
+			-- report the extra width; the editor widens every row so they stay flush and the
+			-- panel's AutomaticSize follows
+			grow(math.max(0, needed - baseWidth))
 		end
 		ruler:GetPropertyChangedSignal("TextBounds"):Connect(fit)
 		local previousOnChanged = onChanged
@@ -7191,8 +7145,11 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	local panel = BindAssets.Editor:Clone()
 	panel.Name = "KeybindRedacting"
 	panel.Visible = true
-	panel.Size = UDim2.new(0, BIND_MENU.EditorWidth, 0, 10)
-	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.Y end)
+	-- Real auto-size in both directions. Scale-sized children contribute nothing to
+	-- AutomaticSize, so the rows below are given pixel widths and the widest one sets the
+	-- panel's width — that is what lets a long Value push the window open to the right.
+	panel.Size = UDim2.new(0, 0, 0, 0)
+	pcall(function() panel.AutomaticSize = Enum.AutomaticSize.XY end)
 	panel.ZIndex = BindSystem.Z + 10
 	panel.AnchorPoint = Vector2.new(0, 0)
 	-- sinks hover/clicks in the gaps between rows instead of letting them reach the menu
@@ -7220,10 +7177,16 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 	if editorSplitter then
 		editorSplitter.Size = UDim2.new(0.9, 0, 0, BIND_MENU.SplitterHeight)
 	end
-	for _, fieldRow in ipairs({ keyRow, modeRow, valueRow, deleteRow }) do
+	local fieldRows = { keyRow, modeRow, valueRow, deleteRow }
+	context.widen = function(extra)
+		for _, fieldRow in ipairs(fieldRows) do
+			fieldRow.Size = UDim2.new(0, BIND_MENU.EditorWidth + extra, 0, BIND_MENU.EditorRowHeight)
+		end
+	end
+	for _, fieldRow in ipairs(fieldRows) do
 		fieldRow.Position = UDim2.new(0, 0, 0, 0)
 		-- widened from the authored 153: the label and the control were nearly touching
-		fieldRow.Size = UDim2.new(1, 0, 0, BIND_MENU.EditorRowHeight)
+		fieldRow.Size = UDim2.new(0, BIND_MENU.EditorWidth, 0, BIND_MENU.EditorRowHeight)
 		local fieldLabel = fieldRow:FindFirstChild("Name")
 		if fieldLabel and fieldRow ~= deleteRow then
 			-- pin the caption left and stop it from running under the control
@@ -7243,11 +7206,16 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 		keyDashes = BindAssets.Dash:Clone()
 		keyDashes.Parent = keyChipStroke
 	end
+	-- An unbound chip here has to look exactly like an unbound chip on a bind row: same border
+	-- colour, same dashed gradient.
 	local function renderKey()
 		local hasKey = bind.Key and bind.Key ~= "None"
 		keyChipLabel.Text = hasKey and keyDisplayName(bind.Key) or "_"
 		BindSystem.Tween(keyChipLabel, BindSystem.EaseSwift, { TextColor3 = TC(hasKey and Color3.fromRGB(141, 141, 141) or Color3.fromRGB(88, 88, 88)) })
 		if keyDashes then keyDashes.Enabled = not hasKey end
+		if keyChipStroke then
+			BindSystem.Tween(keyChipStroke, BindSystem.EaseSwift, { Color = TC(Color3.fromRGB(65, 65, 65)) })
+		end
 	end
 	renderKey()
 	keyRow.MouseEnter:Connect(function()
@@ -7267,7 +7235,6 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 				if row.Parent then BindSystem.PaintKeybind(row, bind.Key) end
 			end
 			if keyChipLabel.Parent then renderKey() end
-			BindSystem.Tween(keyChipStroke, BindSystem.EaseSmooth, { Color = TC(Color3.fromRGB(29, 29, 29)) })
 		end)
 	end)
 
@@ -7295,40 +7262,29 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 			if bind.Value == nil then
 				bind.Value = BindSystem.PackColor(element.Color, element.Transparency)
 			end
+			-- тот же квадрат, что у колор-пикера, только поменьше
 			local swatch = Instance.new("ImageButton")
 			swatch.Name = "ColorValue"
 			swatch.AutoButtonColor = false
 			swatch.ImageTransparency = 1
-			swatch.BackgroundTransparency = 1
 			swatch.AnchorPoint = Vector2.new(1, 0.5)
 			swatch.Position = UDim2.new(0.97, 0, 0.5, 0)
-			swatch.Size = UDim2.new(0, 38, 0, 20)
+			swatch.Size = UDim2.new(0, 22, 0, 22)
 			swatch.ZIndex = BindSystem.Z + 11
 			swatch.Parent = valueRow
-			local sCorner = Instance.new("UICorner")
-			sCorner.CornerRadius = UDim.new(0, 6)
-			sCorner.Parent = swatch
 			local sStroke = Instance.new("UIStroke")
 			sStroke.Color = Color3.fromRGB(29, 29, 29)
 			sStroke.Thickness = 1
 			sStroke.Parent = swatch
-			-- children draw above their parent (ZIndexBehavior.Sibling): checkerboard first,
-			-- then the colour as its own layer on top
-			Helpers.BuildCheckerboard(swatch, BindSystem.Z + 12, 6)
-			local fill = Instance.new("Frame")
-			fill.Name = "Fill"
-			fill.Size = UDim2.new(1, 0, 1, 0)
-			fill.BorderSizePixel = 0
-			fill.ZIndex = BindSystem.Z + 13
-			local fCorner = Instance.new("UICorner")
-			fCorner.CornerRadius = UDim.new(0, 6)
-			fCorner.Parent = fill
-			fill.Parent = swatch
-			local function renderSwatch()
+			local swatchCorner = Instance.new("UICorner")
+			swatchCorner.CornerRadius = UDim.new(0, 6)
+			swatchCorner.Parent = swatch
+			local swatchChecker, swatchFill = Helpers.DressColorSwatch(swatch, 6, BindSystem.Z + 12)
+
+			local function renderSwatch(animate)
 				local color, transparency = BindSystem.UnpackColor(bind.Value)
 				if color then
-					fill.BackgroundColor3 = color
-					fill.BackgroundTransparency = transparency
+					Helpers.PaintColorSwatch(swatchChecker, swatchFill, color, transparency, animate)
 				end
 			end
 			swatch.MouseEnter:Connect(function()
@@ -7346,7 +7302,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 					Cursor = Vector2.new(origin.X + swatch.AbsoluteSize.X + 10, origin.Y + swatch.AbsoluteSize.Y / 2),
 					OnChanged = function(newColor, newAlpha, committed)
 						bind.Value = BindSystem.PackColor(newColor, newAlpha)
-						renderSwatch()
+						renderSwatch(true)
 						if committed then ConfigHooks.Autosave() end
 					end,
 				})
@@ -7384,7 +7340,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 			BindSystem.MakeInputBox(valueRow, numeric, default ~= nil and tostring(default) or nil, function(text)
 				bind.Value = text
 				ConfigHooks.Autosave()
-			end, panel)
+			end, context.widen)
 		end
 	end
 
@@ -7511,6 +7467,7 @@ BindSystem.BuildMenu = function(element, position)
 			end
 		end
 		context.rows = {}
+		if context.refreshSplitter then context.refreshSplitter() end
 		for index, bind in ipairs(BindSystem.ForElement(element)) do
 			local row = BindAssets.Row:Clone()
 			row.Name = "BindRow"
@@ -7546,6 +7503,14 @@ BindSystem.BuildMenu = function(element, position)
 	-- keep the authored splitter + "New Bind" below the generated rows
 	splitter.LayoutOrder = 900
 	splitter.Size = UDim2.new(0.9, 0, 0, BIND_MENU.SplitterHeight)
+	splitter.BackgroundTransparency = 1
+	-- nothing to separate until the first bind exists
+	local function refreshSplitter(instant)
+		local hasBinds = #BindSystem.ForElement(element) > 0
+		BindSystem.Tween(splitter, instant and TweenInfo.new(0) or BindSystem.EaseSmooth,
+			{ BackgroundTransparency = hasBinds and 0 or 1 })
+	end
+	context.refreshSplitter = refreshSplitter
 	newBindRow.LayoutOrder = 901
 	newBindRow.Size = UDim2.new(1, 0, 0, BIND_MENU.NewBindHeight)
 	local newBindLabel = newBindRow:FindFirstChild("Frame")
