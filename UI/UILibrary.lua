@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A10.6"
+		Developer info: "A10.7"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -1461,7 +1461,7 @@ local GuiData =
 												}},
 											}},
 										}},
-										{"TextLabel",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187368093",700,"Normal"),Name="Value",Position=u2(0.99,0,0.279,0),Size=u2(0,104,0,27),Text="50% / 100%",TextColor3=c3(220,220,220),TextSize=19,TextXAlignment=1,TextYAlignment=1},{
+										{"TextLabel",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187368093",700,"Normal"),Name="Value",Position=u2(0.99,0,0.279,0),Size=u2(0,104,0,27),Text="50 / 100%",TextColor3=c3(220,220,220),TextSize=19,TextXAlignment=1,TextYAlignment=1},{
 											{"UIStroke",{ApplyStrokeMode=0,Color=c3(200,200,200),LineJoinMode=0,Thickness=0.2,Transparency=0},{
 											}},
 										}},
@@ -2938,12 +2938,14 @@ function Helpers.SetAuthoredColor(inst: Instance, prop: string, color: Color3)
 	pcall(function() inst[prop] = TC(color) end)
 end
 
--- Progress bar readouts. `num` formats a raw number with the bar's increment and suffix applied.
+-- Progress bar readouts. `num(n, bare)` formats a raw number with the bar's increment applied and
+-- the suffix appended unless `bare`. In the "x / y" forms only the total carries the unit — the
+-- current value is already read against it, so repeating it just makes the line noisy.
 Helpers.ProgressFormats = {
 	percent = function(_, frac) return math.floor(frac * 100 + 0.5) .. "%" end,
-	percentoftotal = function(_, frac) return math.floor(frac * 100 + 0.5) .. "% / 100%" end,
+	percentoftotal = function(_, frac) return math.floor(frac * 100 + 0.5) .. " / 100%" end,
 	value = function(element, _, num) return num(element.CurrentValue) end,
-	valueofmax = function(element, _, num) return num(element.CurrentValue) .. " / " .. num(element.Max) end,
+	valueofmax = function(element, _, num) return num(element.CurrentValue, true) .. " / " .. num(element.Max) end,
 	none = function() return "" end,
 }
 
@@ -5507,8 +5509,8 @@ function SectionClass:CreateProgressBar(options)
 		return math.clamp((element.CurrentValue - element.Min) / span, 0, 1)
 	end
 
-	local function formatNumber(n: number): string
-		return tostring(round(n, element.Increment)) .. element.Suffix
+	local function formatNumber(n: number, bare: boolean?): string
+		return tostring(round(n, element.Increment)) .. (bare and "" or element.Suffix)
 	end
 
 	local function valueText(frac: number): string
