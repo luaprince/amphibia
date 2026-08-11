@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A10.2"
+		Developer info: "A10.3"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -76,6 +76,7 @@ local HttpService = getService("HttpService")
 local RunService = getService("RunService")
 local GuiService = getService("GuiService")
 local ContextActionService = getService("ContextActionService")
+local ContentProvider = getService("ContentProvider")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -2887,6 +2888,20 @@ ScreenGui.Parent = getGuiParent()
 
 local Main = ScreenGui:WaitForChild("MainBackground")
 Main.Active = true
+
+-- Nothing in the menu may be hovered or clicked before the interface is revealed. A transparent
+-- button covers the menu's own content but sits below the screens (loading / key entry live at
+-- ZIndex 11+), so those stay usable while everything behind them is inert.
+local InteractionGate = Instance.new("TextButton")
+InteractionGate.Name = "InteractionGate"
+InteractionGate.Text = ""
+InteractionGate.AutoButtonColor = false
+InteractionGate.BackgroundTransparency = 1
+InteractionGate.Size = UDim2.new(1, 0, 1, 0)
+InteractionGate.ZIndex = 10
+InteractionGate.Active = true
+InteractionGate.Selectable = false
+InteractionGate.Parent = Main
 local Header = Main:WaitForChild("HeaderFrame")
 local Info = Main:WaitForChild("InfoFrame")
 local TabsFrame = Main:WaitForChild("TabsFrame")
@@ -4248,6 +4263,22 @@ local function runLoading(title: string?, description: string?, minTime: number?
 	fill.Size = UDim2.new(0, 0, 1, 0)
 	timer.Text = ""
 
+	-- warm the assets while the bar runs, then make sure we do not finish ahead of it
+	if not Helpers.PreloadFinished then
+		task.spawn(function()
+			local roots = { ScreenGui }
+			for _, template in pairs(Templates) do
+				table.insert(roots, template)
+			end
+			for _, asset in pairs(BindAssets) do
+				table.insert(roots, asset)
+			end
+			Helpers.Preload(roots,
+				{ COLOR_PICKER.CheckerImage },
+				{ FONT_SERIF, FONT_SERIF_BOLD, FONT_SERIF_ITALIC, FONT_BODY, FONT_MONO })
+		end)
+	end
+
 	tween(fill, TweenInfo.new(minTime * 0.92, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
 		{ Size = UDim2.new(0.86, 0, 1, 0) })
 
@@ -4261,6 +4292,12 @@ local function runLoading(title: string?, description: string?, minTime: number?
 	end)
 
 	task.wait(minTime - 0.3)
+	-- hold the bar short of the end until the assets are actually in, capped so a stalled
+	-- request can never wedge the loading screen
+	local waited = 0
+	while not Helpers.PreloadFinished and waited < 8 do
+		waited += task.wait(0.05)
+	end
 	tween(fill, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Size = UDim2.new(1, 0, 1, 0) })
 	task.wait(0.32)
 	timer.Text = "Loaded!"
@@ -5426,6 +5463,55 @@ end
 -- sibling rather than being its child: a full-size child would feed back into the window's
 -- AutomaticSize and inflate it. Using only AbsolutePosition/AbsoluteSize keeps it exact — no
 -- mouse coordinates, so no topbar-inset guesswork.
+-- Warms every image and font the interface will ever show, so nothing pops in half-drawn the
+-- first time a tab, popup or template is used. Templates live outside the ScreenGui once the
+-- showcase page is destroyed, so they have to be walked separately.
+Helpers.PreloadFinished = false
+
+function Helpers.Preload(roots, extraImages, extraFonts)
+	local assets = {}
+	local function collect(root)
+		if typeof(root) ~= "Instance" then return end
+		local queue = root:GetDescendants()
+		table.insert(queue, root)
+		for _, item in ipairs(queue) do
+			if item:IsA("ImageLabel") or item:IsA("ImageButton")
+				or item:IsA("TextLabel") or item:IsA("TextButton") or item:IsA("TextBox") then
+				table.insert(assets, item)
+			end
+		end
+	end
+	for _, root in ipairs(roots) do
+		collect(root)
+	end
+
+	-- probes for assets that only ever exist at runtime and so appear in no tree
+	local probes = Instance.new("Folder")
+	probes.Name = "PreloadProbes"
+	probes.Parent = ScreenGui
+	for _, image in ipairs(extraImages or {}) do
+		local probe = Instance.new("ImageLabel")
+		probe.Image = image
+		probe.BackgroundTransparency = 1
+		probe.Visible = false
+		probe.Parent = probes
+		table.insert(assets, probe)
+	end
+	for _, font in ipairs(extraFonts or {}) do
+		local probe = Instance.new("TextLabel")
+		probe.FontFace = font
+		probe.Text = "Ag"
+		probe.BackgroundTransparency = 1
+		probe.Visible = false
+		probe.Parent = probes
+		table.insert(assets, probe)
+	end
+
+	pcall(function() ContentProvider:PreloadAsync(assets) end)
+	probes:Destroy()
+	Helpers.PreloadFinished = true
+end
+
 -- Roblox keeps drawing a faint rail down the whole scroll path even with the end-cap images
 -- blanked, so the native bar is switched off entirely and we draw the thumb ourselves. Sized in
 -- ratios of `host` so it stays correct under the menu's UIScale, and being an ordinary Frame it
@@ -7710,6 +7796,10 @@ local function revealInterface(window)
 
 	InterfaceRevealed = true
 	WindowOpen = true
+	-- the menu becomes live only now
+	if InteractionGate.Parent then
+		InteractionGate:Destroy()
+	end
 
 	for index, section in ipairs(sections) do
 		task.delay((index - 1) * 0.07, function()
