@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A10.4"
+		Developer info: "A10.6"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -50,6 +50,11 @@
 
 		Section:CreateToggle({ Name = "Toggle", CurrentValue = true, Flag = "MyToggle", Callback = function(v) end })
 
+		-- display only: no keybinds, not saved to configs
+		local Bar = Section:CreateProgressBar({ Name = "Loading", Max = 100, Value = 0 })
+		Bar:Set(40)              -- Bar:Add(10) / Bar:SetFraction(0.4) / Bar:Complete()
+		Bar:SetIndeterminate(true) -- unknown duration: the fill sweeps instead
+
 		Window:CreateConfigTab({ Category = "Menu" })
 
 ]]
@@ -79,55 +84,6 @@ local ContextActionService = getService("ContextActionService")
 local ContentProvider = getService("ContentProvider")
 
 local LocalPlayer = Players.LocalPlayer
-
-local function loadWithTimeout(url: string, timeout: number?): ...any
-	assert(type(url) == "string", "Expected string, got " .. type(url))
-	timeout = timeout or 5
-	local requestCompleted = false
-	local success, result = false, nil
-
-	local requestThread = task.spawn(function()
-		local fetchSuccess, fetchResult = pcall(game.HttpGet, game, url)
-
-		if not fetchSuccess or type(fetchResult) ~= "string" or #fetchResult == 0 then
-			if type(fetchResult) ~= "string" or #fetchResult == 0 then
-				fetchResult = "Empty response"
-			end
-			success, result = false, fetchResult
-			requestCompleted = true
-			return
-		end
-		local content = fetchResult
-		local execSuccess, execResult = pcall(function()
-			return loadstring(content)()
-		end)
-		success, result = execSuccess, execResult
-		requestCompleted = true
-	end)
-
-	local timeoutThread = task.delay(timeout, function()
-		if not requestCompleted then
-			warn("Request for " .. url .. " timed out after " .. tostring(timeout) .. " seconds")
-			task.cancel(requestThread)
-			result = "Request timed out"
-			requestCompleted = true
-		end
-	end)
-
-	while not requestCompleted do
-		task.wait()
-	end
-
-	if coroutine.status(timeoutThread) ~= "dead" then
-		task.cancel(timeoutThread)
-	end
-
-	if not success then
-		warn("Failed to process " .. tostring(url) .. ": " .. tostring(result))
-	end
-
-	return if success then result else nil
-end
 
 local requestsDisabled = false
 local customAssetId = nil
@@ -1486,6 +1442,26 @@ local GuiData =
 											}},
 										}},
 										{"TextLabel",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187368093",700,"Normal"),Name="Value",Position=u2(0.99,0,0.279,0),Size=u2(0,104,0,27),Text="50%",TextColor3=c3(226,226,226),TextSize=20,TextXAlignment=1,TextYAlignment=1},{
+											{"UIStroke",{ApplyStrokeMode=0,Color=c3(200,200,200),LineJoinMode=0,Thickness=0.2,Transparency=0},{
+											}},
+										}},
+									}},
+									{"Frame",{BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,Name="ProgressBar",Position=u2(0,0,0,0),Size=u2(0.92,0,0,50)},{
+										{"TextLabel",{AnchorPoint=v2(0,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187365364",400,"Normal"),Name="Name",Position=u2(0.01,0,0.2787,0),Size=u2(0,104,0,27),Text="Progress bar 1",TextColor3=c3(200,200,200),TextSize=16,TextXAlignment=0,TextYAlignment=1},{
+											{"UIStroke",{ApplyStrokeMode=0,Color=c3(200,200,200),LineJoinMode=0,Thickness=0.2,Transparency=0},{
+											}},
+										}},
+										{"Frame",{AnchorPoint=v2(0.5,0.5),BackgroundColor3=c3(94,94,94),Name="BarBg",Position=u2(0.5,0,0.7,0),Size=u2(0.95,0,0.1,2)},{
+											{"UICorner",{CornerRadius=ud(1,0)},{
+											}},
+											{"Frame",{AnchorPoint=v2(0,0.5),BackgroundColor3=c3(198,198,198),Name="Fill",Position=u2(0,0,0.5,0),Size=u2(0.23,0,1,0),ZIndex=2},{
+												{"UICorner",{CornerRadius=ud(0,7)},{
+												}},
+												{"UIShadow",{BlurRadius=ud(0,10),Color=c3(255,255,255),Offset=u2(0,0,0,0),Spread=u2(0,15,0,5),Transparency=0.75,ZIndex=-1},{
+												}},
+											}},
+										}},
+										{"TextLabel",{AnchorPoint=v2(1,0.5),BackgroundColor3=c3(255,255,255),BackgroundTransparency=1,FontFace=ft("rbxassetid://12187368093",700,"Normal"),Name="Value",Position=u2(0.99,0,0.279,0),Size=u2(0,104,0,27),Text="50% / 100%",TextColor3=c3(220,220,220),TextSize=19,TextXAlignment=1,TextYAlignment=1},{
 											{"UIStroke",{ApplyStrokeMode=0,Color=c3(200,200,200),LineJoinMode=0,Thickness=0.2,Transparency=0},{
 											}},
 										}},
@@ -2940,6 +2916,37 @@ end
 -- the main menu is minimized, nothing should be left floating on screen.
 local Helpers = {}
 Helpers.OpenPopups = {}
+-- Config names are interpolated into RichText confirmation dialogs. Names typed in the UI are
+-- validated, but names discovered on disk are not — a file could otherwise inject markup and
+-- disguise what a destructive dialog is really about.
+function Helpers.EscapeRichText(text): string
+	return (tostring(text or "")
+		:gsub("&", "&amp;")
+		:gsub("<", "&lt;")
+		:gsub(">", "&gt;"))
+end
+
+-- Re-authors a colour: the theme engine repaints every registered instance from its snapshot of
+-- the *authored* colour, so a plain `inst.Prop = colour` is undone by the next theme switch.
+function Helpers.SetAuthoredColor(inst: Instance, prop: string, color: Color3)
+	if typeof(color) ~= "Color3" then return end
+	pcall(function() inst:SetAttribute(THEME_ATTR .. prop, color) end)
+	local snapshot = ThemeRegistry[inst]
+	if snapshot then
+		snapshot[prop] = color
+	end
+	pcall(function() inst[prop] = TC(color) end)
+end
+
+-- Progress bar readouts. `num` formats a raw number with the bar's increment and suffix applied.
+Helpers.ProgressFormats = {
+	percent = function(_, frac) return math.floor(frac * 100 + 0.5) .. "%" end,
+	percentoftotal = function(_, frac) return math.floor(frac * 100 + 0.5) .. "% / 100%" end,
+	value = function(element, _, num) return num(element.CurrentValue) end,
+	valueofmax = function(element, _, num) return num(element.CurrentValue) .. " / " .. num(element.Max) end,
+	none = function() return "" end,
+}
+
 function Helpers.CloseAllPopups()
 	local popups = Helpers.OpenPopups
 	Helpers.OpenPopups = {}
@@ -3145,6 +3152,7 @@ local Templates = {}
 	Templates.NumberPicker = leftColumn.NumberPickerSection.ButtonsHolderFrame.NumberPicker:Clone()
 	Templates.Textbox = leftColumn.TextboxSection.ButtonsHolderFrame.Textbox:Clone()
 	Templates.Slider = rightColumn.SlidersSection.ButtonsHolderFrame.SliderPercent:Clone()
+	Templates.ProgressBar = rightColumn.SlidersSection.ButtonsHolderFrame.ProgressBar:Clone()
 	Templates.ColorPicker = rightColumn.ColorPickersSection.ButtonsHolderFrame.ColorPicker:Clone()
 	Templates.Selector = rightColumn.SelectorSection.ButtonsHolderFrame.Selector:Clone()
 	Templates.SelectorOption = Templates.Selector.SelectionsHolder.Selection1:Clone()
@@ -4483,7 +4491,11 @@ function BindSystem.SetValue(element, value)
 	elseif elementType == "Input" then
 		element:Set(tostring(value))
 	elseif elementType == "Selector" or elementType == "Dropdown" then
-		if value ~= "" then element:Set(tostring(value)) end
+		-- only ever an option this element actually offers; bind values come from configs too
+		if type(value) ~= "string" or value == "" then return end
+		local options = element.Options
+		if options and not table.find(options, value) then return end
+		element:Set(value)
 	elseif elementType == "ColorPicker" then
 		local color, transparency = BindSystem.UnpackColor(value)
 		if color then element:Set(color, transparency) end
@@ -5448,6 +5460,211 @@ function SectionClass:CreateLabel(options)
 	return self:_mount(element, row, options)
 end
 
+--========================================================= Progress Bar =============================================--
+
+-- Read-only element: it reports progress and never takes input. That is deliberate — "ProgressBar"
+-- is absent from BindSystem.ModesByType (so right-click offers no binds) and the element exposes no
+-- GetSaveValue/LoadSaveValue (so configs neither store nor restore it, and "Reset settings" skips it).
+function SectionClass:CreateProgressBar(options)
+	options = options or {}
+	local range = options.Range or {}
+	local element = {
+		Type = "ProgressBar",
+		Min = tonumber(options.Min) or tonumber(range[1]) or 0,
+		Max = tonumber(options.Max) or tonumber(range[2]) or 100,
+		Suffix = options.Suffix or "",
+		Increment = tonumber(options.Increment) or 1,
+		Indeterminate = false,
+	}
+	element.CurrentValue = math.clamp(
+		tonumber(options.Value) or tonumber(options.CurrentValue) or element.Min,
+		math.min(element.Min, element.Max),
+		math.max(element.Min, element.Max)
+	)
+	element.DefaultValue = element.CurrentValue
+
+	local row = Templates.ProgressBar:Clone()
+	row.Name = "ProgressBar"
+	local label = nameLabel(row)
+	label.Text = options.Name or "Progress Bar"
+	local barBg = row:FindFirstChild("BarBg")
+	local fill = barBg:FindFirstChild("Fill")
+	local fillShadow = fill:FindFirstChildOfClass("UIShadow")
+	local valueLabel = row:FindFirstChild("Value")
+	-- captured before _mount registers the row with the theme engine, so these are the design colours
+	local authoredFill = fill.BackgroundColor3
+	local authoredGlow = fillShadow and fillShadow.Color or authoredFill
+
+	local animate = options.Animate ~= false
+	local format = options.Format or "PercentOfTotal"
+	local overrideText = nil
+	local sweep = nil
+	local completed = false
+
+	local function fraction(): number
+		local span = element.Max - element.Min
+		if span == 0 then return 0 end
+		return math.clamp((element.CurrentValue - element.Min) / span, 0, 1)
+	end
+
+	local function formatNumber(n: number): string
+		return tostring(round(n, element.Increment)) .. element.Suffix
+	end
+
+	local function valueText(frac: number): string
+		if overrideText then return overrideText end
+		if element.Indeterminate then return "" end
+		if type(format) == "function" then
+			local ok, text = pcall(format, element.CurrentValue, frac, element)
+			if ok and text ~= nil then return tostring(text) end
+			return ""
+		end
+		local named = Helpers.ProgressFormats[string.lower(tostring(format))] or Helpers.ProgressFormats.percentoftotal
+		return named(element, frac, formatNumber)
+	end
+
+	local function render(instant: boolean?)
+		local frac = fraction()
+		if not element.Indeterminate then
+			tween(fill, (instant or not animate) and TweenInfo.new(0) or EASE.Fast, { Size = UDim2.new(frac, 0, 1, 0) })
+			-- a zero-width fill draws nothing, but its glow still would — kill it at 0%
+			if fillShadow then fillShadow.Enabled = frac > 0.001 end
+		end
+		valueLabel.Text = valueText(frac)
+	end
+
+	local function stopSweep()
+		if sweep then
+			pcall(function() sweep:Cancel() end)
+			sweep = nil
+		end
+		barBg.ClipsDescendants = false
+		fill.Position = UDim2.new(0, 0, 0.5, 0)
+	end
+
+	local function startSweep()
+		stopSweep()
+		-- the travelling block must be cut off by the track; ClipsDescendants follows the UICorner
+		barBg.ClipsDescendants = true
+		if fillShadow then fillShadow.Enabled = true end
+		fill.Size = UDim2.new(0.28, 0, 1, 0)
+		fill.Position = UDim2.new(-0.28, 0, 0.5, 0)
+		sweep = tween(fill, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, false, 0.15),
+			{ Position = UDim2.new(1, 0, 0.5, 0) })
+	end
+
+	function element:Set(value: number, silent: boolean?)
+		value = tonumber(value)
+		if not value then return end
+		element.CurrentValue = math.clamp(value, math.min(element.Min, element.Max), math.max(element.Min, element.Max))
+		render(false)
+		if element.Flag then
+			-- visible to Amphibia.Flags for convenience, but never written to a config
+			AmphibiaLibrary.Flags[element.Flag] = element.CurrentValue
+		end
+		local frac = fraction()
+		if not silent then
+			safeCallback(options.Callback, element.CurrentValue, frac)
+		end
+		if frac >= 1 then
+			if not completed then
+				completed = true
+				if not silent then safeCallback(options.OnComplete, element.CurrentValue) end
+			end
+		else
+			completed = false
+		end
+	end
+
+	function element:SetFraction(frac: number, silent: boolean?)
+		frac = tonumber(frac)
+		if not frac then return end
+		element:Set(element.Min + math.clamp(frac, 0, 1) * (element.Max - element.Min), silent)
+	end
+
+	function element:Add(delta: number, silent: boolean?)
+		delta = tonumber(delta)
+		if not delta then return end
+		element:Set(element.CurrentValue + delta, silent)
+	end
+
+	function element:GetValue(): number return element.CurrentValue end
+	function element:GetFraction(): number return fraction() end
+
+	function element:SetRange(newMin: number?, newMax: number?)
+		element.Min = tonumber(newMin) or element.Min
+		element.Max = tonumber(newMax) or element.Max
+		element:Set(element.CurrentValue, true)
+	end
+
+	function element:SetIndeterminate(state: boolean?)
+		state = state == true
+		if state == element.Indeterminate then return end
+		element.Indeterminate = state
+		if state then startSweep() else stopSweep() end
+		render(true)
+	end
+
+	function element:SetName(text: string)
+		text = tostring(text)
+		label.Text = text
+		element.Name = text
+		element.SearchText = string.lower(text)
+	end
+
+	-- nil hands the readout back to the formatter
+	function element:SetValueText(text: string?)
+		overrideText = text and tostring(text) or nil
+		render(true)
+	end
+
+	function element:SetFormat(newFormat)
+		format = newFormat or "PercentOfTotal"
+		render(true)
+	end
+
+	function element:SetSuffix(suffix: string?)
+		element.Suffix = suffix and tostring(suffix) or ""
+		render(true)
+	end
+
+	-- nil restores the design colour
+	function element:SetColor(color: Color3?)
+		local custom = typeof(color) == "Color3"
+		Helpers.SetAuthoredColor(fill, "BackgroundColor3", custom and color or authoredFill)
+		if fillShadow then
+			Helpers.SetAuthoredColor(fillShadow, "Color", custom and color or authoredGlow)
+		end
+	end
+
+	function element:Complete(silent: boolean?)
+		element:SetIndeterminate(false)
+		element:Set(element.Max, silent)
+	end
+
+	function element:Reset(silent: boolean?)
+		element:SetIndeterminate(false)
+		element:Set(element.DefaultValue, silent)
+	end
+
+	function element:SetVisible(visible: boolean?)
+		row.Visible = visible ~= false
+	end
+
+	if options.Color then element:SetColor(options.Color) end
+	if options.ValueText then overrideText = tostring(options.ValueText) end
+	completed = fraction() >= 1 -- a bar created already full must not fire OnComplete on its first Set
+	render(true)
+
+	local mounted = self:_mount(element, row, options)
+	if not options.Name then element:SetName("Progress Bar") end
+	if element.Flag then
+		AmphibiaLibrary.Flags[element.Flag] = element.CurrentValue
+	end
+	if options.Indeterminate then element:SetIndeterminate(true) end
+	return mounted
+end
+
 --========================================================= Keybind (removed) ========================================--
 
 -- The dedicated keybind row is gone: right-click any element to manage its binds instead.
@@ -5944,7 +6161,23 @@ function SectionClass:CreateDropdown(options)
 	end
 
 	element.GetSaveValue = function() return currentValue() end
-	element.LoadSaveValue = function(_, value) element:Set(value, false) end
+	-- Set() stays permissive because script authors legitimately call it before :Refresh().
+	-- Config data is a different matter: it is untrusted, so it is filtered down to real options
+	-- here rather than being handed straight to the consumer's callback.
+	element.LoadSaveValue = function(_, value)
+		if multiple then
+			if type(value) ~= "table" then return end
+			local allowed = {}
+			for _, optionName in ipairs(value) do
+				if table.find(element.Options, optionName) then
+					table.insert(allowed, optionName)
+				end
+			end
+			element:Set(allowed, false)
+		elseif table.find(element.Options, value) then
+			element:Set(value, false)
+		end
+	end
 
 	renderPicked()
 	registerFlag(element, currentValue())
@@ -6654,7 +6887,7 @@ end
 SearchUI.TypeLabels = {
 	Tab = "TAB", Section = "SECTION", Toggle = "TOGGLE", Slider = "SLIDER", Button = "BUTTON",
 	NumberPicker = "NUMBER", Input = "INPUT", Selector = "SELECTOR", Dropdown = "DROPDOWN",
-	ColorPicker = "COLOR", Keybind = "KEYBIND", Label = "LABEL",
+	ColorPicker = "COLOR", Keybind = "KEYBIND", Label = "LABEL", ProgressBar = "PROGRESS",
 }
 
 function WindowClass:ApplySearch(query: string)
@@ -8217,7 +8450,7 @@ function ConfigActions.overwrite(name: string?)
 	task.spawn(function()
 		local confirmed = showConfirm({
 			Title = "Overwrite config?",
-			Description = ("Current settings will replace everything stored in <b>%s</b>."):format(name),
+			Description = ("Current settings will replace everything stored in <b>%s</b>."):format(Helpers.EscapeRichText(name)),
 			ConfirmText = "Overwrite",
 		})
 		if not confirmed then return end
@@ -8242,7 +8475,7 @@ function ConfigActions.rename(name: string?)
 	task.spawn(function()
 		local newName = showInputPrompt({
 			Title = "Rename config.",
-			Description = ("Choose a new name for %s."):format(name),
+			Description = ("Choose a new name for %s."):format(Helpers.EscapeRichText(name)),
 			ConfirmText = "Rename",
 			Default = name,
 			MaxLength = 32,
@@ -8341,7 +8574,8 @@ function ConfigActions.importCode()
 			Validate = function(text) return ConfigSystem.ValidateName(text) end,
 		})
 		if not name then return end
-		ConfigSystem.Write(name, { meta = { created = os.time(), modified = os.time(), imported = true }, flags = decoded.flags, binds = decoded.binds })
+		local importedBinds = type(decoded.binds) == "table" and decoded.binds or nil
+		ConfigSystem.Write(name, { meta = { created = os.time(), modified = os.time(), imported = true }, flags = decoded.flags, binds = importedBinds })
 		refreshConfigs()
 		ConfigSystem.ScheduleReconcile()
 		setSelectedConfig(name)
@@ -8379,7 +8613,7 @@ function ConfigActions.delete(name: string?)
 	task.spawn(function()
 		local confirmed = showConfirm({
 			Title = "Delete config?",
-			Description = ("<b>%s</b> will be <font color=\"#C97F7F\">removed permanently</font>. This can't be undone."):format(name),
+			Description = ("<b>%s</b> will be <font color=\"#C97F7F\">removed permanently</font>. This can't be undone."):format(Helpers.EscapeRichText(name)),
 			ConfirmText = "Delete",
 			Destructive = true,
 			Icon = ConfigUI.TrashIcon,
