@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A10.3"
+		Developer info: "A10.4"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -2902,6 +2902,10 @@ InteractionGate.ZIndex = 10
 InteractionGate.Active = true
 InteractionGate.Selectable = false
 InteractionGate.Parent = Main
+-- The gate covers the header too, so it doubles as the drag handle while it is up: the window
+-- stays movable during loading, just not clickable. Its connections die with it on reveal.
+makeDraggable(InteractionGate, Main)
+
 local Header = Main:WaitForChild("HeaderFrame")
 local Info = Main:WaitForChild("InfoFrame")
 local TabsFrame = Main:WaitForChild("TabsFrame")
