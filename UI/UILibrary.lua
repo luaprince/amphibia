@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.0"
+		Developer info: "A11.1"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -5526,9 +5526,11 @@ function SectionClass:CreateProgressBar(options)
 	local sizeTween = nil
 	local completed = false
 	local nameToken = 0
+	local valueToken = 0
 	local shownName = element.BaseName
 	local valueShown = true
-	local NAME_FADE, VALUE_FADE = 0.14, 0.26
+	local NAME_FADE, VALUE_FADE = 0.1, 0.2
+	local hideValueDelay = tonumber(options.HideValueDelay) or 1.5
 
 	local function fraction(): number
 		local span = element.Max - element.Min
@@ -5622,7 +5624,19 @@ function SectionClass:CreateProgressBar(options)
 		local shown = element.Indeterminate or not (hideValueOnComplete and frac >= 1)
 		if shown == valueShown and not instant then return end
 		valueShown = shown
-		fadeText(valueLabel, valueStroke, valueStrokeAlpha, shown, instant and 0 or VALUE_FADE)
+		valueToken += 1
+		local token = valueToken
+		-- Coming back is immediate; going away waits, so a finished readout stays legible for a
+		-- moment instead of vanishing the instant the last unit lands. A bar *born* complete has no
+		-- such moment to show off, hence the instant path.
+		if shown or instant then
+			fadeText(valueLabel, valueStroke, valueStrokeAlpha, shown, instant and 0 or VALUE_FADE)
+			return
+		end
+		task.delay(hideValueDelay, function()
+			if token ~= valueToken then return end -- progress moved off the finish line meanwhile
+			fadeText(valueLabel, valueStroke, valueStrokeAlpha, false, VALUE_FADE)
+		end)
 	end
 
 	local function render(instant: boolean?)
