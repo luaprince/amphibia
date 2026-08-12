@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.3"
+		Developer info: "A11.4"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -2949,6 +2949,12 @@ function Helpers.SetAuthoredColor(inst: Instance, prop: string, color: Color3)
 	pcall(function() inst[prop] = TC(color) end)
 end
 
+-- False until the key has been accepted and the loading screen is done. Notifications and the
+-- keybinds overlay live outside the menu frame, so the InteractionGate does not cover them — they
+-- consult this instead. Held on Helpers because both are defined long before the reveal code is.
+Helpers.Revealed = false
+Helpers.PendingNotifications = {}
+
 -- Pins a subtree to its authored (Default-palette) colours: repaints them from the snapshot, then
 -- forgets the instances. themeApply only touches what it has a snapshot for, so dropping them is
 -- all the exemption needed — and repainting first means this works even after a theme was applied.
@@ -3100,7 +3106,7 @@ local BIND_MENU = {
 -- конфигов. Если окно не влезает справа, оно уходит влево от курсора на тот же X.
 local POPUP_CURSOR_OFFSET = {
 	X = 0,
-	Y = -70,
+	Y = -62,
 }
 
 -- Колор-пикер. HexPrefixX/HexTextX — положение "#" и самого значения в строке HEX, в пикселях
@@ -3497,6 +3503,14 @@ local notifyOrder = 0
 
 function AmphibiaLibrary:Notify(settings)
 	settings = settings or {}
+	-- Before the reveal nothing may appear on screen — a script that calls Notify on a timer must
+	-- not leak past a key screen. Held, not dropped: the queue replays once the interface is live.
+	if not Helpers.Revealed then
+		if #Helpers.PendingNotifications < 8 then
+			table.insert(Helpers.PendingNotifications, settings)
+		end
+		return
+	end
 	local content = settings.Content or settings.Title or "Notification"
 	local color = NOTIFY_COLORS[settings.Color or "Green"] or NOTIFY_COLORS.Green
 	local duration = settings.Duration or 4
@@ -3951,6 +3965,12 @@ function KeybindsUI.SetMode(mode: string)
 	if previous == mode then
 		return
 	end
+	-- The overlay sits outside the menu frame, so it would happily show itself over a key screen.
+	-- Remember what was asked for and stay hidden; the reveal applies it.
+	if not Helpers.Revealed then
+		KeybindsUI.PendingMode = mode
+		return
+	end
 	KeybindsUI.Mode = mode
 	if mode == "Hidden" then
 		setKeybindsListShown(false)
@@ -4013,7 +4033,6 @@ end)
 ------------------------------------------------------------------------------------------------------------------------
 
 local WindowOpen = false
-local InterfaceRevealed = false
 local windowAnimating = false
 local RememberedWindowPosition = UDim2.new(0.5, 0, 0.5, 0)
 
@@ -4051,7 +4070,7 @@ do
 		tween(ShowUiButton, "Out", { Size = baseSize })
 	end)
 	ShowUiButton.MouseButton1Click:Connect(function()
-		if InterfaceRevealed then
+		if Helpers.Revealed then
 			setWindowOpen(not WindowOpen)
 		end
 	end)
@@ -4074,7 +4093,7 @@ connect(UserInputService.InputBegan, function(input, gameProcessed)
 	if input.UserInputType == Enum.UserInputType.Keyboard then
 		-- never while the user is recording a keybind — that key belongs to the capture
 		local bindName = getSetting("General", "amphibiaOpen")
-		if bindName and input.KeyCode.Name == bindName and InterfaceRevealed
+		if bindName and input.KeyCode.Name == bindName and Helpers.Revealed
 			and not BindCaptureActive then
 			setWindowOpen(not WindowOpen)
 		end
@@ -8264,7 +8283,7 @@ local function revealInterface(window)
 	fadeOut(Screens.Loading, 0.35)
 	task.wait(0.2)
 
-	InterfaceRevealed = true
+	Helpers.Revealed = true
 	WindowOpen = true
 	-- the menu becomes live only now
 	if InteractionGate.Parent then
@@ -8285,6 +8304,22 @@ local function revealInterface(window)
 	task.delay(#sections * 0.07 + 0.4, function()
 		refreshTabVisuals(tab)
 	end)
+
+	-- Everything that asked to surface while the menu was still locked now gets its turn.
+	if KeybindsUI.PendingMode then
+		local pendingMode = KeybindsUI.PendingMode
+		KeybindsUI.PendingMode = nil
+		KeybindsUI.SetMode(pendingMode)
+	end
+	local queued = Helpers.PendingNotifications
+	if #queued > 0 then
+		Helpers.PendingNotifications = {}
+		for index, settings in ipairs(queued) do
+			task.delay((index - 1) * 0.12, function()
+				AmphibiaLibrary:Notify(settings)
+			end)
+		end
+	end
 end
 ------------------------------------------------------------------------------------------------------------------------
 --  Configuration system
