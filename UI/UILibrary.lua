@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.11"
+		Developer info: "A11.12"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -2931,6 +2931,25 @@ end
 -- the main menu is minimized, nothing should be left floating on screen.
 local Helpers = {}
 Helpers.OpenPopups = {}
+-- The window each open popup owns, keyed by its close(). Needed to tell "scrolled the page" from
+-- "scrolled inside the popup": the first dismisses it, the second must not.
+Helpers.PopupFrames = {}
+
+function Helpers.PointerOverPopup(): boolean
+	local point = mousePoint()
+	for _, window in pairs(Helpers.PopupFrames) do
+		if window.Parent then
+			-- both sides in canvas space, so the topbar inset cannot skew the comparison
+			local topLeft = screenPointFor(window.AbsolutePosition)
+			local size = window.AbsoluteSize
+			if point.X >= topLeft.X and point.X <= topLeft.X + size.X
+				and point.Y >= topLeft.Y and point.Y <= topLeft.Y + size.Y then
+				return true
+			end
+		end
+	end
+	return false
+end
 -- Config names are interpolated into RichText confirmation dialogs. Names typed in the UI are
 -- validated, but names discovered on disk are not — a file could otherwise inject markup and
 -- disguise what a destructive dialog is really about.
@@ -5941,6 +5960,13 @@ function SectionClass:CreateProgressBar(options)
 				stopSweep()
 				return
 			end
+			-- Hands the fill back the moment the menu starts closing. This loop rewrites the fill's
+			-- transparency every frame, and the closing fade tweens that same property to 1 — the two
+			-- fought for the 0.22s of the animation and the block flickered its way out. WindowOpen
+			-- flips before the fade starts, so stepping aside here leaves the fade uncontested.
+			if not WindowOpen then
+				return
+			end
 			local phase = ((os.clock() - started) % SWEEP_PERIOD) / SWEEP_PERIOD
 			-- half-cosine: zero speed at both ends, where the block has no width anyway
 			local head = (1 - math.cos(phase * math.pi)) / 2 * (1 + SWEEP_WIDTH)
@@ -6276,6 +6302,7 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 				break
 			end
 		end
+		Helpers.PopupFrames[close] = nil
 		if #Helpers.OpenPopups == 0 then
 			Helpers.SetScrollLocked(false)
 		end
@@ -6291,6 +6318,7 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 		close()
 	end
 	table.insert(Helpers.OpenPopups, close)
+	Helpers.PopupFrames[close] = content
 	-- A page that scrolls out from under an open dropdown leaves it floating over unrelated rows,
 	-- so the page is frozen while any popup is up.
 	Helpers.SetScrollLocked(true)
@@ -6299,13 +6327,13 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	return close, container
 end
 
--- Reaching for the wheel while a popup is up reads as "I want to get back to the page", so the
--- popup gets out of the way instead of hanging over content it no longer belongs to. The page is
--- already frozen at this point, so nothing scrolls underneath it either way.
+-- Reaching for the wheel *over the page* while a popup is up reads as "I want to get back to the
+-- page", so the popup steps aside instead of hanging over content it no longer belongs to. Over the
+-- popup itself the wheel belongs to the popup — a long dropdown has its own list to scroll.
 connect(UserInputService.InputChanged, function(input)
-	if input.UserInputType == Enum.UserInputType.MouseWheel and #Helpers.OpenPopups > 0 then
-		Helpers.CloseAllPopups()
-	end
+	if input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
+	if #Helpers.OpenPopups == 0 or Helpers.PointerOverPopup() then return end
+	Helpers.CloseAllPopups()
 end)
 
 -- Opens `content` just below and to the right of `cursor`, so the pointer sits slightly above
