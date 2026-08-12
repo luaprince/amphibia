@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.1"
+		Developer info: "A11.2"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -4141,6 +4141,12 @@ local function runKeySystem(keySettings)
 	stopButton.MouseButton1Click:Connect(function()
 		keyInput:Blur()
 	end)
+	-- This button covers the whole key screen, so it is the only thing here that can receive a press
+	-- — and being a real button it swallows the one the InteractionGate underneath would have used to
+	-- drag the window. That is why the menu moved during loading (a bare Frame, clicks fall through)
+	-- but was pinned during key entry. Dragging it directly restores the parity; a press that does
+	-- not move still blurs the field as before.
+	makeDraggable(stopButton, Main)
 
 	-- socials --------------------------------------------------------------------------------------------------
 	local socials = {
@@ -4269,6 +4275,25 @@ end
 --  Loading screen
 ------------------------------------------------------------------------------------------------------------------------
 
+-- Warms every icon and font the interface will ever show. Idempotent and non-blocking, so it can be
+-- kicked off as early as the startup flow likes — the key screen no longer waits its turn behind it.
+function Helpers.BeginPreload()
+	if Helpers.PreloadStarted then return end
+	Helpers.PreloadStarted = true
+	task.spawn(function()
+		local roots = { ScreenGui }
+		for _, template in pairs(Templates) do
+			table.insert(roots, template)
+		end
+		for _, asset in pairs(BindAssets) do
+			table.insert(roots, asset)
+		end
+		Helpers.Preload(roots,
+			{ COLOR_PICKER.CheckerImage },
+			{ FONT_SERIF, FONT_SERIF_BOLD, FONT_SERIF_ITALIC, FONT_BODY, FONT_MONO })
+	end)
+end
+
 local function runLoading(title: string?, description: string?, minTime: number?)
 	minTime = math.max(minTime or 2.4, 0.8)
 	local screen = Screens.Loading
@@ -4280,21 +4305,9 @@ local function runLoading(title: string?, description: string?, minTime: number?
 	fill.Size = UDim2.new(0, 0, 1, 0)
 	timer.Text = ""
 
-	-- warm the assets while the bar runs, then make sure we do not finish ahead of it
-	if not Helpers.PreloadFinished then
-		task.spawn(function()
-			local roots = { ScreenGui }
-			for _, template in pairs(Templates) do
-				table.insert(roots, template)
-			end
-			for _, asset in pairs(BindAssets) do
-				table.insert(roots, asset)
-			end
-			Helpers.Preload(roots,
-				{ COLOR_PICKER.CheckerImage },
-				{ FONT_SERIF, FONT_SERIF_BOLD, FONT_SERIF_ITALIC, FONT_BODY, FONT_MONO })
-		end)
-	end
+	-- normally already running (the startup flow starts it before the key screen); this is the
+	-- fallback for anyone calling runLoading on its own
+	Helpers.BeginPreload()
 
 	tween(fill, TweenInfo.new(minTime * 0.92, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
 		{ Size = UDim2.new(0.86, 0, 1, 0) })
@@ -5874,6 +5887,7 @@ end
 -- first time a tab, popup or template is used. Templates live outside the ScreenGui once the
 -- showcase page is destroyed, so they have to be walked separately.
 Helpers.PreloadFinished = false
+Helpers.PreloadStarted = false
 
 function Helpers.Preload(roots, extraImages, extraFonts)
 	local assets = {}
@@ -9212,6 +9226,10 @@ function AmphibiaLibrary:CreateWindow(settings)
 	task.spawn(function()
 		local keySystemEnabled = settings.KeySystem == true
 		local keySettings = settings.KeySettings or {}
+
+		-- Assets are warmed before anything is shown, key screen included: it runs in its own thread,
+		-- so the key entry stays responsive while icons and fonts land.
+		Helpers.BeginPreload()
 
 		Screens.Loading.Visible = not keySystemEnabled
 		Screens.EnterKey.Visible = keySystemEnabled
