@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.7"
+		Developer info: "A11.8"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -3151,6 +3151,9 @@ local BIND_MENU = {
 	TitleHeight = 15,       -- строка заголовка "Binds"
 	NewBindHeight = 30,     -- строка "New Bind"
 	KeySlot = 19,           -- квадрат клавиши / стрелки справа в строке (не делать больше RowHeight-8)
+	ListMaxWidth = 340,     -- предел, до которого список растёт под длинное имя; дальше обрезание
+	RowKeyReserve = 14,     -- зазор между текстом строки и чипом клавиши (сверх KeySlot)
+	RowLabelInset = 21,     -- точка активности + зазор раскладки внутри строки
 	LabelWidth = 60,        -- ширина подписи Key / Mode / Value в редакторе
 	FieldGap = 24,          -- минимальный зазор между подписью и её контролом
 	FieldInset = 12,        -- отступ подписи слева и контрола справа
@@ -7954,6 +7957,11 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 
 	-- Key ---------------------------------------------------------------------------------------
 	local keyChip = keyRow:WaitForChild("Frame")
+	-- The design parks this chip at 0.97 of the row's width while Mode, Value and the swatch all sit
+	-- at a fixed pixel inset. At the default 210px row that already puts it ~6px right of the rest,
+	-- and the gap widens with every row the editor grows — which is the misalignment you can see.
+	keyChip.AnchorPoint = Vector2.new(1, 0.5)
+	keyChip.Position = UDim2.new(1, -BIND_MENU.FieldInset, 0.5, 0)
 	local keyChipLabel = keyChip:WaitForChild("TextLabel")
 	local keyChipStroke = keyChip:FindFirstChildOfClass("UIStroke")
 	-- the empty chip gets the same dashed gradient the bind row uses for "no key"
@@ -8069,6 +8077,7 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 				})
 			end)
 			context.renderSwatch = renderSwatch
+			context.widen(swatch.Size.X.Offset, "value")
 		elseif type(element.Options) == "table" and #element.Options >= 2 and #element.Options <= 3 then
 			-- a couple of fixed choices reads far better as the same segmented control the
 			-- Mode row uses than as a box you have to type an exact option name into
@@ -8094,6 +8103,9 @@ BindSystem.OpenEditor = function(context, bind, row, setRowState)
 				bind.Value = picked
 				ConfigHooks.Autosave()
 			end)
+			-- same as the Mode row: the segmented control sizes itself from its option text, and the
+			-- row has to grow with it or long options run out of the panel
+			context.widen(holder.Size.X.Offset, "value")
 		else
 			local numeric = element.Type == "Slider" or element.Type == "NumberPicker"
 			local default = bind.Value
@@ -8259,6 +8271,39 @@ BindSystem.BuildMenu = function(element, position)
 				selectBind(bind, row, setRowState)
 			end)
 		end
+
+		-- A row's inner group auto-sizes to its label and nothing bounded it, so a long name ran
+		-- straight out of the fixed-width panel and under the key chip. Measure what the widest row
+		-- wants, grow the panel up to a cap, then pin every label to the room that is actually left
+		-- and truncate whatever still does not fit. Deferred because auto-size needs a frame.
+		task.defer(function()
+			if not panel.Parent then return end
+			local absolute = panel.AbsoluteSize.X
+			if absolute <= 1 then return end
+			-- AbsoluteSize carries every UIScale above us; this ratio converts back to layout pixels
+			local ratio = panel.Size.X.Offset / absolute
+			local reserve = BIND_MENU.PadX * 2 + BIND_MENU.KeySlot + BIND_MENU.RowKeyReserve
+			local widest = 0
+			for _, entry in pairs(context.rows) do
+				local inner = entry.Row:FindFirstChild("Frame")
+				if inner then
+					widest = math.max(widest, inner.AbsoluteSize.X * ratio)
+				end
+			end
+			local width = math.clamp(math.ceil(widest) + reserve, BIND_MENU.ListWidth, BIND_MENU.ListMaxWidth)
+			panel.Size = UDim2.new(0, width, 0, 10)
+			for _, entry in pairs(context.rows) do
+				local inner = entry.Row:FindFirstChild("Frame")
+				local rowLabel = inner and inner:FindFirstChild("Name")
+				if inner and rowLabel then
+					pcall(function() inner.AutomaticSize = Enum.AutomaticSize.None end)
+					inner.Size = UDim2.new(0, width - reserve, 1, 0)
+					pcall(function() rowLabel.AutomaticSize = Enum.AutomaticSize.None end)
+					pcall(function() rowLabel.TextTruncate = Enum.TextTruncate.AtEnd end)
+					rowLabel.Size = UDim2.new(1, -BIND_MENU.RowLabelInset, 1, 0)
+				end
+			end
+		end)
 	end
 
 	-- keep the authored splitter + "New Bind" below the generated rows
