@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A10.7"
+		Developer info: "A10.8"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -5501,6 +5501,7 @@ function SectionClass:CreateProgressBar(options)
 	local format = options.Format or "PercentOfTotal"
 	local overrideText = nil
 	local sweep = nil
+	local sizeTween = nil
 	local completed = false
 
 	local function fraction(): number
@@ -5525,10 +5526,26 @@ function SectionClass:CreateProgressBar(options)
 		return named(element, frac, formatNumber)
 	end
 
+	-- Width goes through here so the sweep can revoke a pending resize. A zero-duration tween still
+	-- lands on the *next* frame, so an instant render followed by startSweep in the same frame used
+	-- to have the stale tween overwrite the sweep block's width right after it was set — leaving a
+	-- zero-width fill whose glow was the only thing travelling along the track.
+	local function setFillWidth(frac: number, instant: boolean?)
+		if sizeTween then
+			pcall(function() sizeTween:Cancel() end)
+			sizeTween = nil
+		end
+		if instant or not animate then
+			fill.Size = UDim2.new(frac, 0, 1, 0)
+		else
+			sizeTween = tween(fill, EASE.Fast, { Size = UDim2.new(frac, 0, 1, 0) })
+		end
+	end
+
 	local function render(instant: boolean?)
 		local frac = fraction()
 		if not element.Indeterminate then
-			tween(fill, (instant or not animate) and TweenInfo.new(0) or EASE.Fast, { Size = UDim2.new(frac, 0, 1, 0) })
+			setFillWidth(frac, instant)
 			-- a zero-width fill draws nothing, but its glow still would — kill it at 0%
 			if fillShadow then fillShadow.Enabled = frac > 0.001 end
 		end
@@ -5549,7 +5566,7 @@ function SectionClass:CreateProgressBar(options)
 		-- the travelling block must be cut off by the track; ClipsDescendants follows the UICorner
 		barBg.ClipsDescendants = true
 		if fillShadow then fillShadow.Enabled = true end
-		fill.Size = UDim2.new(0.28, 0, 1, 0)
+		setFillWidth(0.28, true)
 		fill.Position = UDim2.new(-0.28, 0, 0.5, 0)
 		sweep = tween(fill, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, false, 0.15),
 			{ Position = UDim2.new(1, 0, 0.5, 0) })
