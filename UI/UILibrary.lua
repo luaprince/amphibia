@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.6"
+		Developer info: "A11.7"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -2974,6 +2974,66 @@ function Helpers.LockThemeDeep(root: Instance)
 	for _, descendant in ipairs(root:GetDescendants()) do
 		forget(descendant)
 	end
+end
+
+-- Bounded Levenshtein distance. Bails out with `budget + 1` the moment a whole row exceeds the
+-- budget, so comparing a short query against a long name never costs the full matrix.
+function Helpers.EditDistance(a: string, b: string, budget: number): number
+	local lenA, lenB = #a, #b
+	if math.abs(lenA - lenB) > budget then return budget + 1 end
+	local previous = {}
+	for j = 0, lenB do previous[j] = j end
+	for i = 1, lenA do
+		local current = { [0] = i }
+		local best = i
+		local byteA = string.byte(a, i)
+		for j = 1, lenB do
+			local cost = (byteA == string.byte(b, j)) and 0 or 1
+			local value = math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+			current[j] = value
+			if value < best then best = value end
+		end
+		if best > budget then return budget + 1 end
+		previous = current
+	end
+	return previous[lenB]
+end
+
+-- How many typos to forgive. Short queries get none: at three letters almost anything is one edit
+-- away from almost anything, and the results turn to noise.
+function Helpers.TypoBudget(query: string): number
+	local length = #query
+	if length <= 3 then return 0 end
+	if length <= 5 then return 1 end
+	if length <= 8 then return 2 end
+	return 3
+end
+
+-- Ranks one candidate. Higher is better, nil means no match. The tiers never overlap, so an exact
+-- name always outranks a prefix, a prefix outranks a hit at a word start, and that outranks a hit
+-- buried mid-word. Edit distance is only spent when nothing matched literally — a typo still finds
+-- its target, but never displaces something the user typed correctly.
+function Helpers.SearchScore(query: string, text: string): number?
+	if query == "" or text == "" then return nil end
+	if text == query then return 1000 end
+	local at = string.find(text, query, 1, true)
+	if at then
+		-- among equally-placed hits, prefer the tighter name: "Configs" over a sentence about configs
+		local specificity = 100 / (1 + #text - #query)
+		if at == 1 then return 800 + specificity end
+		local before = string.sub(text, at - 1, at - 1)
+		if string.match(before, "[%s%-_%(/]") then return 600 + specificity end
+		return 400 + specificity
+	end
+	local budget = Helpers.TypoBudget(query)
+	if budget == 0 then return nil end
+	local best = Helpers.EditDistance(query, text, budget)
+	for word in string.gmatch(text, "[%w]+") do
+		local distance = Helpers.EditDistance(query, word, budget)
+		if distance < best then best = distance end
+	end
+	if best > budget then return nil end
+	return 200 - best * 40
 end
 
 -- Progress bar readouts. `num(n, bare)` formats a raw number with the bar's increment applied and
@@ -7082,33 +7142,49 @@ end
 
 function WindowClass:_collectSearchResults(query: string)
 	query = string.lower(query)
-	local results = {}
-	local function push(result)
-		if #results < 30 then
-			table.insert(results, result)
-		end
+	local scored = {}
+	local order = 0
+	-- Everything is collected and ranked first, and only then cut to 30. Capping during the walk was
+	-- what let a stray label containing the word bury the tab actually named it: the tab came later.
+	-- The bonus breaks ties by breadth — a tab is a better landing than a section, and a section
+	-- better than one control — but it is far too small to beat a better match.
+	local function push(score: number, bonus: number, result)
+		order += 1
+		result.Score = score + bonus
+		result.Order = order
+		table.insert(scored, result)
 	end
 	for _, tab in ipairs(self.Tabs) do
+		local tabScore = Helpers.SearchScore(query, string.lower(tab.Name))
+		if tabScore then
+			push(tabScore, 3, { Type = "Tab", Name = tab.Name, Tab = tab, Path = tab.CategoryName })
+		end
 		if tab.IsConfig then
-			if string.find(string.lower(tab.Name), query, 1, true) then
-				push({ Type = "Tab", Name = tab.Name, Tab = tab, Path = tab.CategoryName })
-			end
 			continue
 		end
-		if string.find(string.lower(tab.Name), query, 1, true) then
-			push({ Type = "Tab", Name = tab.Name, Tab = tab, Path = tab.CategoryName })
-		end
 		for _, section in ipairs(tab.Sections) do
-			if string.find(string.lower(section.Name), query, 1, true) then
-				push({ Type = "Section", Name = section.Name, Tab = tab, Section = section, Path = tab.Name })
+			local sectionScore = Helpers.SearchScore(query, string.lower(section.Name))
+			if sectionScore then
+				push(sectionScore, 2, { Type = "Section", Name = section.Name, Tab = tab, Section = section, Path = tab.Name })
 			end
 			for _, elementEntry in ipairs(section.Elements) do
-				if string.find(elementEntry.SearchText or "", query, 1, true) then
-					push({ Type = elementEntry.Type, Name = elementEntry.Name, Tab = tab,
+				local elementScore = Helpers.SearchScore(query, elementEntry.SearchText or "")
+				if elementScore then
+					push(elementScore, 1, { Type = elementEntry.Type, Name = elementEntry.Name, Tab = tab,
 						Section = section, Element = elementEntry, Path = tab.Name .. "  ·  " .. section.Name })
 				end
 			end
 		end
+	end
+	table.sort(scored, function(a, b)
+		if a.Score == b.Score then
+			return a.Order < b.Order -- stable: equal hits keep menu order
+		end
+		return a.Score > b.Score
+	end)
+	local results = {}
+	for index = 1, math.min(#scored, 30) do
+		results[index] = scored[index]
 	end
 	return results
 end
@@ -7156,8 +7232,11 @@ SearchUI.TypeLabels = {
 }
 
 function WindowClass:ApplySearch(query: string)
+	-- Typing a trailing space is normal; it must not turn a perfectly good query into "nothing
+	-- found". Inner runs of spaces are squeezed too, so "color  picker" still matches.
+	query = tostring(query or ""):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
 	self.SearchQuery = query
-	if query == nil or query == "" then
+	if query == "" then
 		self.TopSearchResult = nil
 		SearchUI.Hide()
 		return
