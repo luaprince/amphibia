@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.14"
+		Developer info: "A11.15"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -6268,16 +6268,37 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	catcher.AutoButtonColor = false
 	catcher.Parent = container
 
+	-- The catchable area is the menu plus a margin around every window in this container, so a popup
+	-- hanging off the menu's edge can still be dismissed by clicking just beside it. Windows are
+	-- collected from the container rather than captured once: the bind editor joins its list later,
+	-- in the same container, and has to be accounted for too.
+	local POPUP_CLICK_MARGIN = 40
 	local function syncCatcher()
 		if not Main.Parent then return end
-		local origin = Main.AbsolutePosition - container.AbsolutePosition
+		local min, max = Main.AbsolutePosition, Main.AbsolutePosition + Main.AbsoluteSize
+		local pad = Vector2.new(POPUP_CLICK_MARGIN, POPUP_CLICK_MARGIN)
+		for _, child in ipairs(container:GetChildren()) do
+			if child:IsA("GuiObject") and child ~= catcher and child.Name ~= "Shield" and child.Visible then
+				local childMin = child.AbsolutePosition - pad
+				local childMax = child.AbsolutePosition + child.AbsoluteSize + pad
+				min = Vector2.new(math.min(min.X, childMin.X), math.min(min.Y, childMin.Y))
+				max = Vector2.new(math.max(max.X, childMax.X), math.max(max.Y, childMax.Y))
+			end
+		end
+		local origin = min - container.AbsolutePosition
 		catcher.Position = UDim2.new(0, origin.X, 0, origin.Y)
-		catcher.Size = UDim2.new(0, Main.AbsoluteSize.X, 0, Main.AbsoluteSize.Y)
+		catcher.Size = UDim2.new(0, max.X - min.X, 0, max.Y - min.Y)
 	end
 	syncCatcher()
-	-- the menu can be dragged or rescaled while a popup is open
-	local catcherMoved = Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(syncCatcher)
-	local catcherResized = Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncCatcher)
+	-- the menu can be dragged or rescaled, the popup is repositioned a frame after opening, and a
+	-- companion window may arrive at any point while the first one is up
+	local catcherLinks = {
+		Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(syncCatcher),
+		Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncCatcher),
+		content:GetPropertyChangedSignal("AbsolutePosition"):Connect(syncCatcher),
+		content:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncCatcher),
+		container.ChildAdded:Connect(function() task.defer(syncCatcher) end),
+	}
 
 	local scale = content:FindFirstChild("FloatScale") :: UIScale?
 	if not scale then
@@ -6310,8 +6331,9 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 		if closed then return end
 		closed = true
 		setHovering(false)
-		catcherMoved:Disconnect()
-		catcherResized:Disconnect()
+		for _, link in ipairs(catcherLinks) do
+			link:Disconnect()
+		end
 		for index, registered in ipairs(Helpers.OpenPopups) do
 			if registered == close then
 				table.remove(Helpers.OpenPopups, index)
