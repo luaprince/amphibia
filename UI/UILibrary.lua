@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A12.0"
+		Developer info: "A11.11"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -3012,9 +3012,10 @@ function Helpers.SetScrollLocked(locked: boolean)
 	end
 end
 
--- How the interface was left: active tab, collapsed sections, window position. Lives in settings
--- (not in configs) because it describes the workspace, not the values a config is meant to carry.
-Helpers.UIState = { Tab = "", Window = "", Collapsed = {} }
+-- How the interface was left: active tab and collapsed sections. Lives in settings (not in configs)
+-- because it describes the workspace, not the values a config is meant to carry. The window's own
+-- position is deliberately not part of it — the menu always comes back centred.
+Helpers.UIState = { Tab = "", Collapsed = {} }
 Helpers.UIStateScheduled = false
 
 function Helpers.SaveUIState()
@@ -3036,7 +3037,6 @@ function Helpers.LoadUIState()
 	local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
 	if not ok or type(decoded) ~= "table" then return end
 	Helpers.UIState.Tab = type(decoded.Tab) == "string" and decoded.Tab or ""
-	Helpers.UIState.Window = type(decoded.Window) == "string" and decoded.Window or ""
 	Helpers.UIState.Collapsed = type(decoded.Collapsed) == "table" and decoded.Collapsed or {}
 end
 
@@ -3053,12 +3053,6 @@ end
 -- everything: a tab or section that does not exist any more is simply skipped.
 function Helpers.ApplyUIState(window)
 	local state = Helpers.UIState
-	if state.Window ~= "" then
-		local position = Helpers.DeserializeUDim2(state.Window)
-		if position then
-			Main.Position = position
-		end
-	end
 	for _, tab in ipairs(window.Tabs) do
 		for _, section in ipairs(tab.Sections) do
 			if state.Collapsed[Helpers.SectionKey(section)] then
@@ -4262,10 +4256,9 @@ Header.CloseMenuButton.MouseLeave:Connect(function()
 	tween(Header.CloseMenuButton, "Out", { ImageColor3 = TC(Color3.fromRGB(55, 55, 55)), Rotation = 0 })
 end)
 
-makeDraggable(Header, Main, function(finalPosition)
-	Helpers.UIState.Window = Helpers.SerializeUDim2(finalPosition)
-	Helpers.SaveUIState()
-end)
+-- No onDragEnd: where the user parked the menu this session is not remembered, it always reopens
+-- centred. Only the keybinds overlay keeps its own position across sessions.
+makeDraggable(Header, Main)
 
 connect(UserInputService.InputBegan, function(input, gameProcessed)
 	if gameProcessed or ActiveInput then return end
