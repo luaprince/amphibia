@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A10.8"
+		Developer info: "A10.9"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -5496,6 +5496,7 @@ function SectionClass:CreateProgressBar(options)
 	-- captured before _mount registers the row with the theme engine, so these are the design colours
 	local authoredFill = fill.BackgroundColor3
 	local authoredGlow = fillShadow and fillShadow.Color or authoredFill
+	local authoredGlowAlpha = fillShadow and fillShadow.Transparency or 0.75
 
 	local animate = options.Animate ~= false
 	local format = options.Format or "PercentOfTotal"
@@ -5552,24 +5553,65 @@ function SectionClass:CreateProgressBar(options)
 		valueLabel.Text = valueText(frac)
 	end
 
+	-- Indeterminate sweep. The block grows out of the left edge, travels, then shrinks into the right
+	-- one — it never crosses either end. Clipping it at the track would be the obvious alternative,
+	-- but ClipsDescendants ignores UICorner: the block ends up square-cut against the rounded end of
+	-- the track. Staying inside means what you see are the block's own rounded caps.
+	local SWEEP_WIDTH, SWEEP_PERIOD, SWEEP_DIM, SWEEP_GLOW = 0.28, 1.3, 0.72, 0.88
+
+	-- dimmed version of whatever colour the fill is authored to wear in the current theme
+	local function sweepTint(): Color3
+		local base = fill:GetAttribute(THEME_ATTR .. "BackgroundColor3")
+		if typeof(base) ~= "Color3" then base = authoredFill end
+		base = TC(base)
+		return Color3.new(base.R * SWEEP_DIM, base.G * SWEEP_DIM, base.B * SWEEP_DIM)
+	end
+
 	local function stopSweep()
 		if sweep then
-			pcall(function() sweep:Cancel() end)
+			sweep:Disconnect()
 			sweep = nil
 		end
-		barBg.ClipsDescendants = false
 		fill.Position = UDim2.new(0, 0, 0.5, 0)
+		themeApply(fill) -- back to the authored colour for this theme
+		if fillShadow then
+			fillShadow.Transparency = authoredGlowAlpha
+			-- the fade engine restores from this attribute, so it has to follow the live value
+			pcall(function() fillShadow:SetAttribute(FADE_ATTR .. "Transparency", authoredGlowAlpha) end)
+		end
 	end
 
 	local function startSweep()
 		stopSweep()
-		-- the travelling block must be cut off by the track; ClipsDescendants follows the UICorner
-		barBg.ClipsDescendants = true
-		if fillShadow then fillShadow.Enabled = true end
-		setFillWidth(0.28, true)
-		fill.Position = UDim2.new(-0.28, 0, 0.5, 0)
-		sweep = tween(fill, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, false, 0.15),
-			{ Position = UDim2.new(1, 0, 0.5, 0) })
+		setFillWidth(0, true) -- also revokes a resize tween still in flight
+		fill.BackgroundColor3 = sweepTint()
+		if fillShadow then
+			fillShadow.Transparency = SWEEP_GLOW -- fainter halo than a real fill level gets
+			pcall(function() fillShadow:SetAttribute(FADE_ATTR .. "Transparency", SWEEP_GLOW) end)
+		end
+		local started = os.clock()
+		local glowOn = nil
+		sweep = RunService.Heartbeat:Connect(function()
+			if not row.Parent then
+				stopSweep()
+				return
+			end
+			local phase = ((os.clock() - started) % SWEEP_PERIOD) / SWEEP_PERIOD
+			-- half-cosine: zero speed at both ends, where the block has no width anyway
+			local head = (1 - math.cos(phase * math.pi)) / 2 * (1 + SWEEP_WIDTH)
+			local right = math.min(head, 1)
+			local left = math.max(head - SWEEP_WIDTH, 0)
+			local width = math.max(right - left, 0)
+			fill.Position = UDim2.new(left, 0, 0.5, 0)
+			fill.Size = UDim2.new(width, 0, 1, 0)
+			if fillShadow then
+				local wantGlow = width > 0.01
+				if wantGlow ~= glowOn then
+					glowOn = wantGlow
+					fillShadow.Enabled = wantGlow
+				end
+			end
+		end)
 	end
 
 	function element:Set(value: number, silent: boolean?)
@@ -5654,6 +5696,9 @@ function SectionClass:CreateProgressBar(options)
 		if fillShadow then
 			Helpers.SetAuthoredColor(fillShadow, "Color", custom and color or authoredGlow)
 		end
+		if element.Indeterminate then
+			fill.BackgroundColor3 = sweepTint() -- the sweep wears a dimmed copy of the new colour
+		end
 	end
 
 	function element:Complete(silent: boolean?)
@@ -5674,6 +5719,12 @@ function SectionClass:CreateProgressBar(options)
 	if options.ValueText then overrideText = tostring(options.ValueText) end
 	completed = fraction() >= 1 -- a bar created already full must not fire OnComplete on its first Set
 	render(true)
+	-- a theme switch repaints the fill from its authored colour; the sweep has to re-dim it
+	onThemeRefresh(function()
+		if element.Indeterminate then
+			fill.BackgroundColor3 = sweepTint()
+		end
+	end)
 
 	local mounted = self:_mount(element, row, options)
 	if not options.Name then element:SetName("Progress Bar") end
