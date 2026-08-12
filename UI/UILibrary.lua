@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.2"
+		Developer info: "A11.3"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -977,12 +977,20 @@ function SmoothInput:_recomputeWidths()
 	self.Widths = widths
 end
 
+-- Themed by default; RawColors keeps an input on the Default palette (the key screen wants that).
+function SmoothInput:_tint(color: Color3): Color3
+	if self.Options.RawColors then
+		return color
+	end
+	return TC(color)
+end
+
 function SmoothInput:_makeLabel(char: string): TextLabel
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	label.FontFace = self.Font
 	label.TextSize = self.TextSize
-	label.TextColor3 = TC(self.TextColor)
+	label.TextColor3 = self:_tint(self.TextColor)
 	label.Text = char
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
@@ -1214,9 +1222,9 @@ function SmoothInput:SetTextColor(color: Color3, animate: boolean?)
 	for _, entry in ipairs(self.Chars) do
 		if entry.Label then
 			if animate then
-				tween(entry.Label, CHAR_IN, { TextColor3 = TC(color) })
+				tween(entry.Label, CHAR_IN, { TextColor3 = self:_tint(color) })
 			else
-				entry.Label.TextColor3 = TC(color)
+				entry.Label.TextColor3 = self:_tint(color)
 			end
 		end
 	end
@@ -2941,6 +2949,24 @@ function Helpers.SetAuthoredColor(inst: Instance, prop: string, color: Color3)
 	pcall(function() inst[prop] = TC(color) end)
 end
 
+-- Pins a subtree to its authored (Default-palette) colours: repaints them from the snapshot, then
+-- forgets the instances. themeApply only touches what it has a snapshot for, so dropping them is
+-- all the exemption needed — and repainting first means this works even after a theme was applied.
+function Helpers.LockThemeDeep(root: Instance)
+	local function forget(inst: Instance)
+		local snapshot = ThemeRegistry[inst]
+		if not snapshot then return end
+		for prop, authored in pairs(snapshot) do
+			pcall(function() inst[prop] = authored end)
+		end
+		ThemeRegistry[inst] = nil
+	end
+	forget(root)
+	for _, descendant in ipairs(root:GetDescendants()) do
+		forget(descendant)
+	end
+end
+
 -- Progress bar readouts. `num(n, bare)` formats a raw number with the bar's increment applied and
 -- the suffix appended unless `bare`. In the "x / y" forms only the total carries the unit — the
 -- current value is already read against it, so repeating it just makes the line noisy.
@@ -4111,7 +4137,14 @@ local function runKeySystem(keySettings)
 		PaddingLeft = 12,
 		PaddingRight = 34,
 		ZIndex = 14,
+		RawColors = true, -- the key screen stays on the Default palette, see below
 	})
+
+	-- The key screen is shown before the user has any say over themes, and its stroke states carry
+	-- meaning — red is wrong, green is accepted. A tinted palette would drag those two towards the
+	-- theme hue and blunt the signal, so this screen is pinned to the authored colours: dropped from
+	-- the theme registry here, and every runtime colour below is written raw, without TC().
+	Helpers.LockThemeDeep(screen)
 
 	local strokeIdle = Color3.fromRGB(55, 55, 55)
 	local strokeHover = Color3.fromRGB(70, 70, 70)
@@ -4120,19 +4153,19 @@ local function runKeySystem(keySettings)
 	local strokeSuccess = Color3.fromRGB(104, 122, 114)
 
 	keyInput.Options.OnFocus = function()
-		if inputStroke then tween(inputStroke, "Fast", { Color = TC(strokeFocus) }) end
+		if inputStroke then tween(inputStroke, "Fast", { Color = strokeFocus }) end
 	end
 	keyInput.Options.OnBlur = function()
-		if inputStroke then tween(inputStroke, "Out", { Color = TC(strokeIdle) }) end
+		if inputStroke then tween(inputStroke, "Out", { Color = strokeIdle }) end
 	end
 	inputBg.MouseEnter:Connect(function()
 		if not keyInput.Focused and inputStroke then
-			tween(inputStroke, "Fast", { Color = TC(strokeHover) })
+			tween(inputStroke, "Fast", { Color = strokeHover })
 		end
 	end)
 	inputBg.MouseLeave:Connect(function()
 		if not keyInput.Focused and inputStroke then
-			tween(inputStroke, "Out", { Color = TC(strokeIdle) })
+			tween(inputStroke, "Out", { Color = strokeIdle })
 		end
 	end)
 	inputButton.MouseButton1Click:Connect(function()
@@ -4206,9 +4239,9 @@ local function runKeySystem(keySettings)
 		errorRestore = task.delay(1.6, function()
 			if resolved then return end
 			welcomeDesc.Text = subtitle
-			tween(welcomeDesc, "Out", { TextColor3 = TC(Color3.fromRGB(120, 120, 120)) })
+			tween(welcomeDesc, "Out", { TextColor3 = Color3.fromRGB(120, 120, 120) })
 			if inputStroke then
-				tween(inputStroke, "Out", { Color = TC(keyInput.Focused and strokeFocus or strokeIdle) })
+				tween(inputStroke, "Out", { Color = keyInput.Focused and strokeFocus or strokeIdle })
 			end
 			keyInput:SetTextColor(Color3.fromRGB(157, 157, 157), true)
 		end)
@@ -4218,10 +4251,10 @@ local function runKeySystem(keySettings)
 		if resolved then return end
 		resolved = true
 		keyInput:Blur()
-		if inputStroke then tween(inputStroke, "Out", { Color = TC(strokeSuccess) }) end
+		if inputStroke then tween(inputStroke, "Out", { Color = strokeSuccess }) end
 		keyInput:SetTextColor(Color3.fromRGB(150, 162, 156), true)
 		welcomeDesc.Text = fromSaved and "Welcome back." or "Key accepted."
-		tween(welcomeDesc, "Fast", { TextColor3 = TC(Color3.fromRGB(142, 156, 148)) })
+		tween(welcomeDesc, "Fast", { TextColor3 = Color3.fromRGB(142, 156, 148) })
 		tween(screen.Icon, "Back", { Rotation = 8 })
 		if keySettings.SaveKey ~= false and not fromSaved then
 			writeSavedKey(keyInput.Text:gsub("^%s+", ""):gsub("%s+$", ""))
@@ -4240,10 +4273,10 @@ local function runKeySystem(keySettings)
 	keyInput.Options.OnSubmit = submit
 	activateButton.MouseButton1Click:Connect(submit)
 	activateButton.MouseEnter:Connect(function()
-		tween(activateButton, "Fast", { ImageColor3 = TC(Color3.fromRGB(140, 140, 140)) })
+		tween(activateButton, "Fast", { ImageColor3 = Color3.fromRGB(140, 140, 140) })
 	end)
 	activateButton.MouseLeave:Connect(function()
-		tween(activateButton, "Out", { ImageColor3 = TC(Color3.fromRGB(80, 80, 80)) })
+		tween(activateButton, "Out", { ImageColor3 = Color3.fromRGB(80, 80, 80) })
 	end)
 
 	-- remembered key: auto-type it in and sign in ---------------------------------------------------------------
