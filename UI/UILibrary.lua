@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.12"
+		Developer info: "A11.13"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -2931,25 +2931,12 @@ end
 -- the main menu is minimized, nothing should be left floating on screen.
 local Helpers = {}
 Helpers.OpenPopups = {}
--- The window each open popup owns, keyed by its close(). Needed to tell "scrolled the page" from
--- "scrolled inside the popup": the first dismisses it, the second must not.
-Helpers.PopupFrames = {}
-
-function Helpers.PointerOverPopup(): boolean
-	local point = mousePoint()
-	for _, window in pairs(Helpers.PopupFrames) do
-		if window.Parent then
-			-- both sides in canvas space, so the topbar inset cannot skew the comparison
-			local topLeft = screenPointFor(window.AbsolutePosition)
-			local size = window.AbsoluteSize
-			if point.X >= topLeft.X and point.X <= topLeft.X + size.X
-				and point.Y >= topLeft.Y and point.Y <= topLeft.Y + size.Y then
-				return true
-			end
-		end
-	end
-	return false
-end
+-- Where the pointer is, for deciding what a scroll means. Counted from MouseEnter/MouseLeave rather
+-- than compared against AbsolutePosition: cursor coordinates and layout coordinates live in
+-- different spaces once the ScreenGui ignores the topbar inset, and hand-rolled arithmetic there
+-- produced hit areas shifted a topbar's height off the windows they were supposed to cover.
+Helpers.PopupHover = 0
+Helpers.MenuHover = false
 -- Config names are interpolated into RichText confirmation dialogs. Names typed in the UI are
 -- validated, but names discovered on disk are not — a file could otherwise inject markup and
 -- disguise what a destructive dialog is really about.
@@ -6292,17 +6279,29 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	content.Parent = container
 	Helpers.AddPopupShield(container, content)
 
+	-- Tracks whether the pointer is over this window, so a scroll can be attributed to the popup
+	-- rather than to the page. Guarded both ways: Roblox can repeat either event, and closing while
+	-- hovered would otherwise leave the counter stuck above zero forever.
+	local hovering = false
+	local function setHovering(state: boolean)
+		if state == hovering then return end
+		hovering = state
+		Helpers.PopupHover = math.max(0, Helpers.PopupHover + (state and 1 or -1))
+	end
+	content.MouseEnter:Connect(function() setHovering(true) end)
+	content.MouseLeave:Connect(function() setHovering(false) end)
+
 	local closed = false
 	local function close()
 		if closed then return end
 		closed = true
+		setHovering(false)
 		for index, registered in ipairs(Helpers.OpenPopups) do
 			if registered == close then
 				table.remove(Helpers.OpenPopups, index)
 				break
 			end
 		end
-		Helpers.PopupFrames[close] = nil
 		if #Helpers.OpenPopups == 0 then
 			Helpers.SetScrollLocked(false)
 		end
@@ -6318,7 +6317,6 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 		close()
 	end
 	table.insert(Helpers.OpenPopups, close)
-	Helpers.PopupFrames[close] = content
 	-- A page that scrolls out from under an open dropdown leaves it floating over unrelated rows,
 	-- so the page is frozen while any popup is up.
 	Helpers.SetScrollLocked(true)
@@ -6327,12 +6325,17 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	return close, container
 end
 
--- Reaching for the wheel *over the page* while a popup is up reads as "I want to get back to the
--- page", so the popup steps aside instead of hanging over content it no longer belongs to. Over the
--- popup itself the wheel belongs to the popup — a long dropdown has its own list to scroll.
+Main.MouseEnter:Connect(function() Helpers.MenuHover = true end)
+Main.MouseLeave:Connect(function() Helpers.MenuHover = false end)
+
+-- What a scroll means depends on where the pointer is:
+--   over a popup  -> it belongs to the popup (a long dropdown has its own list to scroll);
+--   over the menu -> "take me back to the page", so the popup steps aside;
+--   anywhere else -> the game's business, the interface stays out of it entirely.
 connect(UserInputService.InputChanged, function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
-	if #Helpers.OpenPopups == 0 or Helpers.PointerOverPopup() then return end
+	if #Helpers.OpenPopups == 0 then return end
+	if Helpers.PopupHover > 0 or not Helpers.MenuHover then return end
 	Helpers.CloseAllPopups()
 end)
 
