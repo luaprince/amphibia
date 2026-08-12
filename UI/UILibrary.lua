@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A10.9"
+		Developer info: "A11.0"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -51,7 +51,10 @@
 		Section:CreateToggle({ Name = "Toggle", CurrentValue = true, Flag = "MyToggle", Callback = function(v) end })
 
 		-- display only: no keybinds, not saved to configs
-		local Bar = Section:CreateProgressBar({ Name = "Loading", Max = 100, Value = 0 })
+		local Bar = Section:CreateProgressBar({
+			Name = "Loading", IdleName = "Ready", CompletedName = "Done",
+			Max = 100, Value = 0, HideValueOnComplete = true,
+		})
 		Bar:Set(40)              -- Bar:Add(10) / Bar:SetFraction(0.4) / Bar:Complete()
 		Bar:SetIndeterminate(true) -- unknown duration: the fill sweeps instead
 
@@ -5485,25 +5488,47 @@ function SectionClass:CreateProgressBar(options)
 	)
 	element.DefaultValue = element.CurrentValue
 
+	-- Three names for three stages; the base one is what search and Amphibia.Elements know it by.
+	element.BaseName = options.Name or "Progress Bar"
+	element.IdleName = options.IdleName
+	element.CompletedName = options.CompletedName
+
 	local row = Templates.ProgressBar:Clone()
 	row.Name = "ProgressBar"
 	local label = nameLabel(row)
-	label.Text = options.Name or "Progress Bar"
+	label.Text = element.BaseName
 	local barBg = row:FindFirstChild("BarBg")
 	local fill = barBg:FindFirstChild("Fill")
 	local fillShadow = fill:FindFirstChildOfClass("UIShadow")
 	local valueLabel = row:FindFirstChild("Value")
-	-- captured before _mount registers the row with the theme engine, so these are the design colours
+	local labelStroke = label:FindFirstChildOfClass("UIStroke")
+	local valueStroke = valueLabel:FindFirstChildOfClass("UIStroke")
+	-- captured before _mount registers the row with the theme engine, so these are the design values
 	local authoredFill = fill.BackgroundColor3
 	local authoredGlow = fillShadow and fillShadow.Color or authoredFill
 	local authoredGlowAlpha = fillShadow and fillShadow.Transparency or 0.75
+	local labelStrokeAlpha = labelStroke and labelStroke.Transparency or 0
+	local valueStrokeAlpha = valueStroke and valueStroke.Transparency or 0
+
+	-- Seed the window-fade cache with the authored transparencies. That cache is filled lazily from
+	-- whatever value it first sees, and this element drives all four of them at runtime — without a
+	-- seed, a fade that happened mid-sweep or mid-text-fade would adopt the transient as "original".
+	pcall(function() fill:SetAttribute(FADE_ATTR .. "BackgroundTransparency", fill.BackgroundTransparency) end)
+	if fillShadow then
+		pcall(function() fillShadow:SetAttribute(FADE_ATTR .. "Transparency", authoredGlowAlpha) end)
+	end
 
 	local animate = options.Animate ~= false
 	local format = options.Format or "PercentOfTotal"
+	local hideValueOnComplete = options.HideValueOnComplete == true
 	local overrideText = nil
 	local sweep = nil
 	local sizeTween = nil
 	local completed = false
+	local nameToken = 0
+	local shownName = element.BaseName
+	local valueShown = true
+	local NAME_FADE, VALUE_FADE = 0.14, 0.26
 
 	local function fraction(): number
 		local span = element.Max - element.Min
@@ -5543,6 +5568,63 @@ function SectionClass:CreateProgressBar(options)
 		end
 	end
 
+	-- Text and its outline fade together, otherwise a ghost outline stays behind. Writing the goal
+	-- into FADE_ATTR is what stops the window's own fade-in from restoring a state we chose to hide.
+	local function fadeText(target: TextLabel, stroke, strokeAlpha: number, shown: boolean, duration: number)
+		local textGoal = shown and 0 or 1
+		local strokeGoal = shown and strokeAlpha or 1
+		if duration <= 0 then
+			target.TextTransparency = textGoal
+			if stroke then stroke.Transparency = strokeGoal end
+		else
+			local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			tween(target, info, { TextTransparency = textGoal })
+			if stroke then tween(stroke, info, { Transparency = strokeGoal }) end
+		end
+		pcall(function() target:SetAttribute(FADE_ATTR .. "TextTransparency", textGoal) end)
+		if stroke then
+			pcall(function() stroke:SetAttribute(FADE_ATTR .. "Transparency", strokeGoal) end)
+		end
+	end
+
+	-- Which of the three names belongs on screen right now. A sweep has no progress to speak of,
+	-- so it always shows the base one.
+	local function stageName(frac: number): string
+		if not element.Indeterminate then
+			if frac >= 1 and element.CompletedName then return element.CompletedName end
+			if frac <= 0 and element.IdleName then return element.IdleName end
+		end
+		return element.BaseName
+	end
+
+	local function applyName(frac: number, instant: boolean?)
+		local wanted = stageName(frac)
+		-- compared against the *intended* name, not label.Text: mid-crossfade the label still shows
+		-- the previous stage, and matching on it would strand the row faded out
+		if wanted == shownName then return end
+		shownName = wanted
+		nameToken += 1
+		local token = nameToken
+		if instant then
+			label.Text = wanted
+			fadeText(label, labelStroke, labelStrokeAlpha, true, 0)
+			return
+		end
+		fadeText(label, labelStroke, labelStrokeAlpha, false, NAME_FADE)
+		task.delay(NAME_FADE, function()
+			if token ~= nameToken then return end -- a newer stage change already took over
+			label.Text = wanted
+			fadeText(label, labelStroke, labelStrokeAlpha, true, NAME_FADE)
+		end)
+	end
+
+	local function applyValueVisibility(frac: number, instant: boolean?)
+		local shown = element.Indeterminate or not (hideValueOnComplete and frac >= 1)
+		if shown == valueShown and not instant then return end
+		valueShown = shown
+		fadeText(valueLabel, valueStroke, valueStrokeAlpha, shown, instant and 0 or VALUE_FADE)
+	end
+
 	local function render(instant: boolean?)
 		local frac = fraction()
 		if not element.Indeterminate then
@@ -5551,6 +5633,8 @@ function SectionClass:CreateProgressBar(options)
 			if fillShadow then fillShadow.Enabled = frac > 0.001 end
 		end
 		valueLabel.Text = valueText(frac)
+		applyName(frac, instant)
+		applyValueVisibility(frac, instant)
 	end
 
 	-- Indeterminate sweep. The block grows out of the left edge, travels, then shrinks into the right
@@ -5573,8 +5657,10 @@ function SectionClass:CreateProgressBar(options)
 			sweep = nil
 		end
 		fill.Position = UDim2.new(0, 0, 0.5, 0)
+		fill.BackgroundTransparency = 0
 		themeApply(fill) -- back to the authored colour for this theme
 		if fillShadow then
+			fillShadow.Enabled = true
 			fillShadow.Transparency = authoredGlowAlpha
 			-- the fade engine restores from this attribute, so it has to follow the live value
 			pcall(function() fillShadow:SetAttribute(FADE_ATTR .. "Transparency", authoredGlowAlpha) end)
@@ -5590,7 +5676,6 @@ function SectionClass:CreateProgressBar(options)
 			pcall(function() fillShadow:SetAttribute(FADE_ATTR .. "Transparency", SWEEP_GLOW) end)
 		end
 		local started = os.clock()
-		local glowOn = nil
 		sweep = RunService.Heartbeat:Connect(function()
 			if not row.Parent then
 				stopSweep()
@@ -5604,12 +5689,12 @@ function SectionClass:CreateProgressBar(options)
 			local width = math.max(right - left, 0)
 			fill.Position = UDim2.new(left, 0, 0.5, 0)
 			fill.Size = UDim2.new(width, 0, 1, 0)
+			-- shrinking alone still ends on a hard-edged sliver, so the block dissolves as it
+			-- narrows: full width is opaque, zero width is fully transparent, at both ends
+			local solid = math.clamp(width / SWEEP_WIDTH, 0, 1)
+			fill.BackgroundTransparency = 1 - solid
 			if fillShadow then
-				local wantGlow = width > 0.01
-				if wantGlow ~= glowOn then
-					glowOn = wantGlow
-					fillShadow.Enabled = wantGlow
-				end
+				fillShadow.Transparency = SWEEP_GLOW + (1 - SWEEP_GLOW) * (1 - solid)
 			end
 		end)
 	end
@@ -5666,11 +5751,26 @@ function SectionClass:CreateProgressBar(options)
 		render(true)
 	end
 
+	-- The base name — what the row is called while it is neither idle nor finished. Search and
+	-- Amphibia.Elements always know the bar by this one, never by a stage name.
 	function element:SetName(text: string)
 		text = tostring(text)
-		label.Text = text
+		element.BaseName = text
 		element.Name = text
 		element.SearchText = string.lower(text)
+		applyName(fraction(), true)
+	end
+
+	-- Shown while the bar sits at its minimum; nil falls back to the base name.
+	function element:SetIdleName(text: string?)
+		element.IdleName = text and tostring(text) or nil
+		applyName(fraction(), false)
+	end
+
+	-- Shown once the bar reaches its maximum; nil falls back to the base name.
+	function element:SetCompletedName(text: string?)
+		element.CompletedName = text and tostring(text) or nil
+		applyName(fraction(), false)
 	end
 
 	-- nil hands the readout back to the formatter
@@ -5727,7 +5827,9 @@ function SectionClass:CreateProgressBar(options)
 	end)
 
 	local mounted = self:_mount(element, row, options)
-	if not options.Name then element:SetName("Progress Bar") end
+	-- _mount falls back to the type name; the bar is known by its base name instead
+	element.Name = element.BaseName
+	element.SearchText = string.lower(element.BaseName)
 	if element.Flag then
 		AmphibiaLibrary.Flags[element.Flag] = element.CurrentValue
 	end
