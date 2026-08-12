@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.15"
+		Developer info: "A11.16"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -6268,26 +6268,35 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	catcher.AutoButtonColor = false
 	catcher.Parent = container
 
-	-- The catchable area is the menu plus a margin around every window in this container, so a popup
-	-- hanging off the menu's edge can still be dismissed by clicking just beside it. Windows are
-	-- collected from the container rather than captured once: the bind editor joins its list later,
-	-- in the same container, and has to be accounted for too.
-	local POPUP_CLICK_MARGIN = 40
+	-- Two states, decided by whether any window in this container reaches past the menu:
+	--   fully inside  -> the catcher is bounded to the menu, so the game keeps its clicks and wheel;
+	--   sticking out  -> the catcher goes fullscreen, so the overhang can be dismissed from anywhere.
+	-- Windows are collected from the container rather than captured once: the bind editor joins its
+	-- list later, in the same container, and counts towards the decision too.
 	local function syncCatcher()
 		if not Main.Parent then return end
-		local min, max = Main.AbsolutePosition, Main.AbsolutePosition + Main.AbsoluteSize
-		local pad = Vector2.new(POPUP_CLICK_MARGIN, POPUP_CLICK_MARGIN)
+		local menuMin = Main.AbsolutePosition
+		local menuMax = menuMin + Main.AbsoluteSize
+		local overflows = false
 		for _, child in ipairs(container:GetChildren()) do
 			if child:IsA("GuiObject") and child ~= catcher and child.Name ~= "Shield" and child.Visible then
-				local childMin = child.AbsolutePosition - pad
-				local childMax = child.AbsolutePosition + child.AbsoluteSize + pad
-				min = Vector2.new(math.min(min.X, childMin.X), math.min(min.Y, childMin.Y))
-				max = Vector2.new(math.max(max.X, childMax.X), math.max(max.Y, childMax.Y))
+				local childMin = child.AbsolutePosition
+				local childMax = childMin + child.AbsoluteSize
+				if childMin.X < menuMin.X or childMin.Y < menuMin.Y
+					or childMax.X > menuMax.X or childMax.Y > menuMax.Y then
+					overflows = true
+					break
+				end
 			end
 		end
-		local origin = min - container.AbsolutePosition
-		catcher.Position = UDim2.new(0, origin.X, 0, origin.Y)
-		catcher.Size = UDim2.new(0, max.X - min.X, 0, max.Y - min.Y)
+		if overflows then
+			catcher.Position = UDim2.new(0, 0, 0, 0)
+			catcher.Size = UDim2.new(1, 0, 1, 0)
+		else
+			local origin = menuMin - container.AbsolutePosition
+			catcher.Position = UDim2.new(0, origin.X, 0, origin.Y)
+			catcher.Size = UDim2.new(0, Main.AbsoluteSize.X, 0, Main.AbsoluteSize.Y)
+		end
 	end
 	syncCatcher()
 	-- the menu can be dragged or rescaled, the popup is repositioned a frame after opening, and a
