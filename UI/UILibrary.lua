@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.13"
+		Developer info: "A11.14"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -6255,15 +6255,29 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 	container.ZIndex = 40
 	container.Parent = ScreenGui
 
+	-- The catcher covers the menu, not the screen. A full-screen button swallowed everything the
+	-- game was supposed to get while a popup was up: the wheel stopped zooming the camera and a
+	-- click anywhere dismissed the popup instead of reaching the world. Bounded to the menu, a
+	-- click beside a popup still dismisses it, and outside the menu the interface is simply absent.
 	local catcher = Instance.new("ImageButton")
 	catcher.Name = "Catcher"
 	catcher.BackgroundTransparency = 1
 	catcher.ImageTransparency = 1
-	catcher.Size = UDim2.new(1, 0, 1, 0)
 	-- lowest in the container so the shield can sit between it and the windows
 	catcher.ZIndex = 0
 	catcher.AutoButtonColor = false
 	catcher.Parent = container
+
+	local function syncCatcher()
+		if not Main.Parent then return end
+		local origin = Main.AbsolutePosition - container.AbsolutePosition
+		catcher.Position = UDim2.new(0, origin.X, 0, origin.Y)
+		catcher.Size = UDim2.new(0, Main.AbsoluteSize.X, 0, Main.AbsoluteSize.Y)
+	end
+	syncCatcher()
+	-- the menu can be dragged or rescaled while a popup is open
+	local catcherMoved = Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(syncCatcher)
+	local catcherResized = Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncCatcher)
 
 	local scale = content:FindFirstChild("FloatScale") :: UIScale?
 	if not scale then
@@ -6296,6 +6310,8 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 		if closed then return end
 		closed = true
 		setHovering(false)
+		catcherMoved:Disconnect()
+		catcherResized:Disconnect()
 		for index, registered in ipairs(Helpers.OpenPopups) do
 			if registered == close then
 				table.remove(Helpers.OpenPopups, index)
