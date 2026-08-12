@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.4"
+		Developer info: "A11.6"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -430,6 +430,9 @@ local COLOR_PROPS = {
 }
 
 local THEME_ATTR = "_amphTheme_"
+-- Declared here rather than beside the fade helpers below, because code that *owns* a transparency
+-- at runtime has to stamp its live value into this attribute, and some of that code comes earlier.
+local FADE_ATTR = "_amphFade_"
 
 local function themeRegister(inst: Instance)
 	local props = COLOR_PROPS[inst.ClassName]
@@ -3164,16 +3167,28 @@ function Helpers.DressColorSwatch(button: GuiObject, cornerRadius: number, zInde
 end
 
 -- The checkerboard fades in as the colour becomes see-through and disappears once it is solid.
+--
+-- Two engines are told about the result, or the swatch silently drifts away from the value it is
+-- supposed to be showing:
+--   * the window fade restores transparencies from FADE_ATTR, and here transparency *is* the
+--     colour's alpha — without the stamp, every reopen snapped the swatch back to the alpha it had
+--     when the row was built, so a loaded config looked wrong until something repainted it;
+--   * the theme engine would repaint BackgroundColor3 from its snapshot of the row, which would
+--     throw away a user-picked colour on the next theme switch. A chosen colour is data, not
+--     styling, so the fill is dropped from the registry instead.
 function Helpers.PaintColorSwatch(checker, fill, color: Color3, alpha: number, animate: boolean?)
 	alpha = math.clamp(alpha or 0, 0, 1)
 	fill.BackgroundColor3 = color
 	fill.BackgroundTransparency = alpha
+	ThemeRegistry[fill] = nil
+	pcall(function() fill:SetAttribute(FADE_ATTR .. "BackgroundTransparency", alpha) end)
 	local target = 1 - alpha * COLOR_PICKER.CheckerMaxVisible
 	if animate then
 		tween(checker, "Fast", { ImageTransparency = target })
 	else
 		checker.ImageTransparency = target
 	end
+	pcall(function() checker:SetAttribute(FADE_ATTR .. "ImageTransparency", target) end)
 end
 
 local Templates = {}
@@ -3399,8 +3414,6 @@ local FADE_PROPS = {
 	UIStroke = { "Transparency" },
 	UIShadow = { "Transparency" },
 }
-
-local FADE_ATTR = "_amphFade_"
 
 local function fadeTargets(root: Instance)
 	local targets = {}
@@ -8865,6 +8878,10 @@ function ConfigActions.resetSettings()
 				pcall(element.LoadSaveValue, element, element.DefaultSave)
 			end
 		end
+		-- Binds travel inside configs too, so loading one can add keybinds — leaving them behind
+		-- would contradict "every setting goes back to defaults". An empty list drops exactly the
+		-- flag-backed binds a config could have created, which is the same set that gets saved.
+		BindSystem.LoadSerialized({})
 		markLoadedConfig(nil)
 		settingsTable.General.lastConfig.Value = ""
 		saveSettings()
