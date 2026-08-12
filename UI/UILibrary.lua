@@ -1,5 +1,5 @@
 --[[
-		Developer info: "A11.9"
+		Developer info: "A12.0"
 
 
 		 ▄▄▄          ███▄ ▄███▓    ██▓███      ██░ ██     ██▓    ▄▄▄▄       ██▓    ▄▄▄         
@@ -126,6 +126,7 @@ local settingsTable = {
 		theme = { Type = "input", Value = "Default", Name = "Theme" },
 		lastConfig = { Type = "input", Value = "", Name = "Last loaded config" },
 		keybindsPos = { Type = "input", Value = "", Name = "Keybinds list position" },
+		uiState = { Type = "input", Value = "", Name = "Interface state" },
 	},
 	System = {
 		usageAnalytics = { Type = "toggle", Value = true, Name = "Anonymised Analytics" },
@@ -2976,6 +2977,105 @@ function Helpers.LockThemeDeep(root: Instance)
 	end
 end
 
+-- Display-only clipping for element names. The full string stays on the element, so search and
+-- Amphibia.Elements are unaffected — only the label on screen is shortened. Counted in characters,
+-- not bytes, so a Cyrillic name is not cut mid-letter.
+Helpers.NameLimit = 35
+
+function Helpers.ClipName(text: string, limit: number?): string
+	text = tostring(text or "")
+	limit = limit or Helpers.NameLimit
+	local ok, length = pcall(utf8.len, text)
+	if not ok or type(length) ~= "number" or length <= limit then
+		return text
+	end
+	local cut = utf8.offset(text, limit + 1)
+	if not cut then
+		return text
+	end
+	return string.sub(text, 1, cut - 1) .. "..."
+end
+
+-- Page scrollers only. A popup's own scroller must keep working while it is open, so those are
+-- deliberately never registered here.
+Helpers.Scrollers = setmetatable({}, { __mode = "k" })
+
+function Helpers.RegisterScroller(scroller: ScrollingFrame)
+	Helpers.Scrollers[scroller] = true
+end
+
+function Helpers.SetScrollLocked(locked: boolean)
+	for scroller in pairs(Helpers.Scrollers) do
+		if scroller.Parent then
+			pcall(function() scroller.ScrollingEnabled = not locked end)
+		end
+	end
+end
+
+-- How the interface was left: active tab, collapsed sections, window position. Lives in settings
+-- (not in configs) because it describes the workspace, not the values a config is meant to carry.
+Helpers.UIState = { Tab = "", Window = "", Collapsed = {} }
+Helpers.UIStateScheduled = false
+
+function Helpers.SaveUIState()
+	if Helpers.UIStateScheduled then return end
+	Helpers.UIStateScheduled = true
+	task.delay(0.6, function()
+		Helpers.UIStateScheduled = false
+		local ok, json = pcall(function() return HttpService:JSONEncode(Helpers.UIState) end)
+		if ok then
+			settingsTable.General.uiState.Value = json
+			saveSettings()
+		end
+	end)
+end
+
+function Helpers.LoadUIState()
+	local raw = getSetting("General", "uiState")
+	if type(raw) ~= "string" or raw == "" then return end
+	local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
+	if not ok or type(decoded) ~= "table" then return end
+	Helpers.UIState.Tab = type(decoded.Tab) == "string" and decoded.Tab or ""
+	Helpers.UIState.Window = type(decoded.Window) == "string" and decoded.Window or ""
+	Helpers.UIState.Collapsed = type(decoded.Collapsed) == "table" and decoded.Collapsed or {}
+end
+
+function Helpers.SectionKey(section): string
+	local tab = section.Tab
+	return (tab and (tab.CategoryName .. "/" .. tab.Name) or "?") .. "/" .. tostring(section.Name)
+end
+
+function Helpers.TabKey(tab): string
+	return tostring(tab.CategoryName) .. "/" .. tostring(tab.Name)
+end
+
+-- Puts the remembered state back. Called from the reveal, once the caller has finished building
+-- everything: a tab or section that does not exist any more is simply skipped.
+function Helpers.ApplyUIState(window)
+	local state = Helpers.UIState
+	if state.Window ~= "" then
+		local position = Helpers.DeserializeUDim2(state.Window)
+		if position then
+			Main.Position = position
+		end
+	end
+	for _, tab in ipairs(window.Tabs) do
+		for _, section in ipairs(tab.Sections) do
+			if state.Collapsed[Helpers.SectionKey(section)] then
+				section:SetCollapsed(true, true)
+			end
+		end
+	end
+	if state.Tab ~= "" then
+		for _, tab in ipairs(window.Tabs) do
+			if Helpers.TabKey(tab) == state.Tab then
+				window:SelectTab(tab, true)
+				break
+			end
+		end
+	end
+end
+
 -- Bounded Levenshtein distance. Bails out with `budget + 1` the moment a whole row exceeds the
 -- budget, so comparing a short query against a long name never costs the full matrix.
 function Helpers.EditDistance(a: string, b: string, budget: number): number
@@ -4162,7 +4262,10 @@ Header.CloseMenuButton.MouseLeave:Connect(function()
 	tween(Header.CloseMenuButton, "Out", { ImageColor3 = TC(Color3.fromRGB(55, 55, 55)), Rotation = 0 })
 end)
 
-makeDraggable(Header, Main)
+makeDraggable(Header, Main, function(finalPosition)
+	Helpers.UIState.Window = Helpers.SerializeUDim2(finalPosition)
+	Helpers.SaveUIState()
+end)
 
 connect(UserInputService.InputBegan, function(input, gameProcessed)
 	if gameProcessed or ActiveInput then return end
@@ -4914,6 +5017,8 @@ end
 function SectionClass:SetCollapsed(collapsed: boolean, instant: boolean?)
 	if collapsed == self.Collapsed then return end
 	self.Collapsed = collapsed
+	Helpers.UIState.Collapsed[Helpers.SectionKey(self)] = collapsed or nil
+	Helpers.SaveUIState()
 	local root, holder = self.Root, self.Holder
 	local scale = math.max(MainScale.Scale, 0.01)
 
@@ -4961,6 +5066,13 @@ function SectionClass:_mount(element, row, options)
 	element.Name = options.Name or element.Type
 	element.Flag = options.Flag
 	element.SearchText = string.lower(element.Name)
+	-- Clipped on screen only: the element and the search index keep the full name. Guarded against
+	-- clipping twice — an element that already put its own (possibly clipped) text on the label,
+	-- like the progress bar's stage names, no longer matches element.Name and is left alone.
+	local mountedLabel = nameLabel(row)
+	if mountedLabel and mountedLabel:IsA("TextLabel") and mountedLabel.Text == element.Name then
+		mountedLabel.Text = Helpers.ClipName(element.Name)
+	end
 	table.insert(self.Elements, element)
 	table.insert(self.Tab.Elements, element)
 	if element.Flag then
@@ -5200,7 +5312,7 @@ function SectionClass:CreateButton(options)
 	end)
 
 	function element:Set(newName: string)
-		label.Text = newName
+		label.Text = Helpers.ClipName(newName)
 		element.Name = newName
 		element.SearchText = string.lower(newName)
 	end
@@ -5598,7 +5710,7 @@ function SectionClass:CreateLabel(options)
 	label.Parent = row
 
 	function element:Set(text: string)
-		label.Text = text
+		label.Text = Helpers.ClipName(text)
 		element.Name = text
 		element.SearchText = string.lower(text)
 	end
@@ -5637,7 +5749,7 @@ function SectionClass:CreateProgressBar(options)
 	local row = Templates.ProgressBar:Clone()
 	row.Name = "ProgressBar"
 	local label = nameLabel(row)
-	label.Text = element.BaseName
+	label.Text = Helpers.ClipName(element.BaseName)
 	local barBg = row:FindFirstChild("BarBg")
 	local fill = barBg:FindFirstChild("Fill")
 	local fillShadow = fill:FindFirstChildOfClass("UIShadow")
@@ -5749,14 +5861,14 @@ function SectionClass:CreateProgressBar(options)
 		nameToken += 1
 		local token = nameToken
 		if instant then
-			label.Text = wanted
+			label.Text = Helpers.ClipName(wanted)
 			fadeText(label, labelStroke, labelStrokeAlpha, true, 0)
 			return
 		end
 		fadeText(label, labelStroke, labelStrokeAlpha, false, NAME_FADE)
 		task.delay(NAME_FADE, function()
 			if token ~= nameToken then return end -- a newer stage change already took over
-			label.Text = wanted
+			label.Text = Helpers.ClipName(wanted)
 			fadeText(label, labelStroke, labelStrokeAlpha, true, NAME_FADE)
 		end)
 	end
@@ -6171,6 +6283,9 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 				break
 			end
 		end
+		if #Helpers.OpenPopups == 0 then
+			Helpers.SetScrollLocked(false)
+		end
 		if onClose then onClose() end
 		task.delay(0.18, function()
 			container:Destroy()
@@ -6183,10 +6298,22 @@ local function openFloating(content: GuiObject, position: Vector2, onClose)
 		close()
 	end
 	table.insert(Helpers.OpenPopups, close)
+	-- A page that scrolls out from under an open dropdown leaves it floating over unrelated rows,
+	-- so the page is frozen while any popup is up.
+	Helpers.SetScrollLocked(true)
 	catcher.MouseButton1Click:Connect(dismiss)
 	catcher.MouseButton2Click:Connect(dismiss)
 	return close, container
 end
+
+-- Reaching for the wheel while a popup is up reads as "I want to get back to the page", so the
+-- popup gets out of the way instead of hanging over content it no longer belongs to. The page is
+-- already frozen at this point, so nothing scrolls underneath it either way.
+connect(UserInputService.InputChanged, function(input)
+	if input.UserInputType == Enum.UserInputType.MouseWheel and #Helpers.OpenPopups > 0 then
+		Helpers.CloseAllPopups()
+	end
+end)
 
 -- Opens `content` just below and to the right of `cursor`, so the pointer sits slightly above
 -- and left of the window's top-left corner (clamped on-screen rather than running off the edge).
@@ -6927,6 +7054,7 @@ function WindowClass:CreateTab(options)
 	local scroller = page.ScrollingFrame
 	self2.Page = page
 	self2.Scroller = scroller
+	Helpers.RegisterScroller(scroller)
 	self2.LeftColumn = scroller.LeftColumn
 	self2.RightColumn = scroller.RightColumn
 	local tabInfo = scroller.TabInfoFrameHolder
@@ -6992,6 +7120,8 @@ function WindowClass:SelectTab(tab, instant: boolean?)
 	end
 	local previous = self.ActiveTab
 	self.ActiveTab = tab
+	Helpers.UIState.Tab = Helpers.TabKey(tab)
+	Helpers.SaveUIState()
 
 	if previous then
 		styleTabButton(previous.Button, false, instant)
@@ -8399,6 +8529,8 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 
 local function revealInterface(window)
+	-- before anything is measured or animated: the restored tab decides which sections pop in
+	pcall(Helpers.ApplyUIState, window)
 	local tab = window.ActiveTab
 	local sections = tab and not tab.IsConfig and tab.Sections or {}
 
@@ -8764,6 +8896,7 @@ local ConfigUI = {}
 ConfigUI.Bg = ConfigPage.ConfigsBg
 ConfigUI.ButtonsBg = ConfigPage.ButtonsBg
 ConfigUI.Scroller = ConfigUI.Bg.ScrollingFrame
+Helpers.RegisterScroller(ConfigUI.Scroller)
 ConfigUI.Title = nameLabel(ConfigUI.Bg)
 ConfigUI.Info = ConfigUI.Title and ConfigUI.Title:FindFirstChild("Info")
 ConfigUI.NoConfigs = ConfigUI.Bg.NoConfigsFrameHolder
@@ -9439,6 +9572,7 @@ function AmphibiaLibrary:CreateWindow(settings)
 		-- Assets are warmed before anything is shown, key screen included: it runs in its own thread,
 		-- so the key entry stays responsive while icons and fonts land.
 		Helpers.BeginPreload()
+		Helpers.LoadUIState() -- read now, applied at the reveal once the caller's tabs exist
 
 		Screens.Loading.Visible = not keySystemEnabled
 		Screens.EnterKey.Visible = keySystemEnabled
